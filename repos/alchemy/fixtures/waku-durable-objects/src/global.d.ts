@@ -29,7 +29,11 @@ declare module "cloudflare:workers" {
  */
 declare module "virtual:waku/server-entry" {
   const handler: {
-    fetch(request: Request, env: unknown, ctx: unknown): Response | Promise<Response>;
+    fetch(
+      request: Request,
+      env: unknown,
+      ctx: unknown,
+    ): Response | Promise<Response>;
   };
   export default handler;
 }

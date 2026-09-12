@@ -10,11 +10,11 @@ Decide whether the constraint is no OpenAI Platform API billing or strictly subs
 
 Then select the operator candidate:
 
-- An Effect-native operator using Erudane's existing OAuth and `OpenAiClient` configuration pattern. Validate runtime refresh, tool/stream compatibility, backend support, and workspace entitlement; see [Erudane evidence](erudane-auth.md).
+- An Effect-native operator using Bridle's existing OAuth and `OpenAiClient` configuration pattern. Validate runtime refresh, tool/stream compatibility, backend support, and workspace entitlement; see [Bridle evidence](bridle-auth.md).
 - Codex with Effect-backed MCP tools, subscription/workspace entitlement permitting.
 - Codex app-server with experimental dynamic tools if the extra control is required.
 - An API-backed Effect model loop only if the user accepts API billing.
-- A custom full Codex `LanguageModel` adapter only if the existing Erudane-style client configuration cannot satisfy the required protocol behavior and preserving that interface justifies the additional work.
+- A custom full Codex `LanguageModel` adapter only if the existing Bridle-style client configuration cannot satisfy the required protocol behavior and preserving that interface justifies the additional work.
 
 Pass evidence: explicit user choice, available account/workspace capabilities, and provider confirmation where shared use or support terms remain unclear. Do not infer commercial permission from a successful login.
 

@@ -11,6 +11,12 @@ onMounted(() => {
 <template>
   <main>
     <p id="count">count:{{ count }}</p>
-    <button id="increment" :data-hydrated="hydrated ? 'true' : 'false'" @click="count++">+1</button>
+    <button
+      id="increment"
+      :data-hydrated="hydrated ? 'true' : 'false'"
+      @click="count++"
+    >
+      +1
+    </button>
   </main>
 </template>

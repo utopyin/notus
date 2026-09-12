@@ -22,7 +22,8 @@ export default defineConfig({
           const platform = context.platform as Platform | undefined;
           return Response.json({
             marker: "api-route-ok",
-            secret: (platform?.env?.FIXTURE_SECRET as string | undefined) ?? null,
+            secret:
+              (platform?.env?.FIXTURE_SECRET as string | undefined) ?? null,
             hasWaitUntil: typeof platform?.ctx?.waitUntil === "function",
           });
         },

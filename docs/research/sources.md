@@ -6,14 +6,14 @@ Research date: 2026-09-12. Local source references in this folder refer to the r
 
 These are squashed Git subtrees, not submodules or nested clones. Their ordinary tracked files are available after a normal checkout. Alchemy's upstream `distilled` and `floci` submodules remain uninitialized gitlinks; they are not bundled source. The bootstrap and subtree imports are committed; research documents are maintained separately.
 
-| Local directory | Upstream | Imported ref | Upstream revision |
-| --- | --- | --- | --- |
-| `repos/effect` | https://github.com/Effect-TS/effect | `main` | `51d4a2f08a5c7691dc876415bc9fc0ecf467e153` |
-| `repos/herdr-ts-sdk` | https://github.com/dmmulroy/herdr-ts-sdk | `main` | `77abbf81ac35407bc5138a8f4fe19f0833af4402` |
-| `repos/herdr` | https://github.com/herdrdev/herdr | `master` | `a5d5f6f654a32b27b2bd4dd8edd82f6795359269` |
-| `repos/plannotator` | https://github.com/backnotprop/plannotator | `main` | `0f2bd6051c66d26f2d776a2a521d856627b3316c` |
-| `repos/namespace-sdk` | https://github.com/namespacelabs/typescript-sdk | `main` | `a72324a20c4c6402960a2fd4ed6382624691b8d9` |
-| `repos/alchemy` | https://github.com/alchemy-run/alchemy | `main` | `e6c5a3838f742443164a86708e2e4abca781aa92` |
+| Local directory       | Upstream                                        | Imported ref | Upstream revision                          |
+| --------------------- | ----------------------------------------------- | ------------ | ------------------------------------------ |
+| `repos/effect`        | https://github.com/Effect-TS/effect             | `main`       | `51d4a2f08a5c7691dc876415bc9fc0ecf467e153` |
+| `repos/herdr-ts-sdk`  | https://github.com/dmmulroy/herdr-ts-sdk        | `main`       | `77abbf81ac35407bc5138a8f4fe19f0833af4402` |
+| `repos/herdr`         | https://github.com/herdrdev/herdr               | `master`     | `a5d5f6f654a32b27b2bd4dd8edd82f6795359269` |
+| `repos/plannotator`   | https://github.com/backnotprop/plannotator      | `main`       | `0f2bd6051c66d26f2d776a2a521d856627b3316c` |
+| `repos/namespace-sdk` | https://github.com/namespacelabs/typescript-sdk | `main`       | `a72324a20c4c6402960a2fd4ed6382624691b8d9` |
+| `repos/alchemy`       | https://github.com/alchemy-run/alchemy          | `main`       | `e6c5a3838f742443164a86708e2e4abca781aa92` |
 
 The Namespace SDK repository was resolved through Namespace's API/SDK documentation. Herdr and Plannotator implementation repositories were resolved through their supplied documentation.
 

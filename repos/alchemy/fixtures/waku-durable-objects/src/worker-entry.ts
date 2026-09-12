@@ -25,7 +25,9 @@ export class Counter extends DurableObject {
 
   async get(): Promise<number> {
     this.#ensureTable();
-    const rows = this.ctx.storage.sql.exec("SELECT value FROM counter WHERE id = 0").toArray();
+    const rows = this.ctx.storage.sql
+      .exec("SELECT value FROM counter WHERE id = 0")
+      .toArray();
     return Number(rows[0]?.value ?? 0);
   }
 
@@ -41,5 +43,6 @@ export class Counter extends DurableObject {
 }
 
 export default {
-  fetch: (request: Request, env: unknown, ctx: unknown) => wakuHandler.fetch(request, env, ctx),
+  fetch: (request: Request, env: unknown, ctx: unknown) =>
+    wakuHandler.fetch(request, env, ctx),
 };

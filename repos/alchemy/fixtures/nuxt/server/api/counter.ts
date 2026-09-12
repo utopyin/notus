@@ -12,12 +12,18 @@ interface CounterNamespace {
 }
 
 export default defineEventHandler(async (event) => {
-  const env = (event.context.cloudflare as { env?: Record<string, unknown> } | undefined)?.env;
+  const env = (
+    event.context.cloudflare as { env?: Record<string, unknown> } | undefined
+  )?.env;
   const namespace = env?.COUNTER as CounterNamespace | undefined;
   if (namespace === undefined) {
-    throw createError({ statusCode: 500, statusMessage: "COUNTER binding missing" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: "COUNTER binding missing",
+    });
   }
   const stub = namespace.get(namespace.idFromName("fixture"));
-  const count = event.method === "POST" ? await stub.increment() : await stub.get();
+  const count =
+    event.method === "POST" ? await stub.increment() : await stub.get();
   return { count };
 });

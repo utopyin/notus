@@ -36,16 +36,16 @@ Labels used below:
 
 Unless otherwise stated, source paths below are relative to `repos/namespace-sdk/`. Line ranges refer to that revision. `DB` abbreviates `src/proto/namespace/private/devbox/devbox_pb.ts`; `Wire` abbreviates `src/proto/namespace/private/devbox/wire/wire_pb.ts`; `Compute` abbreviates `src/proto/namespace/cloud/compute/v1beta/compute_pb.ts`.
 
-| Item | Observed value and evidence |
-| --- | --- |
-| Package | `@namespacelabs/sdk`, source version `1.1.0`; `package.json:1-10` |
-| Exports | ESM and CommonJS; root, `/auth`, `/devbox`, `/vnc`, `/api/*`, `/proto`, `/proto/*`; `package.json:10-141` |
-| Direct runtime dependencies | `ssh2 ^1.17.0`, `ws ^8.21.1`; `package.json:195-198` |
-| Peers | `@bufbuild/protobuf ^2.2.0`, `@connectrpc/connect ^2.0.0`, `@connectrpc/connect-node ^2.0.0`; `package.json:178-182` |
-| Lockfile resolution | protobuf `2.11.0`, Connect and connect-node `2.1.1`, ssh2 `1.17.0`, ws `8.21.1`; `package-lock.json:177-185,236-260,922-939,987-1009` |
-| Node baseline | No SDK `engines` declaration. Locked connect-node requires Node `>=20`; publishing workflow uses Node 22. Prefer Node 22 for the first spike. Bun is untested here. `package-lock.json:247-260`; `.github/workflows/npm-publish.yaml:14-20` |
-| License | SDK metadata and README declare Apache-2.0. No tracked standalone `LICENSE` or `NOTICE` file was found, despite `files` including `LICENSE`. Public 1.0.0 tarball also lacked a license file. Confirm distribution completeness before adoption. `package.json:142-147,168-172`; README license section |
-| Dependency licenses | Lockfile declares Connect Apache-2.0, protobuf Apache-2.0 AND BSD-3-Clause, ws MIT. ssh2's lock entry has no license field and includes optional `cpu-features` and `nan`. This is not a complete dependency license audit. |
+| Item                        | Observed value and evidence                                                                                                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package                     | `@namespacelabs/sdk`, source version `1.1.0`; `package.json:1-10`                                                                                                                                                                                                                                       |
+| Exports                     | ESM and CommonJS; root, `/auth`, `/devbox`, `/vnc`, `/api/*`, `/proto`, `/proto/*`; `package.json:10-141`                                                                                                                                                                                               |
+| Direct runtime dependencies | `ssh2 ^1.17.0`, `ws ^8.21.1`; `package.json:195-198`                                                                                                                                                                                                                                                    |
+| Peers                       | `@bufbuild/protobuf ^2.2.0`, `@connectrpc/connect ^2.0.0`, `@connectrpc/connect-node ^2.0.0`; `package.json:178-182`                                                                                                                                                                                    |
+| Lockfile resolution         | protobuf `2.11.0`, Connect and connect-node `2.1.1`, ssh2 `1.17.0`, ws `8.21.1`; `package-lock.json:177-185,236-260,922-939,987-1009`                                                                                                                                                                   |
+| Node baseline               | No SDK `engines` declaration. Locked connect-node requires Node `>=20`; publishing workflow uses Node 22. Prefer Node 22 for the first spike. Bun is untested here. `package-lock.json:247-260`; `.github/workflows/npm-publish.yaml:14-20`                                                             |
+| License                     | SDK metadata and README declare Apache-2.0. No tracked standalone `LICENSE` or `NOTICE` file was found, despite `files` including `LICENSE`. Public 1.0.0 tarball also lacked a license file. Confirm distribution completeness before adoption. `package.json:142-147,168-172`; README license section |
+| Dependency licenses         | Lockfile declares Connect Apache-2.0, protobuf Apache-2.0 AND BSD-3-Clause, ws MIT. ssh2's lock entry has no license field and includes optional `cpu-features` and `nan`. This is not a complete dependency license audit.                                                                             |
 
 ### Publication mismatch
 
@@ -61,17 +61,17 @@ The high-level entry point is `createDevboxClient(options?)` from `/devbox` or t
 
 ### Creation and lifecycle
 
-| Intent | Exact high-level API and wire operation | Important limit |
-| --- | --- | --- |
-| Create | `client.devboxes.create(input, options?)`; `DevBoxService.Create` | Starts by default through `activate: true`; `start: false` creates stopped. |
+| Intent                | Exact high-level API and wire operation                                                                                       | Important limit                                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Create                | `client.devboxes.create(input, options?)`; `DevBoxService.Create`                                                             | Starts by default through `activate: true`; `start: false` creates stopped.                                          |
 | Create from blueprint | `create({ name, blueprint, site?, access?, purpose?, start? })`; `FetchTemplate`, then `CreateFromTemplate` with `templateId` | Cannot also supply image, repository, environment, size, volume, ephemeral, privileged, features, or network policy. |
-| Fetch | `client.devboxes.get(idOrName, options?)`; `Fetch({ idOrName, returnActivatedInstance: true })` | Fetches current runtime state without explicitly activating. |
-| Refresh handle | `devbox.refresh(options?)`; `Fetch({ id, returnActivatedInstance: true })` | Use this instead of trusting an old snapshot. |
-| List | `client.devboxes.list({ cursor?, limit?, orderBy?, ephemeral?, signal?, timeoutMs? })`; `List` | Returns `{ items, nextCursor? }`. Listed state is `unknown`, with no instance ID. `iterate()` follows pages. |
-| Start/resume | `devbox.start(options?)` or `client.devboxes.start(ref, options?)`; `Activate({ idOrName, waitForReadiness: true })` | Invalidates old connections. There is no separate high-level `resume()` method. |
-| Stop | `devbox.stop(options?)` or `client.devboxes.stop(ref, options?)`; `Stop({ name })` | Invalidates cached connections after RPC success. Ordinary persistent storage remains. |
-| Delete | `devbox.delete(options?)` or `client.devboxes.delete(ref, options?)`; `Expire({ name })` | Permanent removal includes associated persistent volume, per docs. |
-| Update | `devbox.update({ size?, volumeSizeGB?, busyTimeoutMs?, privileged?, networkPolicy? }, options?)`; `Update` | `busyTimeoutMs` maps to `busyEnsureMinimumDuration`, not a command deadline. |
+| Fetch                 | `client.devboxes.get(idOrName, options?)`; `Fetch({ idOrName, returnActivatedInstance: true })`                               | Fetches current runtime state without explicitly activating.                                                         |
+| Refresh handle        | `devbox.refresh(options?)`; `Fetch({ id, returnActivatedInstance: true })`                                                    | Use this instead of trusting an old snapshot.                                                                        |
+| List                  | `client.devboxes.list({ cursor?, limit?, orderBy?, ephemeral?, signal?, timeoutMs? })`; `List`                                | Returns `{ items, nextCursor? }`. Listed state is `unknown`, with no instance ID. `iterate()` follows pages.         |
+| Start/resume          | `devbox.start(options?)` or `client.devboxes.start(ref, options?)`; `Activate({ idOrName, waitForReadiness: true })`          | Invalidates old connections. There is no separate high-level `resume()` method.                                      |
+| Stop                  | `devbox.stop(options?)` or `client.devboxes.stop(ref, options?)`; `Stop({ name })`                                            | Invalidates cached connections after RPC success. Ordinary persistent storage remains.                               |
+| Delete                | `devbox.delete(options?)` or `client.devboxes.delete(ref, options?)`; `Expire({ name })`                                      | Permanent removal includes associated persistent volume, per docs.                                                   |
+| Update                | `devbox.update({ size?, volumeSizeGB?, busyTimeoutMs?, privileged?, networkPolicy? }, options?)`; `Update`                    | `busyTimeoutMs` maps to `busyEnsureMinimumDuration`, not a command deadline.                                         |
 
 Source: `src/devbox/resources.ts:54-225`; `src/devbox/models.ts:64-126,266-360`; `DB:3830-3955`. Docs: [managing devboxes](https://namespace.so/docs/devbox/managing).
 
@@ -99,19 +99,19 @@ Proposal: bake Node 22, the operator, Herdr dependencies, Plannotator, Git tooli
 
 ### Exec, background work, logs, and attach
 
-| Need | Available interface | Consequence for Bridle |
-| --- | --- | --- |
-| Structured command | `devbox.exec(argv, { cwd?, env?, stdin?, onStdout?, onStderr?, signal?, timeoutMs? })` | Literal argv, no shell expansion. Uses agent `RunExec`. |
-| Shell script | `devbox.shell(script, options?)` with optional `shell` | Uses selected shell or `/bin/sh` with `-lc`; no PTY. |
-| Result | `{ exitCode, signal, error?, stdout, stderr }` | Non-zero exits resolve normally. Current collector always sets `signal: null`. |
-| Detached command | CLI `devbox exec -d <box> -- <command>` | Returns execution ID and survives CLI disconnect, but not devbox stop. No high-level TS detached method. |
-| Wire detached API | `AgentService.StartExec({ command: RunCommand })` → `{ execId }` | Requires a custom agent connection or control adapter; SDK's internal RPC client is private. |
-| Re-read/follow logs | CLI `devbox logs <box> <execId>` and `devbox logs list <box> -o json`; wire `StreamExecLogs({ execId })`, `ListLogs({})` | Output replays then follows until completion. No offset/cursor in `StreamExecLogsRequest`. |
-| Fresh PTY | `devbox.terminal.open({ columns?, rows?, term?, env?, signal?, timeoutMs? })` | SSH shell, not a named persistent Namespace session. |
-| PTY handle | `write`, `resize`, `close`, `onData`, `onExit`, `onError`, `wait` | Closing the transport is not detached-session management. |
-| Persistent Namespace session | CLI `devbox session connect <box> --session <name>` | Named session survives disconnection. Connecting takes exclusive control. |
-| Wire session management | `CreateTerminalSession({ name, command })`, `ListTerminalSessions`, `AddTerminalSession`, `DeleteTerminalSession` | Present in generated `AgentService`, absent from high-level `terminal.open`. |
-| Herdr attach | No Namespace-specific Herdr API verified | Run Herdr in the task devbox and attach through Herdr's own protocol/terminal behavior. Do not replace it with Namespace Sessions by assumption. |
+| Need                         | Available interface                                                                                                      | Consequence for Bridle                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Structured command           | `devbox.exec(argv, { cwd?, env?, stdin?, onStdout?, onStderr?, signal?, timeoutMs? })`                                   | Literal argv, no shell expansion. Uses agent `RunExec`.                                                                                          |
+| Shell script                 | `devbox.shell(script, options?)` with optional `shell`                                                                   | Uses selected shell or `/bin/sh` with `-lc`; no PTY.                                                                                             |
+| Result                       | `{ exitCode, signal, error?, stdout, stderr }`                                                                           | Non-zero exits resolve normally. Current collector always sets `signal: null`.                                                                   |
+| Detached command             | CLI `devbox exec -d <box> -- <command>`                                                                                  | Returns execution ID and survives CLI disconnect, but not devbox stop. No high-level TS detached method.                                         |
+| Wire detached API            | `AgentService.StartExec({ command: RunCommand })` → `{ execId }`                                                         | Requires a custom agent connection or control adapter; SDK's internal RPC client is private.                                                     |
+| Re-read/follow logs          | CLI `devbox logs <box> <execId>` and `devbox logs list <box> -o json`; wire `StreamExecLogs({ execId })`, `ListLogs({})` | Output replays then follows until completion. No offset/cursor in `StreamExecLogsRequest`.                                                       |
+| Fresh PTY                    | `devbox.terminal.open({ columns?, rows?, term?, env?, signal?, timeoutMs? })`                                            | SSH shell, not a named persistent Namespace session.                                                                                             |
+| PTY handle                   | `write`, `resize`, `close`, `onData`, `onExit`, `onError`, `wait`                                                        | Closing the transport is not detached-session management.                                                                                        |
+| Persistent Namespace session | CLI `devbox session connect <box> --session <name>`                                                                      | Named session survives disconnection. Connecting takes exclusive control.                                                                        |
+| Wire session management      | `CreateTerminalSession({ name, command })`, `ListTerminalSessions`, `AddTerminalSession`, `DeleteTerminalSession`        | Present in generated `AgentService`, absent from high-level `terminal.open`.                                                                     |
+| Herdr attach                 | No Namespace-specific Herdr API verified                                                                                 | Run Herdr in the task devbox and attach through Herdr's own protocol/terminal behavior. Do not replace it with Namespace Sessions by assumption. |
 
 Source: `src/devbox/devbox.ts:71-86,115-120`; `src/devbox/connection.ts:96-107,144-346`; `src/devbox/models.ts:131-178`; `Wire:20-116,173-294,2297-2457`. Docs: [commands](https://namespace.so/docs/reference/typescript-sdk/commands), [CLI exec and logs](https://namespace.so/docs/devbox/exec), [sessions](https://namespace.so/docs/devbox/sessions).
 
@@ -125,13 +125,13 @@ No high-level `exec.cancel`, `exec.status`, `exec.attach`, kill-by-execution-ID,
 
 ### What actually goes over the network
 
-| Path | Implementation | Runtime requirement |
-| --- | --- | --- |
-| Devbox lifecycle, blueprints, images | Connect protocol, JSON, HTTP/1.1 to `private-api.iad.namespaceapis.com`; bearer Authorization interceptor | Currently uses `@connectrpc/connect-node`, not fetch. |
-| Public Compute/Storage/Vault APIs | Connect HTTP/1.1 JSON to `https://{region}.compute.namespaceapis.com`; IAM/Registry use `https://global.namespaceapis.com` | Node factory by default; descriptors can be used with another transport. |
-| Exec/shell agent | `Activate`, then `wss://gate.<ingressDomain>/<encoded-instance-id>/hsvc.unixsocket?name=agent` with `Authorization: Bearer ...`; a Node `Duplex` wraps WebSocket frames; native gRPC HTTP/2 runs over that stream | Node HTTP/2 and custom `createConnection`. `http://devbox-agent` is a synthetic authority, not a publicly callable endpoint. |
-| PTY and SFTP | Same gateway with `name=ssh`; `Activate` requests `includeSshCredentials: true`; ssh2 uses returned key and selected user | ssh2, ws, Node streams and SSH protocol. |
-| Display | Regional `GetVNCConfig`; VNC over WebSocket with `x-nsc-ingress-auth: Bearer ...` | Separate Node-oriented VNC stack. Not the exec connection. |
+| Path                                 | Implementation                                                                                                                                                                                                    | Runtime requirement                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Devbox lifecycle, blueprints, images | Connect protocol, JSON, HTTP/1.1 to `private-api.iad.namespaceapis.com`; bearer Authorization interceptor                                                                                                         | Currently uses `@connectrpc/connect-node`, not fetch.                                                                        |
+| Public Compute/Storage/Vault APIs    | Connect HTTP/1.1 JSON to `https://{region}.compute.namespaceapis.com`; IAM/Registry use `https://global.namespaceapis.com`                                                                                        | Node factory by default; descriptors can be used with another transport.                                                     |
+| Exec/shell agent                     | `Activate`, then `wss://gate.<ingressDomain>/<encoded-instance-id>/hsvc.unixsocket?name=agent` with `Authorization: Bearer ...`; a Node `Duplex` wraps WebSocket frames; native gRPC HTTP/2 runs over that stream | Node HTTP/2 and custom `createConnection`. `http://devbox-agent` is a synthetic authority, not a publicly callable endpoint. |
+| PTY and SFTP                         | Same gateway with `name=ssh`; `Activate` requests `includeSshCredentials: true`; ssh2 uses returned key and selected user                                                                                         | ssh2, ws, Node streams and SSH protocol.                                                                                     |
+| Display                              | Regional `GetVNCConfig`; VNC over WebSocket with `x-nsc-ingress-auth: Bearer ...`                                                                                                                                 | Separate Node-oriented VNC stack. Not the exec connection.                                                                   |
 
 Source: `src/devbox/index.ts:56-68`; `src/api/clients.ts:38-68`; `src/devbox/connection.ts:1-77,144-169,433-475,601-656`; `src/devbox/display.ts:28-89`.
 
@@ -235,12 +235,12 @@ Options to investigate: dashboard-managed immutable blueprint with secret refere
 
 There are four clocks, not one:
 
-| Clock | Evidence | Bridle consequence |
-| --- | --- | --- |
-| SDK operation timeout | Optional `timeoutMs`; connection acquisition defaults to 90 seconds | Not a VM lifetime or a durable tool timeout. |
-| Devbox idle timeout | Docs list 15m, 30m, 1h, 4h, 8h; TS `busyTimeoutMs` maps to agent busy minimum | A wait longer than this may stop the devbox unless explicitly active. Confirm mapping and workspace caps. |
-| Ephemeral stopped retention | `ephemeral: { stoppedRetentionMs }`; policy-derived expiry after stopping | Not an active-runtime budget; cannot protect live work from stopping. |
-| Compute instance deadline | Low-level create/extend API, policy-capped | Different product lifecycle. Do not manage a Devbox's backing VM independently without support guidance. |
+| Clock                       | Evidence                                                                      | Bridle consequence                                                                                        |
+| --------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| SDK operation timeout       | Optional `timeoutMs`; connection acquisition defaults to 90 seconds           | Not a VM lifetime or a durable tool timeout.                                                              |
+| Devbox idle timeout         | Docs list 15m, 30m, 1h, 4h, 8h; TS `busyTimeoutMs` maps to agent busy minimum | A wait longer than this may stop the devbox unless explicitly active. Confirm mapping and workspace caps. |
+| Ephemeral stopped retention | `ephemeral: { stoppedRetentionMs }`; policy-derived expiry after stopping     | Not an active-runtime budget; cannot protect live work from stopping.                                     |
+| Compute instance deadline   | Low-level create/extend API, policy-capped                                    | Different product lifecycle. Do not manage a Devbox's backing VM independently without support guidance.  |
 
 ### What prevents idle shutdown
 
@@ -347,10 +347,10 @@ Multi-hour tool calls should become persisted operations with eventual completio
 
 ## Compute sizing and browser QA
 
-| Platform | Source/documented sizes | Caveat |
-| --- | --- | --- |
+| Platform    | Source/documented sizes                       | Caveat                                                                                                                                                                       |
+| ----------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Linux AMD64 | s: 4 vCPU/8 GiB; m: 8/16; l: 16/32; xl: 32/64 | Management docs call CPU counts burst capacity; workspace policy can restrict sizes. Do not turn overview language about dedicated resources into a sustained CPU guarantee. |
-| macOS ARM64 | m: 6 vCPU/14 GiB; l: 12/28; default m | High-level direct create supports it, but no Linux container image may be supplied with `os: "macos"`. macOS capacity must be available. |
+| macOS ARM64 | m: 6 vCPU/14 GiB; l: 12/28; default m         | High-level direct create supports it, but no Linux container image may be supplied with `os: "macos"`. macOS capacity must be available.                                     |
 
 Source: `src/devbox/conversion.ts:35-56,94-110`; `src/devbox/models.ts:10-20,87-109`; [machine sizes](https://namespace.so/docs/devbox/managing#machine-sizes). The overview's "Linux AMD64" platform statement is incomplete relative to the pinned source and dashboard blueprint documentation, which support macOS. A declared `architecture: string` in output types is not a guarantee of arbitrary selectable Devbox architecture.
 
@@ -368,15 +368,15 @@ Inline egress allowlists support wildcard subdomains; Namespace infrastructure d
 
 These are source inspections, not successful executions:
 
-| File | What it covers | What it does not prove |
-| --- | --- | --- |
-| `examples/devbox/tour.ts:27-247` | Image/blueprint create, exec, files, PTY, stop/start, cleanup | Uses actual billable resources if run. No Worker runtime, multi-hour recovery, or review link. |
-| `examples/compute/create-macos-instance.ts:4-35` | Low-level macOS creation, 30-minute deadline, synchronous readiness and command | Leaves instance to deadline/manual cleanup. Not the Devbox product lifecycle. |
-| `test/devbox.unit.test.ts:32-162` | Conversion, shapes, defaults, image-name validation with fake RPC | Backend defaults, permissions, actual image boot. |
-| `test/devbox.unit.test.ts:164-276` | Deadline arithmetic, in-flight invalidation, cached/lazy token sources | Actual token rotation/renewal, network timeout behavior. |
-| `test/devbox.unit.test.ts:278-348` | Fake SFTP cache and terminal close event | Real disconnect behavior or persistent attach. |
-| `test/devbox.unit.test.ts:350-450` | Structured command serialization, chunk collection, missing result, separate SSH/agent caches | Remote kill semantics, log retention limits, interrupted command recovery. |
-| `src/devbox/display.ts:28-148` | VNC endpoint resolution and error translation inspected | Browser QA or actual display access. |
+| File                                             | What it covers                                                                                | What it does not prove                                                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `examples/devbox/tour.ts:27-247`                 | Image/blueprint create, exec, files, PTY, stop/start, cleanup                                 | Uses actual billable resources if run. No Worker runtime, multi-hour recovery, or review link. |
+| `examples/compute/create-macos-instance.ts:4-35` | Low-level macOS creation, 30-minute deadline, synchronous readiness and command               | Leaves instance to deadline/manual cleanup. Not the Devbox product lifecycle.                  |
+| `test/devbox.unit.test.ts:32-162`                | Conversion, shapes, defaults, image-name validation with fake RPC                             | Backend defaults, permissions, actual image boot.                                              |
+| `test/devbox.unit.test.ts:164-276`               | Deadline arithmetic, in-flight invalidation, cached/lazy token sources                        | Actual token rotation/renewal, network timeout behavior.                                       |
+| `test/devbox.unit.test.ts:278-348`               | Fake SFTP cache and terminal close event                                                      | Real disconnect behavior or persistent attach.                                                 |
+| `test/devbox.unit.test.ts:350-450`               | Structured command serialization, chunk collection, missing result, separate SSH/agent caches | Remote kill semantics, log retention limits, interrupted command recovery.                     |
+| `src/devbox/display.ts:28-148`                   | VNC endpoint resolution and error translation inspected                                       | Browser QA or actual display access.                                                           |
 
 The example's comment that `update()` allows a backend-resolved arbitrary size conflicts with `toProtoShape()` and its unit test, which resolve updates client-side. Use the implementation, not that comment. Source: `examples/devbox/tour.ts:204-210`; `src/devbox/conversion.ts:94-110`; `test/devbox.unit.test.ts:78-81`.
 
@@ -384,18 +384,18 @@ The example's comment that `update()` allows a backend-resolved arbitrary size c
 
 All spikes below are proposed future work. Credentialed or cloud-resource steps require separate approval. Each should produce a checked-in result with exact package versions, compatibility date, image digest, workspace policy, observed timings, and failures, without credentials.
 
-| Spike | Method | Go criterion / no-go consequence |
-| --- | --- | --- |
-| 1. Published dependency | Requery npm, inspect archive exports/license, import the exact published version in a disposable Node project | Official installable version matches required Devbox API. Otherwise wait for a release or use a supported control adapter/CLI; do not runtime-import subtree code. |
-| 2. Worker control transport | Local workerd test first, no credentials: compare connect-node HTTP/1.1 against a local mock and a fetch-based descriptor client. Then approved live create/fetch/activate/stop/delete | The fetch subset produces equivalent typed results/errors with no Node socket/HTTP2 requirement. Default SDK is not acceptable based on bundle success alone. |
-| 3. Bootstrap | Prebuilt image, stopped create, activate, wait for explicit operator-ready acknowledgment; repeat after stop/start and forced operator exit | Exactly one supervisor/operator assignment, completed checkout, working Node and Herdr dependencies, no foreground SDK request required for lifetime. Failure means keep a Node bootstrap adapter. |
-| 4. Hours-long work and idle | Detached work plus Herdr terminal; disconnect all external clients; cross idle and token-expiry boundaries with and without markers; restart supervisor | Work survives expected disconnects with marker; cleanup removes marker; failures become recoverable records. If not, no unattended Bridle task runtime. |
-| 5. Stop/recovery | Stop during active tool and human review; resume; check process IDs, files, logs, approved-plan delivery, task markers | Explicitly distinguish terminated work from resumable state. No duplicate tool/review effects. If review cannot restart, retain compute during review until that gap is fixed. |
-| 6. GitHub and least privilege | Test approved/private repo clone, ref, push/PR path, submodule/LFS if required, second approved repo, denied unapproved repo; verify workload token cannot cross intended boundaries | Required access works with acceptable blast radius and enforceable no-merge behavior. Need policy/plan changes if default workload token is too broad. |
-| 7. Public review link | Anonymous browser without Namespace account; correct, wrong-task, expired, revoked, and stale-plan links; all Plannotator assets/POSTs/streams; sleeping devbox; direct-origin bypass attempts | Only valid task-scoped capability reaches review and accepted decision is durable. If direct Namespace ingress cannot do this, Bridle gateway/outbound relay is mandatory. |
-| 8. Artifact durability | Write to workspace/home/tmp, stop/start, export artifact via create/PUT/finalize, delete devbox, download external artifact | Required evidence remains accessible after deletion; exact persistent paths and retention are recorded. No reliance on cache volumes as the sole record. |
-| 9. QA/resource limits | Representative build plus agents plus headless browsers under chosen size, privilege, and egress policy; capture memory/OOM and output growth | Browser QA works without unacceptable privilege or capacity demands. Adjust image/size/concurrency from measurements, not core-count claims. |
-| 10. Duplicate/failure delivery | Drop create/start/exec responses, retry DO messages and callbacks, restart adapter/DO, expire credentials | No duplicate task box or tool side effects; ambiguous outcomes reconcile by persisted operation IDs. Otherwise do not enable autonomous retries. |
+| Spike                          | Method                                                                                                                                                                                         | Go criterion / no-go consequence                                                                                                                                                                   |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Published dependency        | Requery npm, inspect archive exports/license, import the exact published version in a disposable Node project                                                                                  | Official installable version matches required Devbox API. Otherwise wait for a release or use a supported control adapter/CLI; do not runtime-import subtree code.                                 |
+| 2. Worker control transport    | Local workerd test first, no credentials: compare connect-node HTTP/1.1 against a local mock and a fetch-based descriptor client. Then approved live create/fetch/activate/stop/delete         | The fetch subset produces equivalent typed results/errors with no Node socket/HTTP2 requirement. Default SDK is not acceptable based on bundle success alone.                                      |
+| 3. Bootstrap                   | Prebuilt image, stopped create, activate, wait for explicit operator-ready acknowledgment; repeat after stop/start and forced operator exit                                                    | Exactly one supervisor/operator assignment, completed checkout, working Node and Herdr dependencies, no foreground SDK request required for lifetime. Failure means keep a Node bootstrap adapter. |
+| 4. Hours-long work and idle    | Detached work plus Herdr terminal; disconnect all external clients; cross idle and token-expiry boundaries with and without markers; restart supervisor                                        | Work survives expected disconnects with marker; cleanup removes marker; failures become recoverable records. If not, no unattended Bridle task runtime.                                            |
+| 5. Stop/recovery               | Stop during active tool and human review; resume; check process IDs, files, logs, approved-plan delivery, task markers                                                                         | Explicitly distinguish terminated work from resumable state. No duplicate tool/review effects. If review cannot restart, retain compute during review until that gap is fixed.                     |
+| 6. GitHub and least privilege  | Test approved/private repo clone, ref, push/PR path, submodule/LFS if required, second approved repo, denied unapproved repo; verify workload token cannot cross intended boundaries           | Required access works with acceptable blast radius and enforceable no-merge behavior. Need policy/plan changes if default workload token is too broad.                                             |
+| 7. Public review link          | Anonymous browser without Namespace account; correct, wrong-task, expired, revoked, and stale-plan links; all Plannotator assets/POSTs/streams; sleeping devbox; direct-origin bypass attempts | Only valid task-scoped capability reaches review and accepted decision is durable. If direct Namespace ingress cannot do this, Bridle gateway/outbound relay is mandatory.                         |
+| 8. Artifact durability         | Write to workspace/home/tmp, stop/start, export artifact via create/PUT/finalize, delete devbox, download external artifact                                                                    | Required evidence remains accessible after deletion; exact persistent paths and retention are recorded. No reliance on cache volumes as the sole record.                                           |
+| 9. QA/resource limits          | Representative build plus agents plus headless browsers under chosen size, privilege, and egress policy; capture memory/OOM and output growth                                                  | Browser QA works without unacceptable privilege or capacity demands. Adjust image/size/concurrency from measurements, not core-count claims.                                                       |
+| 10. Duplicate/failure delivery | Drop create/start/exec responses, retry DO messages and callbacks, restart adapter/DO, expire credentials                                                                                      | No duplicate task box or tool side effects; ambiguous outcomes reconcile by persisted operation IDs. Otherwise do not enable autonomous retries.                                                   |
 
 ## Minimal deployment candidates and open decisions
 

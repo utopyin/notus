@@ -25,7 +25,12 @@ const markerPreprocessor = {
   name: "fixture-user-preprocessor",
   markup: ({ content }: { content: string }) => {
     if (!content.includes("__SVELTE_CONFIG_MARKER__")) return undefined;
-    return { code: content.replaceAll("__SVELTE_CONFIG_MARKER__", "svelte-config-loaded") };
+    return {
+      code: content.replaceAll(
+        "__SVELTE_CONFIG_MARKER__",
+        "svelte-config-loaded",
+      ),
+    };
   },
 };
 

@@ -1,0 +1,51 @@
+{
+  "name": "bridle",
+  "version": "0.0.0",
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "domains/*",
+      "entrypoints/*",
+      "apps/*",
+      "scripts"
+    ],
+    "catalog": {
+      "effect": "4.0.0-rc.115",
+      "@effect/platform-bun": "4.0.0-rc.115",
+      "@effect/platform-browser": "4.0.0-rc.115",
+      "@effect/platform-node": "4.0.0-rc.115",
+      "alchemy": "2.0.0-beta.77",
+      "@effect/ai-openai": "4.0.0-rc.115",
+      "drizzle-orm": "1.0.0-rc.5-59358597",
+      "drizzle-kit": "1.0.0-rc.5-59358597",
+      "typescript": "7.0.2"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "alchemy dev",
+    "build": "turbo run build",
+    "fix": "oxlint . --fix --disable-nested-config && oxfmt .",
+    "check:types": "turbo run check:types && tsc",
+    "check": "bun run fix && bun run check:types",
+    "prepare": "effect-tsgo patch --oxlint",
+    "deploy": "alchemy deploy --env-file .env.production",
+    "destroy": "alchemy destroy --env-file .env.production",
+    "login:chatgpt": "bun run scripts/chatgpt/login.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@effect/platform-node": "catalog:",
+    "alchemy": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "0.45.0",
+    "oxfmt": "^0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "turbo": "^2.10.11",
+    "typescript": "catalog:"
+  },
+  "packageManager": "bun@1.4.2"
+}

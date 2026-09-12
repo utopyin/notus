@@ -7,10 +7,15 @@ interface KvBinding {
 }
 
 export default defineEventHandler(async (event) => {
-  const env = (event.context.cloudflare as { env?: Record<string, unknown> } | undefined)?.env;
+  const env = (
+    event.context.cloudflare as { env?: Record<string, unknown> } | undefined
+  )?.env;
   const kv = env?.FIXTURE_KV as KvBinding | undefined;
   if (kv === undefined) {
-    throw createError({ statusCode: 500, statusMessage: "FIXTURE_KV binding missing" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: "FIXTURE_KV binding missing",
+    });
   }
   const query = getQuery(event);
   const key = typeof query.key === "string" ? query.key : "e2e-key";

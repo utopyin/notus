@@ -1,5 +1,11 @@
 {
-  "include": ["src", "test", "e2e.config.ts", "playwright.config.ts", "waku.config.ts"],
+  "include": [
+    "src",
+    "test",
+    "e2e.config.ts",
+    "playwright.config.ts",
+    "waku.config.ts"
+  ],
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,

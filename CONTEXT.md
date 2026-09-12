@@ -1,6 +1,6 @@
 # Bridle context
 
-Status: product intent agreed; first source/documentation research pass complete. Integration spikes and architecture decisions remain. No application has been implemented.
+Status: product intent agreed; first source/documentation research pass complete. A [monorepo design](docs/plans/codebase.md) is proposed for review. Workspace tooling and local login scripts exist, but the orchestrator has not been implemented. Integration spikes and infrastructure decisions remain.
 
 ## Problem
 
@@ -13,19 +13,22 @@ A human currently transfers plans to implementation agents, starts several speci
 - **Input adapter**: an integration that normalizes requests and replies from Slack, Linear, a terminal, or another source.
 - **Origin conversation**: the thread, issue, or other return address from which a task was started.
 - **Task Durable Object**: the task's persistent coordination and message-routing component on Cloudflare.
-- **Dev box**: the Namespace environment running project services, the operator, and coding-agent sessions.
+- **Dev box**: an execution environment running project services, the operator, and coding-agent sessions. Namespace is the initial provider, not part of the public interface.
 - **Operator**: an AI agent instructed to follow the configured process. It decides what to launch, how to interpret results, which findings to send back, when to ask humans, and when to hand over.
 - **Operator runtime**: the program implementing the operator's tools, waiting, persistence, model invocation, cancellation, and error reporting. It does not replace the operator's semantic decisions with a fixed state machine.
-- **Specialist agent**: a planner, implementer, reviewer, or QA agent managed through Herdr.
+- **Specialist agent**: a planner, implementer, reviewer, or QA agent running in a managed session. Herdr is the initial session provider.
 - **Finding**: a recorded issue from review or QA, with its history and disposition. Reporting the same unresolved defect twice does not make it resolved.
 - **Human request**: a correlated question, approval request, or intervention request routed to the originating conversation or review page.
 - **Artifact**: a plan, review report, test result, screenshot, or other output associated with a task.
+- **Execution attempt**: a particular assignment of task work to a dev box and operator, with its own identity and generation. Replacing an attempt does not create a new task.
+- **Agent invocation**: one requested round of work within a specialist session. Session continuity does not make two invocations interchangeable.
+- **Provider connection**: a saved, user-owned model-provider login and its renewal/revocation state. It outlives individual tasks and dev boxes.
 
 ## Agreed behavior
 
 ### Inputs and team scope
 
-Input types are interchangeable behind neutral Effect service contracts. Initial input adapters have not yet been selected. Begin with a shared team service configured for one workspace and multiple accessible GitHub repositories. Later multi-tenancy should not require mixing credentials or rewriting the configuration model.
+Input types are interchangeable behind neutral Effect service contracts. **Slack is the first usable input adapter**, with task questions, approval links, and progress routed through the originating thread. Use **`@distilled.cloud/slack`** for outbound Slack Web API operations behind Bridle's adapter; event verification and domain mapping remain Bridle responsibilities. Linear and CLI adapters can follow. Begin with a shared team service configured for one workspace and multiple accessible GitHub repositories. Later multi-tenancy should not require mixing credentials or rewriting the configuration model.
 
 Anyone who can participate in the task's originating conversation can answer its questions. The prototype does not require an additional task-owner authorization role.
 
@@ -71,6 +74,18 @@ Humans perform final code review, may request another change cycle, and merge th
 
 Design requirement to investigate: omitting a merge tool is insufficient if a coding agent can run `gh` or call GitHub with broad credentials. Repository permissions and branch protection must support the no-merge boundary.
 
+## Provider boundaries
+
+Provider communication belongs in `packages/`. Provider-neutral Effect service contracts belong in `domains/`, along with implementation Layers that import the provider packages. Apps select/configure the domain-exported defaults.
+
+For example, callers use a neutral devbox service. Its Namespace implementation Layer lives in the owning domain and calls `@bridle/namespace`. The same split applies to sessions/Herdr, plan review/Plannotator, conversation/Slack, and model-provider connections. Provider packages never import the domain interfaces they support.
+
+Neutral contracts include inputs, results, identifiers, errors, and lifecycle semantics. They must not expose the chosen SDK or vendor configuration. The happy path is one focused import such as `import { Devbox } from "@bridle/executions/devbox"`, exposing `Devbox.Service`, `Devbox.layer`, and `Devbox.layerNoDeps` together. No separate `/layer` import is required. Contract-only exports are reserved for genuine cross-runtime/import-isolation needs; the public service module may load provider dependencies. Replacing a provider may require changing configuration and migrating private provider bindings, but not rewriting callers.
+
+Services should have a minimal default path. Their `layer` bundles sensible default dependencies recursively; `layerNoDeps` leaves those dependencies unprovided for explicit composition or integration tests. An optional `layerTest` can package reusable test wiring later. Apps supply genuine host/configuration/authority requirements once, and service calls reuse that runtime rather than constructing dependency graphs. Defaults must not conceal user credentials, task authority, or production dependencies inside test compositions.
+
+See [the architecture rules](docs/architecture/CONTEXT.md) and [proposed capability mapping](docs/plans/codebase.md). The ownership and default-Layer rules are agreed; the precise grouping of capability modules remains part of the proposal.
+
 ## Technology intent
 
 - Effect TypeScript **v4** for service contracts, implementations, tool definitions, and runtime logic.
@@ -95,7 +110,7 @@ These are research targets, not claims of tested interoperability.
 
 Do not silently decide these during research:
 
-- First input adapter and representative repository/QA target.
+- Representative repository/QA target for the Slack-first implementation.
 - One or multiple repositories checked out within a single task.
 - How the final review and subsequent human-requested changes enter the existing task.
 - Execution limits, cancellation, duplicate/conflicting replies, and review disagreement handling.

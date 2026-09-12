@@ -1,4 +1,7 @@
-import { KvNamespace, Text } from "@alchemy.run/cloudflare-runtime/core/bindings";
+import {
+  KvNamespace,
+  Text,
+} from "@alchemy.run/cloudflare-runtime/core/bindings";
 import * as Options from "@alchemy.run/cloudflare-test-tools/e2e/Options";
 import * as SvelteKit from "@alchemy.run/frontend-frameworks/sveltekit";
 
@@ -17,10 +20,16 @@ export default Options.make({
   // form) works identically when no framework-specific options are needed.
   // The deploy target defaults to `@alchemy.run/frontend-frameworks/sveltekit/cloudflare`.
   framework: (options) => {
-    const base = SvelteKit.fromHarnessOptions(options as SvelteKit.HarnessOptions);
+    const base = SvelteKit.fromHarnessOptions(
+      options as SvelteKit.HarnessOptions,
+    );
     return SvelteKit.layer({
       ...base,
-      dev: { ...base.dev, port: 3103, env: { FIXTURE_OVERRIDE: OVERRIDE_LITERAL_VALUE } },
+      dev: {
+        ...base.dev,
+        port: 3103,
+        env: { FIXTURE_OVERRIDE: OVERRIDE_LITERAL_VALUE },
+      },
     });
   },
   // Target-scoped config carriage: `target.cloudflare.worker` is what the
@@ -51,7 +60,10 @@ export default Options.make({
       preview: {
         compatibilityDate: "2026-03-10",
         compatibilityFlags: ["nodejs_compat"],
-        bindings: { FIXTURE_SECRET: SECRET, FIXTURE_OVERRIDE: OVERRIDE_BINDING_VALUE },
+        bindings: {
+          FIXTURE_SECRET: SECRET,
+          FIXTURE_OVERRIDE: OVERRIDE_BINDING_VALUE,
+        },
         kvNamespaces: ["FIXTURE_KV"],
         assets: {
           binding: "ASSETS",

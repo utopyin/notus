@@ -1,4 +1,7 @@
-import { DurableObjectNamespace, Text } from "@alchemy.run/cloudflare-runtime/core/bindings";
+import {
+  DurableObjectNamespace,
+  Text,
+} from "@alchemy.run/cloudflare-runtime/core/bindings";
 import * as Options from "@alchemy.run/cloudflare-test-tools/e2e/Options";
 import wakuFramework from "@alchemy.run/frontend-frameworks/waku";
 
@@ -28,7 +31,10 @@ export default Options.make({
           bindings: [
             Text.local("MESSAGE", FIXTURE_MESSAGE),
             // Bind the namespace for a DO class exported by THIS worker.
-            DurableObjectNamespace.local({ binding: "COUNTER", className: "Counter" }),
+            DurableObjectNamespace.local({
+              binding: "COUNTER",
+              className: "Counter",
+            }),
           ],
           // The dev runtime's DO declaration (workerd durableObjectNamespaces).
           durableObjectNamespaces: [{ className: "Counter", sql: true }],

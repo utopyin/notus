@@ -11,7 +11,9 @@ const nextConfig = {
     return [
       {
         source: "/api/:path*",
-        headers: [{ key: "x-fixture-config-header", value: "from-next-config" }],
+        headers: [
+          { key: "x-fixture-config-header", value: "from-next-config" },
+        ],
       },
     ];
   },

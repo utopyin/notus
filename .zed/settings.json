@@ -1,0 +1,73 @@
+{
+  "format_on_save": "on",
+  "lsp": {
+    "effect-tsgo": {
+      "settings": {
+        "package_version": "0.24.2"
+      }
+    }
+  },
+  "formatter": [{ "code_action": "source.fixAll.oxc" }, { "language_server": { "name": "oxfmt" } }],
+  "languages": {
+    "JavaScript": {
+      "language_servers": [
+        "oxlint",
+        "oxfmt",
+        "effect-tsgo",
+        "!biome",
+        "!tsgo",
+        "!typescript-ls",
+        "!vtsls",
+        "!typescript-language-server",
+        "!eslint",
+        "!tailwindcss-language-server",
+        "..."
+      ]
+    },
+    "TypeScript": {
+      "language_servers": [
+        "oxlint",
+        "oxfmt",
+        "effect-tsgo",
+        "!biome",
+        "!tsgo",
+        "!typescript-ls",
+        "!vtsls",
+        "!typescript-language-server",
+        "!eslint",
+        "!tailwindcss-language-server",
+        "..."
+      ]
+    },
+    "TSX": {
+      "language_servers": [
+        "oxlint",
+        "oxfmt",
+        "effect-tsgo",
+        "!biome",
+        "!tsgo",
+        "!typescript-ls",
+        "!vtsls",
+        "!typescript-language-server",
+        "!tailwindcss-language-server",
+        "!eslint",
+        "..."
+      ]
+    }
+  },
+  "read_only_files": ["apps/web/src/routeTree.gen.ts"],
+  "file_scan_exclusions": [
+    "**/.git",
+    "**/.svn",
+    "**/.hg",
+    "**/.jj",
+    "**/CVS",
+    "**/.DS_Store",
+    "**/Thumbs.db",
+    "**/.classpath",
+    "**/.settings",
+    "packages/drizzle/drizzle/meta",
+    "repos",
+    "**/node_modules"
+  ]
+}

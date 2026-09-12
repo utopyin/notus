@@ -56,10 +56,7 @@ export default Cloudflare.Worker(
   Effect.gen(function* () {
     const rawReachable = (
       endpoint: string,
-      authToken: Record<
-        string,
-        string | Redacted.Redacted<string> | undefined
-      >,
+      authToken: Record<string, string | Redacted.Redacted<string> | undefined>,
     ) =>
       Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
@@ -172,7 +169,8 @@ export default Cloudflare.Worker(
       external,
       opencode,
     };
-    const pick = (v: string | null): Variant => variants[v ?? ""] ?? effectfulBun;
+    const pick = (v: string | null): Variant =>
+      variants[v ?? ""] ?? effectfulBun;
 
     const boot = (v: Variant) =>
       Effect.gen(function* () {

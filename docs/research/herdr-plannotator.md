@@ -24,11 +24,11 @@ Bridle's existing product constraints remain unchanged. The AI operator chooses 
 
 The revisions below come from Bridle's `git-subtree-split` commit metadata. Branch names describe the requested upstream source, not independently checked-out branches inside the subtrees. Shortened source citations are relative to the repository or file named in that discussion.
 
-| Local subtree | Upstream branch and pinned revision | Package/runtime evidence |
-| --- | --- | --- |
-| `repos/herdr` | `master`, `a5d5f6f654a32b27b2bd4dd8edd82f6795359269` | `Cargo.toml:1-19` declares Herdr `0.9.0`, Apache-2.0; `rust-toolchain.toml:1-3` pins Rust `1.96.1`; `src/protocol/wire.rs:20` declares protocol `22`. |
-| `repos/herdr-ts-sdk` | `main`, `77abbf81ac35407bc5138a8f4fe19f0833af4402` | `repos/herdr-ts-sdk/package.json:1-75` declares `@herdr/sdk` `0.9.0`, MIT, ESM, Node `>=20`, protocol `22`, and an expected Herdr revision of `b99002ac99b09e00b4ca692436cb15a6b0d676f1`. |
-| `repos/plannotator` | `main`, `0f2bd6051c66d26f2d776a2a521d856627b3316c` | `repos/plannotator/package.json:1-55` declares `0.27.14`, a private monorepo, and `MIT OR Apache-2.0`. `LICENSE-MIT` and `LICENSE-APACHE` contain the license texts. |
+| Local subtree        | Upstream branch and pinned revision                  | Package/runtime evidence                                                                                                                                                                  |
+| -------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repos/herdr`        | `master`, `a5d5f6f654a32b27b2bd4dd8edd82f6795359269` | `Cargo.toml:1-19` declares Herdr `0.9.0`, Apache-2.0; `rust-toolchain.toml:1-3` pins Rust `1.96.1`; `src/protocol/wire.rs:20` declares protocol `22`.                                     |
+| `repos/herdr-ts-sdk` | `main`, `77abbf81ac35407bc5138a8f4fe19f0833af4402`   | `repos/herdr-ts-sdk/package.json:1-75` declares `@herdr/sdk` `0.9.0`, MIT, ESM, Node `>=20`, protocol `22`, and an expected Herdr revision of `b99002ac99b09e00b4ca692436cb15a6b0d676f1`. |
+| `repos/plannotator`  | `main`, `0f2bd6051c66d26f2d776a2a521d856627b3316c`   | `repos/plannotator/package.json:1-55` declares `0.27.14`, a private monorepo, and `MIT OR Apache-2.0`. `LICENSE-MIT` and `LICENSE-APACHE` contain the license texts.                      |
 
 Upstream source URLs:
 
@@ -45,10 +45,10 @@ Verified by parsing and recursively comparing:
 
 Both contain `protocol: 22` and `schema_version: 1`. Their parsed JSON values are equal. File bytes differ, so byte hashes differ:
 
-| File | SHA-256 |
-| --- | --- |
+| File         | SHA-256                                                            |
+| ------------ | ------------------------------------------------------------------ |
 | Herdr schema | `5fb46b13fdaf39c88cf699b9806685868c7ee6b0142523d84391b1606416dc0a` |
-| SDK schema | `fafc9d816748558bdcb934c96167ef5bab792c55f333d0c98d9ba5a8505a38cd` |
+| SDK schema   | `fafc9d816748558bdcb934c96167ef5bab792c55f333d0c98d9ba5a8505a38cd` |
 
 This removes an obvious wire-schema mismatch. It does not establish equal runtime behavior between the SDK's expected Herdr commit and Bridle's pin.
 
@@ -92,22 +92,22 @@ Use returned identifiers. Agent names must match `[a-z][a-z0-9_-]{0,31}` and be 
 
 These are method/input shapes, not a compiled Bridle implementation. Optional transport options are the final argument. SDK identifiers are branded; use returned IDs or `herdr.ids` constructors.
 
-| Purpose | Exact method shape and result |
-| --- | --- |
-| Create task layout | `workspaces.createInDirectory(cwd, { label, focus: false, env? }, options?)` → `{ workspace, tab, rootPane }`. |
-| Add tab | `tabs.create({ workspaceId, cwd, label, focus: false, env? }, options?)` → `{ tab, rootPane }`. |
-| Add pane | `panes.split(paneId, { direction: "right" or "down", cwd?, ratio?, focus: false, env? }, options?)` → `Pane`. |
-| Submit agent launch | `agents.start({ name, kind, paneId, args?, timeoutMs? }, options?)` → `{ agent, argv }`. No `cwd` here; create the pane in the intended directory first. |
-| Read identity/state | `agents.get({ kind: "agent", name }, options?)` or `agents.get({ kind: "pane", paneId }, options?)` → `Agent`. Shorthand `{ name }` and `{ paneId }` also parse. |
-| Submit a turn | `agents.prompt(target, { text, wait?: { until?, timeoutMs? } }, options?)` → `Agent`, not response Markdown. |
-| Wait without input | `agents.wait(target, { until?, timeoutMs? }, options?)` → `Agent`. |
-| Inspect terminal output | `agents.read(target, { source: "recent_unwrapped", lines: 200, format: "text", stripAnsi: true }, options?)` → `PaneReadResult`. `panes.read(paneId, input, options?)` has the same read input/result. |
-| Answer a terminal dialog | `agents.sendKeys(target, ["enter"], options?)` → void. Choose keys only after inspecting the dialog. |
-| Raw terminal input | `panes.sendText(id, text, options?)`, `sendKeys(id, keys, options?)`, or `sendInput(id, { text, keys }, options?)` → void. These do not identify a semantic agent turn. |
-| Wait for output | `panes.waitForOutput(id, { source: "recent", match: { type: "substring", value }, lines?, timeoutMs?, stripAnsi? }, options?)` → `{ paneId, revision, matchedLine, read }`. Matcher type may instead be `"regex"`. |
-| Observe events | `events.subscribe(specs, options?)` → cold typed Effect `Stream`; `events.wait(match, { timeoutMs? }, options?)` → one typed event. |
-| Reconcile current state | `session.snapshot(options?)` → one consistent resource/agent snapshot. |
-| Attach native session reference | `panes.reportAgentSession(id, input, options?)`; this is metadata reporting, not a general session-resume command. |
+| Purpose                         | Exact method shape and result                                                                                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Create task layout              | `workspaces.createInDirectory(cwd, { label, focus: false, env? }, options?)` → `{ workspace, tab, rootPane }`.                                                                                                     |
+| Add tab                         | `tabs.create({ workspaceId, cwd, label, focus: false, env? }, options?)` → `{ tab, rootPane }`.                                                                                                                    |
+| Add pane                        | `panes.split(paneId, { direction: "right" or "down", cwd?, ratio?, focus: false, env? }, options?)` → `Pane`.                                                                                                      |
+| Submit agent launch             | `agents.start({ name, kind, paneId, args?, timeoutMs? }, options?)` → `{ agent, argv }`. No `cwd` here; create the pane in the intended directory first.                                                           |
+| Read identity/state             | `agents.get({ kind: "agent", name }, options?)` or `agents.get({ kind: "pane", paneId }, options?)` → `Agent`. Shorthand `{ name }` and `{ paneId }` also parse.                                                   |
+| Submit a turn                   | `agents.prompt(target, { text, wait?: { until?, timeoutMs? } }, options?)` → `Agent`, not response Markdown.                                                                                                       |
+| Wait without input              | `agents.wait(target, { until?, timeoutMs? }, options?)` → `Agent`.                                                                                                                                                 |
+| Inspect terminal output         | `agents.read(target, { source: "recent_unwrapped", lines: 200, format: "text", stripAnsi: true }, options?)` → `PaneReadResult`. `panes.read(paneId, input, options?)` has the same read input/result.             |
+| Answer a terminal dialog        | `agents.sendKeys(target, ["enter"], options?)` → void. Choose keys only after inspecting the dialog.                                                                                                               |
+| Raw terminal input              | `panes.sendText(id, text, options?)`, `sendKeys(id, keys, options?)`, or `sendInput(id, { text, keys }, options?)` → void. These do not identify a semantic agent turn.                                            |
+| Wait for output                 | `panes.waitForOutput(id, { source: "recent", match: { type: "substring", value }, lines?, timeoutMs?, stripAnsi? }, options?)` → `{ paneId, revision, matchedLine, read }`. Matcher type may instead be `"regex"`. |
+| Observe events                  | `events.subscribe(specs, options?)` → cold typed Effect `Stream`; `events.wait(match, { timeoutMs? }, options?)` → one typed event.                                                                                |
+| Reconcile current state         | `session.snapshot(options?)` → one consistent resource/agent snapshot.                                                                                                                                             |
+| Attach native session reference | `panes.reportAgentSession(id, input, options?)`; this is metadata reporting, not a general session-resume command.                                                                                                 |
 
 Exact source contracts:
 
@@ -149,13 +149,13 @@ Adaptation: permit only one outstanding work round per agent session. Use lifecy
 
 ### Persistence and same-reviewer memory
 
-| Event | Verified survival | Bridle implication |
-| --- | --- | --- |
-| Client detach, SSH loss, client crash | The background Herdr server and original pane processes keep running. | Reuse the same agent process for review rounds. |
-| Herdr server/machine restart | Original processes do not survive. Snapshot restores layout/cwd/focus. | Reconcile before issuing work; restarting is not transparent continuation. |
-| Optional pane-history replay | Recent screen content can return; history is off by default because terminal output may contain secrets. | History is neither live execution nor sufficient reviewer memory. |
-| Native agent session resume | Eligible agents restart with their own persisted conversation reference. | Preserve agent session data and configuration, not just Herdr's snapshot. |
-| Live handoff | Experimental best effort can preserve PTYs/processes; waits, sockets, subscriptions, and messages can be interrupted. | Reconnect and reconcile; do not blindly retry mutations. |
+| Event                                 | Verified survival                                                                                                     | Bridle implication                                                         |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Client detach, SSH loss, client crash | The background Herdr server and original pane processes keep running.                                                 | Reuse the same agent process for review rounds.                            |
+| Herdr server/machine restart          | Original processes do not survive. Snapshot restores layout/cwd/focus.                                                | Reconcile before issuing work; restarting is not transparent continuation. |
+| Optional pane-history replay          | Recent screen content can return; history is off by default because terminal output may contain secrets.              | History is neither live execution nor sufficient reviewer memory.          |
+| Native agent session resume           | Eligible agents restart with their own persisted conversation reference.                                              | Preserve agent session data and configuration, not just Herdr's snapshot.  |
+| Live handoff                          | Experimental best effort can preserve PTYs/processes; waits, sockets, subscriptions, and messages can be interrupted. | Reconnect and reconcile; do not blindly retry mutations.                   |
 
 Evidence: `repos/herdr/docs/next/website/src/content/docs/session-state.mdx:8-108`; `tests/detach_reattach.rs:430-573`, detach and connection-drop tests; `src/persist/restore.rs:739-824`, `pane_restore_startup`, chooses native resume versus history and deduplicates references.
 
@@ -188,14 +188,14 @@ A file on the dev-box disk is not automatically durable across dev-box deletion.
 
 ### Native hooks are not the same as a strict gate
 
-| Path | Verified behavior | Fit for Bridle |
-| --- | --- | --- |
+| Path                                          | Verified behavior                                                                                                                                                                                                                | Fit for Bridle                                                                                                          |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Claude `PermissionRequest` for `ExitPlanMode` | CLI reads the plan, waits for browser approval, emits `hookSpecificOutput.decision.behavior: "allow"` or `"deny"`, then exits 0. Approval echoes original `tool_input` in `updatedInput` and may update session permission mode. | Permits leaving plan mode. It does not enforce a planner-only role or deliver approved Markdown as a standalone result. |
-| Direct `annotate plan.md --gate --json` | Returns `approved`, `annotated`, or `dismissed` as one JSON line. By default all decisions exit 0. | Useful transport, but exit 0 alone is not approval. |
-| Direct strict annotate | Adds `--require-approval` and optionally `--result-file`; distinguishes negative outcomes and gate errors. | Recommended initial candidate. It returns a decision, not an instruction to implement. |
-| Annotate `--hook` | Implies gate. Approve **and Close** produce empty stdout; annotations produce `{"decision":"block","reason":"..."}`. Hook mode wins over `--json`. | Not a fail-closed human approval boundary; dismissal passes the hook. |
-| Pi native plan mode | Defaults to executing after approval. `executionMode: "external"` emits a plan handoff and returns to idle. | Promising native alternative, with the headless hazard below. |
-| OpenCode `submit_plan` | Can select/switch an agent and send "Proceed with implementation." Whether it starts implementation depends on selected agent/workflow options. | Must constrain handoff behavior; not planner-only by default. |
+| Direct `annotate plan.md --gate --json`       | Returns `approved`, `annotated`, or `dismissed` as one JSON line. By default all decisions exit 0.                                                                                                                               | Useful transport, but exit 0 alone is not approval.                                                                     |
+| Direct strict annotate                        | Adds `--require-approval` and optionally `--result-file`; distinguishes negative outcomes and gate errors.                                                                                                                       | Recommended initial candidate. It returns a decision, not an instruction to implement.                                  |
+| Annotate `--hook`                             | Implies gate. Approve **and Close** produce empty stdout; annotations produce `{"decision":"block","reason":"..."}`. Hook mode wins over `--json`.                                                                               | Not a fail-closed human approval boundary; dismissal passes the hook.                                                   |
+| Pi native plan mode                           | Defaults to executing after approval. `executionMode: "external"` emits a plan handoff and returns to idle.                                                                                                                      | Promising native alternative, with the headless hazard below.                                                           |
+| OpenCode `submit_plan`                        | Can select/switch an agent and send "Proceed with implementation." Whether it starts implementation depends on selected agent/workflow options.                                                                                  | Must constrain handoff behavior; not planner-only by default.                                                           |
 
 Evidence:
 
@@ -236,13 +236,13 @@ This is an untested invocation recipe, not code added to Bridle. The plan file a
 
 Verified result contract:
 
-| Human/process outcome | Stdout | Exit with `--require-approval` |
-| --- | --- | --- |
-| Approve | `{"decision":"approved"}` | 0 |
-| Approve with notes | `{"decision":"approved","feedback":"..."}` | 0 |
-| Send annotations | `{"decision":"annotated","feedback":"..."}` | 1 |
-| Close | `{"decision":"dismissed"}` | 1 |
-| Invalid flags/path, startup failure, publication failure | May have no decision; publication failure occurs after stdout decision | 2 |
+| Human/process outcome                                    | Stdout                                                                 | Exit with `--require-approval` |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------ |
+| Approve                                                  | `{"decision":"approved"}`                                              | 0                              |
+| Approve with notes                                       | `{"decision":"approved","feedback":"..."}`                             | 0                              |
+| Send annotations                                         | `{"decision":"annotated","feedback":"..."}`                            | 1                              |
+| Close                                                    | `{"decision":"dismissed"}`                                             | 1                              |
+| Invalid flags/path, startup failure, publication failure | May have no decision; publication failure occurs after stdout decision | 2                              |
 
 Without `--require-approval`, `--result-file` alone does not change negative decisions to exit 1. Strict flags require direct `annotate --gate --json`, cannot combine with `--hook`, and are not the `annotate-last` contract. Inspect JSON and process outcome together; empty output, signals, timeouts, and malformed output are never approval.
 
@@ -350,14 +350,14 @@ Do not confuse this with `annotate --app` live-app proxying. That mode is delibe
 
 Run these only in disposable copies/images, not in the read-only subtrees. They are proposed, not completed.
 
-| Spike | Smallest useful test | Pass criteria |
-| --- | --- | --- |
-| 1. Package and launch | Separately build/pack the pinned SDK; start pinned Herdr in an isolated Namespace image. Ping, create workspace/tab/pane, launch one chosen real agent, observe readiness, prompt once, read output. | Protocol 22, package imports work on the chosen Node/Effect versions, startup respects `interactiveReady`, no duplicate input on transient failure. Record image/runtime/agent versions. |
-| 2. Wait semantics and results | One slow turn, one blocked dialog, one immediate response, one prompt timeout, and one interrupted subscription. Have the agent publish a round-tagged Markdown artifact/manifest. | Waits do not consume model turns; `blocked`/`idle` never falsely certify completion; stale markers and previous-round artifacts are rejected; reconnection reconciles state without resubmitting. |
-| 3. Reviewer continuity | Two rounds in one native session; detach/reattach between them. Then restart Herdr with persisted native session data, with no human TUI attached. | Same native conversation where supported; recovery starts unattended or identifies the required sizing/theme path; findings survive independently; unsupported resume is explicit. |
-| 4. Strict gate and bytes | Launch direct annotate with ready/result files. Exercise approve, approve-with-notes, annotations, Close, invalid path, existing destination, unsupported hard link, killed process, and source mutation during review. | Exact JSON/exit contract; stdout retained on file failure; no auto-approval; decision bound to immutable Markdown; no planner implementation after return. |
-| 5. Public ingress | Put one gate behind the proposed token gateway. Test absent/wrong/expired/revoked/cross-task tokens, stale revision, link previews, CSRF, hostile Host/Origin, direct backend access, two simultaneous reviewers, reload and tunnel loss. | No document or decision access without the current grant, one recorded winner, no backend bypass, no token leakage, long waits work without model polling. |
-| 6. Concurrency and recovery | Start two gates in one dev box, occupy the first port, exhaust the range, kill/restart a gate, then reuse its port. | Correct ready-port mapping, old links cannot reach new reviews, result paths never overwrite, expired waiters clean up, operator/DO recovery does not infer approval from missing processes. |
+| Spike                         | Smallest useful test                                                                                                                                                                                                                      | Pass criteria                                                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Package and launch         | Separately build/pack the pinned SDK; start pinned Herdr in an isolated Namespace image. Ping, create workspace/tab/pane, launch one chosen real agent, observe readiness, prompt once, read output.                                      | Protocol 22, package imports work on the chosen Node/Effect versions, startup respects `interactiveReady`, no duplicate input on transient failure. Record image/runtime/agent versions.          |
+| 2. Wait semantics and results | One slow turn, one blocked dialog, one immediate response, one prompt timeout, and one interrupted subscription. Have the agent publish a round-tagged Markdown artifact/manifest.                                                        | Waits do not consume model turns; `blocked`/`idle` never falsely certify completion; stale markers and previous-round artifacts are rejected; reconnection reconciles state without resubmitting. |
+| 3. Reviewer continuity        | Two rounds in one native session; detach/reattach between them. Then restart Herdr with persisted native session data, with no human TUI attached.                                                                                        | Same native conversation where supported; recovery starts unattended or identifies the required sizing/theme path; findings survive independently; unsupported resume is explicit.                |
+| 4. Strict gate and bytes      | Launch direct annotate with ready/result files. Exercise approve, approve-with-notes, annotations, Close, invalid path, existing destination, unsupported hard link, killed process, and source mutation during review.                   | Exact JSON/exit contract; stdout retained on file failure; no auto-approval; decision bound to immutable Markdown; no planner implementation after return.                                        |
+| 5. Public ingress             | Put one gate behind the proposed token gateway. Test absent/wrong/expired/revoked/cross-task tokens, stale revision, link previews, CSRF, hostile Host/Origin, direct backend access, two simultaneous reviewers, reload and tunnel loss. | No document or decision access without the current grant, one recorded winner, no backend bypass, no token leakage, long waits work without model polling.                                        |
+| 6. Concurrency and recovery   | Start two gates in one dev box, occupy the first port, exhaust the range, kill/restart a gate, then reuse its port.                                                                                                                       | Correct ready-port mapping, old links cannot reach new reviews, result paths never overwrite, expired waiters clean up, operator/DO recovery does not infer approval from missing processes.      |
 
 If choosing native Pi instead of the direct gate, add an explicit missing-UI/missing-HTML test before any deployment. It must fail closed despite the pinned default. Test external handoff persistence and absence of an implementation turn. For Claude/OpenCode, test host-version-specific hook/agent-switch behavior and independent planner restrictions.
 

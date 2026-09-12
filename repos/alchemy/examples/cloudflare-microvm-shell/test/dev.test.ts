@@ -87,7 +87,9 @@ const run = (socket: WebSocket, command: string, expected: string) =>
     // The first command waits through the session's MicroVM boot.
     const timer = setTimeout(() => {
       socket.removeEventListener("message", onMessage);
-      reject(new Error(`timeout for '${command}' (got: ${JSON.stringify(out)})`));
+      reject(
+        new Error(`timeout for '${command}' (got: ${JSON.stringify(out)})`),
+      );
     }, 120_000);
     socket.addEventListener("message", onMessage);
     socket.send(command);
@@ -151,10 +153,14 @@ test.skipIf(!dockerAvailable)(
 
     // First dev deploy builds the ShellMicrovm image before printing
     // stack outputs.
-    const url = await pollUntil("url in stack outputs", () => outputUrl("url"), {
-      tries: 600,
-      delayMs: 1000,
-    });
+    const url = await pollUntil(
+      "url in stack outputs",
+      () => outputUrl("url"),
+      {
+        tries: 600,
+        delayMs: 1000,
+      },
+    );
 
     // Dev identity: the Worker is local workerd; no real cloud.
     expect(url).toContain("localhost");
@@ -187,7 +193,11 @@ test.skipIf(!dockerAvailable)(
 
     // Two more commands on the SAME socket → same cached VM: a file written
     // by one command is read back by the next (state persists, no re-boot).
-    await run(socket, "echo persisted-$$ > /tmp/marker.txt && echo written", "written");
+    await run(
+      socket,
+      "echo persisted-$$ > /tmp/marker.txt && echo written",
+      "written",
+    );
     const readBack = await run(socket, "cat /tmp/marker.txt", "persisted-");
     expect(readBack).toMatch(/persisted-\d+\n/);
     expect(readBack).not.toMatch(/\n\n/);

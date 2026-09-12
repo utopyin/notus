@@ -30,28 +30,28 @@ Source paths and line ranges below are relative to `repos/effect/` unless stated
 
 Verified Git evidence:
 
-| Item | Value |
-| --- | --- |
-| Bridle subtree import commit | `d75de1cf25e5ba956b2b88c8353068184c7aafee` |
-| Squash commit | `c38618d7d3f02771bb2788e5c9959e4d3bad06cc` |
-| `git-subtree-split` | `51d4a2f08a5c7691dc876415bc9fc0ecf467e153` |
-| Imported subtree tree | `cdb8cbcea1e83229f80620e4c281755d7614cb28` |
+| Item                         | Value                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| Bridle subtree import commit | `d75de1cf25e5ba956b2b88c8353068184c7aafee`                                  |
+| Squash commit                | `c38618d7d3f02771bb2788e5c9959e4d3bad06cc`                                  |
+| `git-subtree-split`          | `51d4a2f08a5c7691dc876415bc9fc0ecf467e153`                                  |
+| Imported subtree tree        | `cdb8cbcea1e83229f80620e4c281755d7614cb28`                                  |
 | Upstream commit subject/date | `fix(RcRef): keep idleTimeToLive when the value is 0 (#8202)`, `2026-09-12` |
 
 `git -C repos/effect rev-parse --show-toplevel` points to Bridle. This is a squashed subtree, not an independent checkout whose local branch proves an upstream branch. Upstream `README.md:9-25,68-69` explicitly identifies `main` as v4 development and `v3` as the v3 branch. `packages/effect/package.json:1-5` identifies the exact release candidate. `MIGRATION.md` still says beta in places; that wording is stale relative to the manifest and README.
 
 ### Package layout and installation implications
 
-| Local package | Public package | Version at pin | Role |
-| --- | --- | --- | --- |
-| `packages/effect` | `effect` | `4.0.0-rc.115` | Core, Schema, AI, HTTP, SQL interfaces, process interfaces |
-| `packages/ai/openai` | `@effect/ai-openai` | `4.0.0-rc.115` | OpenAI Responses API model/client, embedding model, provider tools |
-| `packages/ai/openai-compat` | `@effect/ai-openai-compat` | `4.0.0-rc.115` | Chat Completions-compatible model/client |
-| `packages/ai/anthropic` | `@effect/ai-anthropic` | `4.0.0-rc.115` | Anthropic provider |
-| `packages/ai/openrouter` | `@effect/ai-openrouter` | `4.0.0-rc.115` | OpenRouter provider |
-| `packages/platform/node` | `@effect/platform-node` | `4.0.0-rc.115` | Node runtime and concrete OS services |
-| `packages/platform/node-shared` | `@effect/platform-node-shared` | `4.0.0-rc.115` | Shared Node-compatible implementations |
-| `packages/sql/sqlite-do` | `@effect/sql-sqlite-do` | `4.0.0-rc.115` | Durable Object SQLite adapter |
+| Local package                   | Public package                 | Version at pin | Role                                                               |
+| ------------------------------- | ------------------------------ | -------------- | ------------------------------------------------------------------ |
+| `packages/effect`               | `effect`                       | `4.0.0-rc.115` | Core, Schema, AI, HTTP, SQL interfaces, process interfaces         |
+| `packages/ai/openai`            | `@effect/ai-openai`            | `4.0.0-rc.115` | OpenAI Responses API model/client, embedding model, provider tools |
+| `packages/ai/openai-compat`     | `@effect/ai-openai-compat`     | `4.0.0-rc.115` | Chat Completions-compatible model/client                           |
+| `packages/ai/anthropic`         | `@effect/ai-anthropic`         | `4.0.0-rc.115` | Anthropic provider                                                 |
+| `packages/ai/openrouter`        | `@effect/ai-openrouter`        | `4.0.0-rc.115` | OpenRouter provider                                                |
+| `packages/platform/node`        | `@effect/platform-node`        | `4.0.0-rc.115` | Node runtime and concrete OS services                              |
+| `packages/platform/node-shared` | `@effect/platform-node-shared` | `4.0.0-rc.115` | Shared Node-compatible implementations                             |
+| `packages/sql/sqlite-do`        | `@effect/sql-sqlite-do`        | `4.0.0-rc.115` | Durable Object SQLite adapter                                      |
 
 Evidence is each package's `package.json:1-12` and dependency sections. Provider directories are implementations, not a core `packages/ai/package.json`. The complete AI barrel, `packages/effect/src/unstable/ai/index.ts:1-95`, exports `LanguageModel`, `Chat`, `Tool`, `Toolkit`, `Prompt`, `Response`, `Model`, error/metadata/schema helpers and MCP modules. It does not export an `Agent` or turnkey operator runner.
 
@@ -64,17 +64,17 @@ The source checkout exports TypeScript under `src`; `publishConfig.exports` redi
 Source-backed import forms, not a dependency installation result:
 
 ```ts
-import { Config, Context, Effect, Layer, ManagedRuntime, Schema } from "effect"
-import { Chat, LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai"
-import { FetchHttpClient } from "effect/unstable/http"
-import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai"
+import { Config, Context, Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { Chat, LanguageModel, Prompt, Tool, Toolkit } from "effect/unstable/ai";
+import { FetchHttpClient } from "effect/unstable/http";
+import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai";
 
 // Node-only composition:
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 // Optional Durable Object SQLite implementation:
-import { SqliteClient } from "@effect/sql-sqlite-do"
+import { SqliteClient } from "@effect/sql-sqlite-do";
 ```
 
 A barrel import gives a module namespace. For example, `LanguageModel.LanguageModel` is the service key, `OpenAiClient.OpenAiClient` is the client service class, and `SqliteClient.layer(...)` builds a layer. Public leaf namespace imports also work, such as `import * as LanguageModel from "effect/unstable/ai/LanguageModel"`.
@@ -102,16 +102,18 @@ Proposal: choose a supported Node release satisfying the transitive engine requi
 Verified constructor shape:
 
 ```ts
-import { Context, Effect, Schema } from "effect"
+import { Context, Effect, Schema } from "effect";
 
-class TaskStoreError extends Schema.TaggedError<TaskStoreError>()(
-  "TaskStoreError",
-  { message: Schema.String }
-) {}
+class TaskStoreError extends Schema.TaggedError<TaskStoreError>()("TaskStoreError", {
+  message: Schema.String,
+}) {}
 
-class TaskStore extends Context.Service<TaskStore, {
-  append(event: unknown): Effect.Effect<void, TaskStoreError>
-}>()("bridle/task/TaskStore") {}
+class TaskStore extends Context.Service<
+  TaskStore,
+  {
+    append(event: unknown): Effect.Effect<void, TaskStoreError>;
+  }
+>()("bridle/task/TaskStore") {}
 ```
 
 This is a documentation-only API shape, not the proposed event schema. Real event input should use Bridle schemas rather than `unknown` after boundary decoding.
@@ -166,20 +168,20 @@ const StartWork = Tool.make("StartWork", {
   description: "Start requested coding-agent work and return its durable operation handle",
   parameters: Schema.Struct({
     instruction: Schema.String,
-    operationKey: Schema.String
+    operationKey: Schema.String,
   }),
   success: Schema.Struct({
     operationId: Schema.String,
-    status: Schema.Literal("started")
+    status: Schema.Literal("started"),
   }),
   failure: Schema.Struct({
     code: Schema.String,
-    message: Schema.String
+    message: Schema.String,
   }),
-  failureMode: "return"
-})
+  failureMode: "return",
+});
 
-const OperatorTools = Toolkit.make(StartWork)
+const OperatorTools = Toolkit.make(StartWork);
 // OperatorTools.toLayer({ StartWork: handler }) supplies the handler service.
 // Inside Effect, yield* OperatorTools resolves a Toolkit.WithHandler.
 ```
@@ -203,14 +205,14 @@ Evidence: `Toolkit.ts:317-409`; `Response.ts:1467-1529,1633-1685`; tests `Tool.t
 
 Verified in `LanguageModel.ts`:
 
-| Operation | Behavior |
-| --- | --- |
-| `generateText` with toolkit | Calls the provider, validates response structure, resolves tools, collects final results, then returns. It does not automatically make the next model call. |
-| `concurrency` omitted | Defaults to `"unbounded"` in both non-streaming and streaming resolution. |
-| `generateText` progress | Preliminary tool results are filtered out of the returned response. |
-| `streamText` progress | Emits preliminary and final results as they arrive. Tracks handler fibers with `FiberSet`, optionally bounds them with a semaphore, and emits finish after handlers complete. |
-| Incomplete non-streaming response | Does not execute pending tools; synthesizes failure results. |
-| Incomplete streamed response | Uses a one-chunk lookahead before starting tools; interrupts still-running handlers and synthesizes results for unresolved calls. Work already committed cannot be undone by this. |
+| Operation                         | Behavior                                                                                                                                                                           |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generateText` with toolkit       | Calls the provider, validates response structure, resolves tools, collects final results, then returns. It does not automatically make the next model call.                        |
+| `concurrency` omitted             | Defaults to `"unbounded"` in both non-streaming and streaming resolution.                                                                                                          |
+| `generateText` progress           | Preliminary tool results are filtered out of the returned response.                                                                                                                |
+| `streamText` progress             | Emits preliminary and final results as they arrive. Tracks handler fibers with `FiberSet`, optionally bounds them with a semaphore, and emits finish after handlers complete.      |
+| Incomplete non-streaming response | Does not execute pending tools; synthesizes failure results.                                                                                                                       |
+| Incomplete streamed response      | Uses a one-chunk lookahead before starting tools; interrupts still-running handlers and synthesizes results for unresolved calls. Work already committed cannot be undone by this. |
 
 Evidence: `LanguageModel.ts:1046-1050,1209-1273,1542-1716,2277-2370`. Test bodies inspected: `LanguageModel.test.ts:324-386,754-803,961-1135`; `Tool.test.ts:555-744`. They use mock providers, latches, queues, and `TestClock`, not remote coding agents.
 
@@ -312,14 +314,14 @@ Consequences for Bridle:
 
 Persist domain records separately from the agent session:
 
-| Record | Minimum useful fields to validate in a prototype |
-| --- | --- |
-| Task identity | Schema version, workspace/task ID, originating conversation reference, repository/revision, dev-box identity |
-| Operator checkpoint | Checkpoint revision, model/provider identity, encoded history or history reference, last consumed event cursor, explicit decisions and evidence references |
-| Operation journal | Operation ID, idempotency key, model call/turn ID and tool-call ID, requested parameters, requested/running/terminal status, Herdr session ID, attempts, result or error, cancellation intent |
-| Planning/approval | Plan artifact reference and digest/revision, approval decision and provenance, outstanding question/review correlation, link expiry/revocation data where applicable |
-| Findings and outputs | Structured review findings, QA/test evidence, approved Markdown reference, changed revision, artifact references, final-human-review status |
-| Delivery | Incoming event identity/cursor, deduplication state, outgoing message identity and delivery status |
+| Record               | Minimum useful fields to validate in a prototype                                                                                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Task identity        | Schema version, workspace/task ID, originating conversation reference, repository/revision, dev-box identity                                                                                  |
+| Operator checkpoint  | Checkpoint revision, model/provider identity, encoded history or history reference, last consumed event cursor, explicit decisions and evidence references                                    |
+| Operation journal    | Operation ID, idempotency key, model call/turn ID and tool-call ID, requested parameters, requested/running/terminal status, Herdr session ID, attempts, result or error, cancellation intent |
+| Planning/approval    | Plan artifact reference and digest/revision, approval decision and provenance, outstanding question/review correlation, link expiry/revocation data where applicable                          |
+| Findings and outputs | Structured review findings, QA/test evidence, approved Markdown reference, changed revision, artifact references, final-human-review status                                                   |
+| Delivery             | Incoming event identity/cursor, deduplication state, outgoing message identity and delivery status                                                                                            |
 
 These are proposals, not finalized schemas or a new workflow state machine. Task status records the operator's actions and external facts. It does not choose transitions on the operator's behalf.
 
@@ -348,12 +350,12 @@ Evidence: `ResponseIdTracker.ts:1-8,47-50,81-138`; `LanguageModel.ts:1052-1068`;
 
 ```ts
 const OpenAiClientLayer = OpenAiClient.layerConfig({
-  apiKey: Config.Redacted("OPENAI_API_KEY")
-}).pipe(Layer.provide(FetchHttpClient.layer))
+  apiKey: Config.Redacted("OPENAI_API_KEY"),
+}).pipe(Layer.provide(FetchHttpClient.layer));
 
 const OperatorModelLayer = OpenAiLanguageModel.layer({
-  model: "MODEL_ID"
-}).pipe(Layer.provide(OpenAiClientLayer))
+  model: "MODEL_ID",
+}).pipe(Layer.provide(OpenAiClientLayer));
 ```
 
 `MODEL_ID` is a placeholder, not a verified entitlement. `OpenAiLanguageModel.model(name, config?)` is an alternative that also supplies provider/model metadata. Its `.captureRequirements` captures the client dependency for use within a service.
@@ -381,19 +383,19 @@ Three options exist at the Effect boundary, in increasing order of protocol resp
 The third option has this hook contract from `LanguageModel.ts:790-811`:
 
 ```ts
-import type { Effect, Stream } from "effect"
-import type { AiError, IdGenerator, Response } from "effect/unstable/ai"
-import { LanguageModel } from "effect/unstable/ai"
+import type { Effect, Stream } from "effect";
+import type { AiError, IdGenerator, Response } from "effect/unstable/ai";
+import { LanguageModel } from "effect/unstable/ai";
 
 declare const generateText: (
-  options: LanguageModel.ProviderOptions
-) => Effect.Effect<Array<Response.PartEncoded>, AiError.AiError, IdGenerator.IdGenerator>
+  options: LanguageModel.ProviderOptions,
+) => Effect.Effect<Array<Response.PartEncoded>, AiError.AiError, IdGenerator.IdGenerator>;
 
 declare const streamText: (
-  options: LanguageModel.ProviderOptions
-) => Stream.Stream<Response.StreamPartEncoded, AiError.AiError, IdGenerator.IdGenerator>
+  options: LanguageModel.ProviderOptions,
+) => Stream.Stream<Response.StreamPartEncoded, AiError.AiError, IdGenerator.IdGenerator>;
 
-const makeAdapter = LanguageModel.make({ generateText, streamText })
+const makeAdapter = LanguageModel.make({ generateText, streamText });
 ```
 
 These declarations illustrate the boundary without implementing or running it. An optional `codecTransformer: LanguageModel.CodecTransformer` customizes structured-output conversion. `make` returns `Effect.Effect<LanguageModel.LanguageModel>`. Use `Layer.effect(LanguageModel.LanguageModel, makeAdapter)` to provide it. Capture bridge services in the outer constructor effect; the provider hooks' declared runtime requirement is `IdGenerator`, not arbitrary Bridle services.
@@ -414,13 +416,13 @@ Bridge validation must cover:
 
 ### Proposed runtime placement
 
-| Concern | Node in task dev box | Task Durable Object |
-| --- | --- | --- |
-| Operator driver | Proposed home for the long-running agent and session observers | Status/router by constraint; could host bounded model turns only after a runtime spike |
-| Coding-agent terminals | Herdr adapter, filesystem/process access where needed | Route commands/events; do not assume local OS process services |
-| Effect execution | `NodeRuntime.runMain`, task-scoped layers/fibers | `ManagedRuntime` or a bounded provided Effect at web-handler boundaries |
-| Durable state | Checkpoint through task storage protocol, reconnect/reconcile | Persist status, message correlation, operation/checkpoint records as designed |
-| Provider transport | Fetch; optional Node WebSocket implementation | Fetch is a plausible shared transport; built-in OpenAI WebSocket assumptions do not match a generic edge runtime |
+| Concern                | Node in task dev box                                           | Task Durable Object                                                                                              |
+| ---------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Operator driver        | Proposed home for the long-running agent and session observers | Status/router by constraint; could host bounded model turns only after a runtime spike                           |
+| Coding-agent terminals | Herdr adapter, filesystem/process access where needed          | Route commands/events; do not assume local OS process services                                                   |
+| Effect execution       | `NodeRuntime.runMain`, task-scoped layers/fibers               | `ManagedRuntime` or a bounded provided Effect at web-handler boundaries                                          |
+| Durable state          | Checkpoint through task storage protocol, reconnect/reconcile  | Persist status, message correlation, operation/checkpoint records as designed                                    |
+| Provider transport     | Fetch; optional Node WebSocket implementation                  | Fetch is a plausible shared transport; built-in OpenAI WebSocket assumptions do not match a generic edge runtime |
 
 The operator location is a proposal. The user requires the task dev box and per-task Durable Object, but has not thereby approved every placement choice above.
 
@@ -446,7 +448,7 @@ Unvalidated: this research did not run workerd/Wrangler or verify current Cloudf
 There is a public driver, `@effect/sql-sqlite-do`, rather than a hypothetical need to invent one. Its concrete layer shape is:
 
 ```ts
-SqliteClient.layer({ storage: ctx.storage })
+SqliteClient.layer({ storage: ctx.storage });
 ```
 
 This provides both the package-specific `SqliteClient` and generic `effect/unstable/sql/SqlClient`. `ctx.storage` denotes a Durable Object's storage here; the snippet is not a tested DO implementation.
@@ -488,17 +490,17 @@ OpenAI's optional `withWebSocketMode`/`layerWebSocketMode` documents only `NodeS
 
 None of these spikes was executed in this research.
 
-| Priority | Spike | Required evidence |
-| --- | --- | --- |
-| 1 | Published v4 dependency/import check | Install exact pins outside `repos/`; lock dependency graph; compile a minimal service/layer, Schema boundary, toolkit, model layer, and Node entrypoint. Verify tarball exports, transitive engines, peer behavior, and licenses. |
-| 1 | Agent-owned operator turn loop | A fake `LanguageModel.make` chooses different next actions from the same status given different findings. Verify the driver only executes decisions, enforces approval/no-merge constraints, and handles explicit wait/final-review actions. Add real-model evaluation separately. |
-| 1 | Crash-consistent tool dispatch | Crash before/after intent persistence, session start, result persistence, and chat save. Reconcile using operation/session IDs without duplicate side effects. Compare automatic resolution with journaled wrappers against manual dispatch. |
-| 1 | Parallel long-running work | Run bounded mock tools, then Herdr sessions. Observe completion-order independence, progress, one tool failing, provider stream failure, incomplete finish, operator cancellation, process exit, and late remote completion. Verify explicit cancel acknowledgment. |
-| 1 | Codex bridge contract | After auth/policy feasibility is established, obtain authorized protocol fixtures. Map full/streamed turns, encoded tool parameters, results, metadata, usage, errors and cancellation through `LanguageModel.make`. Demonstrate the operator retains decision control. |
-| 1 | Durable Object runtime/storage | Run the chosen layers in workerd/Wrangler and a real DO. Validate bundle imports, fetch/SSE/abort, initialization, concurrent messages, transactions and rollback, restart recovery, storage isolation, cleanup strategy, and supported wakeups. Mock driver tests alone do not pass this spike. |
-| 2 | Structured state/tool schemas | Round-trip checkpoint and tool success/failure data; reject malformed events; validate OpenAI codec rewrites, root shape, unsupported constraints, and schema-version migration. Confirm model sees recoverable failures as structured tool results. |
-| 2 | Chat recovery/retention | Test interrupted streams, failed automatic saves, simultaneous loads of one chat ID, full-history fallback after restart, metadata/phase preservation, compaction, artifact references, and bounded history size. |
-| 2 | Human-message and plan-review boundary | Correlate questions, answers and approval with task/plan revision; test expiring bearer links, duplicate delivery, reconnects, and stale approvals. Ensure only approved Markdown reaches the operator and the planner does not implement. |
-| 2 | Security and observability | Assert tokens never appear in prompts, tool parameters/results, event records, logs, traces, or URLs. Verify workspace isolation, structured decision/finding audit records, retry budgets, and final human-review readiness without a merge capability. |
+| Priority | Spike                                  | Required evidence                                                                                                                                                                                                                                                                                |
+| -------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1        | Published v4 dependency/import check   | Install exact pins outside `repos/`; lock dependency graph; compile a minimal service/layer, Schema boundary, toolkit, model layer, and Node entrypoint. Verify tarball exports, transitive engines, peer behavior, and licenses.                                                                |
+| 1        | Agent-owned operator turn loop         | A fake `LanguageModel.make` chooses different next actions from the same status given different findings. Verify the driver only executes decisions, enforces approval/no-merge constraints, and handles explicit wait/final-review actions. Add real-model evaluation separately.               |
+| 1        | Crash-consistent tool dispatch         | Crash before/after intent persistence, session start, result persistence, and chat save. Reconcile using operation/session IDs without duplicate side effects. Compare automatic resolution with journaled wrappers against manual dispatch.                                                     |
+| 1        | Parallel long-running work             | Run bounded mock tools, then Herdr sessions. Observe completion-order independence, progress, one tool failing, provider stream failure, incomplete finish, operator cancellation, process exit, and late remote completion. Verify explicit cancel acknowledgment.                              |
+| 1        | Codex bridge contract                  | After auth/policy feasibility is established, obtain authorized protocol fixtures. Map full/streamed turns, encoded tool parameters, results, metadata, usage, errors and cancellation through `LanguageModel.make`. Demonstrate the operator retains decision control.                          |
+| 1        | Durable Object runtime/storage         | Run the chosen layers in workerd/Wrangler and a real DO. Validate bundle imports, fetch/SSE/abort, initialization, concurrent messages, transactions and rollback, restart recovery, storage isolation, cleanup strategy, and supported wakeups. Mock driver tests alone do not pass this spike. |
+| 2        | Structured state/tool schemas          | Round-trip checkpoint and tool success/failure data; reject malformed events; validate OpenAI codec rewrites, root shape, unsupported constraints, and schema-version migration. Confirm model sees recoverable failures as structured tool results.                                             |
+| 2        | Chat recovery/retention                | Test interrupted streams, failed automatic saves, simultaneous loads of one chat ID, full-history fallback after restart, metadata/phase preservation, compaction, artifact references, and bounded history size.                                                                                |
+| 2        | Human-message and plan-review boundary | Correlate questions, answers and approval with task/plan revision; test expiring bearer links, duplicate delivery, reconnects, and stale approvals. Ensure only approved Markdown reaches the operator and the planner does not implement.                                                       |
+| 2        | Security and observability             | Assert tokens never appear in prompts, tool parameters/results, event records, logs, traces, or URLs. Verify workspace isolation, structured decision/finding audit records, retry budgets, and final human-review readiness without a merge capability.                                         |
 
 The next implementation decision should follow the crash-consistent dispatch and Codex/DO spikes. The source supports the required typed interfaces and agent-turn construction. It does not yet establish Bridle's durable orchestration or subscription-backed operator feasibility.

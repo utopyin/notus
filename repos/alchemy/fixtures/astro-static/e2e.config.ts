@@ -46,6 +46,8 @@ export default Options.make({
   // integration must load and honor (the user-config principle).
   framework: (options) =>
     Astro.layer({
-      target: cloudflare({ worker: Options.resolveCloudflareOptions(options).worker }),
+      target: cloudflare({
+        worker: Options.resolveCloudflareOptions(options).worker,
+      }),
     }),
 });

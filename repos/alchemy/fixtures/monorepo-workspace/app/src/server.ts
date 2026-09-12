@@ -7,7 +7,10 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api/greeting") {
-      return Response.json({ greeting: greeting("api"), libVersion: LIB_VERSION });
+      return Response.json({
+        greeting: greeting("api"),
+        libVersion: LIB_VERSION,
+      });
     }
     const html = `<!doctype html>
 <html lang="en">

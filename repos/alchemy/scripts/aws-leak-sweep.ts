@@ -254,11 +254,7 @@ const classify = (arn: string): Classified => {
         return mk("ecs:cluster", r.slice("cluster/".length), 3);
       }
       if (r.startsWith("task-definition/")) {
-        return mk(
-          "ecs:task-definition",
-          r.slice("task-definition/".length),
-          2,
-        );
+        return mk("ecs:task-definition", r.slice("task-definition/".length), 2);
       }
       if (r.startsWith("task/")) {
         return mk("ecs:task", r, 99, {
@@ -568,8 +564,7 @@ const deleteIamRole = (roleName: string) =>
     const inline = yield* IAM.listRolePolicies({ RoleName: roleName });
     yield* Effect.forEach(
       inline.PolicyNames ?? [],
-      (name) =>
-        IAM.deleteRolePolicy({ RoleName: roleName, PolicyName: name }),
+      (name) => IAM.deleteRolePolicy({ RoleName: roleName, PolicyName: name }),
       { discard: true },
     );
     yield* retryDependencies(IAM.deleteRole({ RoleName: roleName }));
@@ -623,7 +618,11 @@ const deleteEventsRule = (leak: Leak) =>
         Force: true,
       }).pipe(Effect.catch(() => Effect.succeed(undefined)));
     }
-    yield* EventBridge.deleteRule({ Name: name, EventBusName: bus, Force: true });
+    yield* EventBridge.deleteRule({
+      Name: name,
+      EventBusName: bus,
+      Force: true,
+    });
   });
 
 /**
@@ -723,9 +722,7 @@ const destroyLeak = (
     case "sns:topic":
       return SNS.deleteTopic({ TopicArn: leak.arn });
     case "dynamodb:table":
-      return retryDependencies(
-        DynamoDB.deleteTable({ TableName: leak.name }),
-      );
+      return retryDependencies(DynamoDB.deleteTable({ TableName: leak.name }));
     case "lambda:function":
       return Lambda.deleteFunction({ FunctionName: leak.name });
     case "logs:log-group":
@@ -762,9 +759,7 @@ const destroyLeak = (
     case "ec2:nat-gateway":
       return EC2.deleteNatGateway({ NatGatewayId: leak.name });
     case "ec2:elastic-ip":
-      return retryDependencies(
-        EC2.releaseAddress({ AllocationId: leak.name }),
-      );
+      return retryDependencies(EC2.releaseAddress({ AllocationId: leak.name }));
     case "ec2:vpc":
       return deleteVpcDeep(leak.name);
     case "rds:instance":
@@ -856,8 +851,7 @@ const discoverIam = (stage: string, account: string) =>
       createdAt: Date | undefined;
     }[] = [];
 
-    const roles: import("@distilled.cloud/aws/iam").Role[] =
-      [];
+    const roles: import("@distilled.cloud/aws/iam").Role[] = [];
     {
       let marker: string | undefined = undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
@@ -894,8 +888,7 @@ const discoverIam = (stage: string, account: string) =>
       }
     }
 
-    const policies: import("@distilled.cloud/aws/iam").Policy[] =
-      [];
+    const policies: import("@distilled.cloud/aws/iam").Policy[] = [];
     {
       let marker: string | undefined = undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
@@ -925,7 +918,11 @@ const discoverIam = (stage: string, account: string) =>
     );
     for (const { policy, tags } of policyTags) {
       if (tags["alchemy::stage"] === stage) {
-        leaks.push({ arn: policy.Arn!, tags, createdAt: toDate(policy.CreateDate) });
+        leaks.push({
+          arn: policy.Arn!,
+          tags,
+          createdAt: toDate(policy.CreateDate),
+        });
       }
     }
     return leaks;
@@ -944,10 +941,11 @@ const discoverSchedules = (stage: string, region: string, account: string) =>
     {
       let token: string | undefined = undefined;
       for (let page = 0; page < MAX_PAGES; page++) {
-        const res: Scheduler.ListSchedulesOutput = yield* Scheduler.listSchedules({
-          MaxResults: 100,
-          ...(token ? { NextToken: token } : {}),
-        });
+        const res: Scheduler.ListSchedulesOutput =
+          yield* Scheduler.listSchedules({
+            MaxResults: 100,
+            ...(token ? { NextToken: token } : {}),
+          });
         schedules.push(...(res.Schedules ?? []));
         token = res.NextToken;
         if (!token) break;
@@ -970,7 +968,11 @@ const discoverSchedules = (stage: string, region: string, account: string) =>
 // ---------------------------------------------------------------------------
 
 const fmtAge = (h: number | undefined): string =>
-  h === undefined ? "?" : h >= 48 ? `${(h / 24).toFixed(1)}d` : `${h.toFixed(1)}h`;
+  h === undefined
+    ? "?"
+    : h >= 48
+      ? `${(h / 24).toFixed(1)}d`
+      : `${h.toFixed(1)}h`;
 
 const printTable = (leaks: Leak[]) => {
   const rows = leaks.map((l) => ({
@@ -982,7 +984,14 @@ const printTable = (leaks: Leak[]) => {
     arn: l.arn,
   }));
   const cols = ["age", "cost", "kind", "stack", "id", "arn"] as const;
-  const headers = { age: "AGE", cost: "COST", kind: "KIND", stack: "STACK", id: "ID", arn: "ARN" };
+  const headers = {
+    age: "AGE",
+    cost: "COST",
+    kind: "KIND",
+    stack: "STACK",
+    id: "ID",
+    arn: "ARN",
+  };
   const width = (c: (typeof cols)[number]) =>
     Math.max(headers[c].length, ...rows.map((r) => r[c].length));
   const line = (r: Record<(typeof cols)[number], string>) =>
@@ -1105,8 +1114,7 @@ const main = Effect.gen(function* () {
   }
 
   eligible.sort(
-    (a, b) =>
-      (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
+    (a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
   );
 
   console.log(

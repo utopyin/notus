@@ -6,15 +6,21 @@ An AI operator makes workflow decisions. Typed Effect tools launch agents, await
 
 ## Current state
 
-Research and design only. There is no runnable Bridle application, package installation, or cloud deployment yet.
+Research and architecture design. Workspace tooling and local login scripts are present; there is no runnable Bridle orchestrator or cloud deployment yet.
 
 - [Product context and agreed behavior](CONTEXT.md)
+- [Proposed monorepo design](docs/plans/codebase.md)
 - [Research findings and remaining decisions](docs/research/README.md)
 - [Pinned source inventory and subtree updates](docs/research/sources.md)
 - [Agent instructions](AGENTS.md)
 
-## Reference repositories
+## Layout
 
-`repos/` contains squashed Git subtrees for Effect, Alchemy, Herdr, the Herdr TypeScript SDK, the Namespace TypeScript SDK, and Plannotator. Read them as references; do not edit them or import application code from them.
+Four tiers, four directories. See [the tier rules](docs/architecture/CONTEXT.md) and [proposed package ownership](docs/plans/codebase.md).
 
-Effect v4 is an explicit requirement. The imported Effect core is `4.0.0-rc.115`, while the Herdr SDK currently pins an older v4 beta. Consult the research notes before selecting a dependency set.
+- `packages/`: provider communication and genuinely shared values.
+- `domains/`: provider-neutral services and their default provider implementation Layers, grouped into workspaces, accounts, tasks, and executions.
+- `entrypoints/`: control HTTP/WebSocket interfaces and the operator's AI tool interface.
+- `apps/`: the Cloudflare API runtime and the dev-box runtime, selecting/configuring the domain Layers.
+
+This is the proposed layout, not a claim that those application packages already exist.

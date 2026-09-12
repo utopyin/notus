@@ -7,7 +7,11 @@ export default function Counter() {
   return (
     <div>
       <p data-testid="count">count:{count}</p>
-      <button type="button" data-testid="increment" onClick={() => setCount((c) => c + 1)}>
+      <button
+        type="button"
+        data-testid="increment"
+        onClick={() => setCount((c) => c + 1)}
+      >
         Increment
       </button>
     </div>
