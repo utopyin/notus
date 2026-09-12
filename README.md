@@ -1,26 +1,21 @@
 # Bridle
 
-A shared-team coding-agent orchestrator that handles the coordination between planning, implementation, specialist reviews, QA, and fixes. Humans answer planning questions, approve the plan, review the finished code, and merge.
+A shared-team coding-agent orchestrator. An AI operator coordinates planning, implementation, reviews, and QA; humans approve plans and review and merge the finished code.
 
-An AI operator makes workflow decisions. Typed Effect tools launch agents, await results, record findings, and route human requests. The initial target is Effect v4, Alchemy v2 for infrastructure deployment, Cloudflare Durable Objects, Namespace dev boxes, Herdr, and Plannotator.
+Status: planning. Workspace tooling and local login scripts exist; the orchestrator is not implemented. Dependency versions and commands live in [package.json](package.json).
 
-## Current state
+## Documentation
 
-Research and architecture design. Workspace tooling and local login scripts are present; there is no runnable Bridle orchestrator or cloud deployment yet.
+Each topic has one canonical home:
 
-- [Product context and agreed behavior](CONTEXT.md)
-- [Proposed monorepo design](docs/plans/codebase.md)
-- [Research findings and remaining decisions](docs/research/README.md)
-- [Pinned source inventory and subtree updates](docs/research/sources.md)
-- [Agent instructions](AGENTS.md)
+| Document | Owns |
+| --- | --- |
+| [Product context](CONTEXT.md) | Requirements, vocabulary, scope, and open product decisions |
+| [Agent instructions](AGENTS.md) | Working practices and code style |
+| [Architecture](docs/architecture/CONTEXT.md) | Tier boundaries, provider separation, and service/Layer conventions |
+| [Codebase proposal](docs/plans/codebase.md) | Package responsibilities and runtime/data ownership |
+| [Research](docs/research/README.md) | Provider evidence and constraints |
+| [Source inventory](docs/research/sources.md) | Inspected revisions and reference maintenance |
+| [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria |
 
-## Layout
-
-Four tiers, four directories. See [the tier rules](docs/architecture/CONTEXT.md) and [proposed package ownership](docs/plans/codebase.md).
-
-- `packages/`: provider communication and genuinely shared values.
-- `domains/`: provider-neutral services and their default provider implementation Layers, grouped into workspaces, accounts, tasks, and executions.
-- `entrypoints/`: control HTTP/WebSocket interfaces and the operator's AI tool interface.
-- `apps/`: the Cloudflare API runtime and the dev-box runtime, selecting/configuring the domain Layers.
-
-This is the proposed layout, not a claim that those application packages already exist.
+Next: settle the proposed ownership boundaries, validate the integration risks, then specify infrastructure and service contracts.

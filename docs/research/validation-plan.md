@@ -1,144 +1,100 @@
 # Integration validation plan
 
-Status: proposed experiments, not permission to deploy or a finalized implementation backlog. No experiment below has been run. The purpose is to remove the specific uncertainties found in the source research before writing the full infrastructure and Effect service plan.
+Proposed experiments, not deployment permission or an implementation backlog. None has run. Integration notes own source evidence; this file owns unresolved technical experiments and success criteria. Product decisions remain in [CONTEXT](../../CONTEXT.md), ownership in [the codebase plan](../plans/codebase.md).
 
-Use Alchemy v2 and `alchemy.run.ts` for infrastructure deployment experiments. Workerd/local runtime checks can still be useful, but direct Wrangler deployment is not the chosen IaC workflow. Use disposable fixture projects or separate build checkouts. Keep `repos/` read-only. Record package versions, image digests, runtime versions, protocol fixtures, compatibility dates, actual observations, and cleanup results for every experiment. Do not record credentials.
+## Execution rules and prerequisites
 
-## 0. Identity and billing decision
+Use disposable fixture projects/images outside read-only `repos/`. Use the selected Alchemy workflow for deployment, with local workerd checks where useful. Live work requires explicit credential authorization, spend/resource limits, and cleanup ownership. Never run upstream examples assuming they are harmless tests.
 
-Decide whether the constraint is no OpenAI Platform API billing or strictly subscription-included usage. Select a permitted identity for a shared team workflow. Official workspace service accounts require pay-as-you-go; member-owned Codex tokens support trusted automation but do not by themselves establish entitlement for every teammate's jobs.
+Each result must record exact normal-package versions, artifact/image digests, runtime version, Worker compatibility date, workspace policy, protocol fixtures, observations, failures, and cleanup. Do not record credentials. Update [sources](sources.md) when references change; do not copy its version table here.
 
-Then select the operator candidate:
+Before credentialed experiments:
 
-- An Effect-native operator using Bridle's existing OAuth and `OpenAiClient` configuration pattern. Validate runtime refresh, tool/stream compatibility, backend support, and workspace entitlement; see [Bridle evidence](bridle-auth.md).
-- Codex with Effect-backed MCP tools, subscription/workspace entitlement permitting.
-- Codex app-server with experimental dynamic tools if the extra control is required.
-- An API-backed Effect model loop only if the user accepts API billing.
-- A custom full Codex `LanguageModel` adapter only if the existing Bridle-style client configuration cannot satisfy the required protocol behavior and preserving that interface justifies the additional work.
+- Confirm the intended billing constraint and permitted shared-workflow identity. Ask OpenAI about member-token allowance, service-account requirements, concurrency, independent OAuth/backend support, and any selected app-server support. Technical success cannot establish commercial permission.
+- Resolve the historical auth-reference provenance in [OpenAI evidence](openai-auth.md#local-implementation-evidence). Start with the reported Effect OAuth/client pattern; Codex with MCP remains an alternative, dynamic tools only if needed. API billing needs explicit acceptance.
+- Select the first specialist host/release and representative private QA repository. Use product planning for trigger UX, credential selection, handoff, limits, and retention rather than silently deciding them during a spike.
 
-Pass evidence: explicit user choice, available account/workspace capabilities, and provider confirmation where shared use or support terms remain unclear. Do not infer commercial permission from a successful login.
+## Package and host compatibility
 
-## 1. Package and runtime compatibility
+Start without credentials. Evidence: [sources](sources.md), [Effect](effect-v4.md), [Alchemy](alchemy.md), [Herdr](herdr.md), [Namespace](namespace.md).
 
-No credentials or cloud resources required.
+- Recheck published artifacts/exports/license completeness, particularly Herdr and Namespace. Select a reproducible normal-package graph; separately build an artifact if authorized and necessary.
+- Compile minimal service, Schema, toolkit, HTTP client, and Node entrypoint; separately import/build the Worker closure. Check transitive engines and runtime behavior, not only declared peer ranges.
+- Exercise Herdr handshake, layout creation, and socket round trip with the selected binary. If its Effect dependency remains incompatible, validate an updated package or a separately packaged/process boundary, not casts or forced overrides.
+- Verify the Distilled Worker export path through the actual Alchemy build. Package import success alone does not pass transport execution.
 
-1. Recheck public package versions and inspect their exports. Herdr and Namespace documentation currently run ahead of an established installable dependency set.
-2. Select exact matching Effect ecosystem versions. Test an updated Herdr SDK if available. If it remains on a different prerelease, evaluate a separately packaged/process-isolated adapter rather than casting incompatible effects or forcing overrides.
-3. Compile a minimal v4 service, Layer, Schema codec, and toolkit using normal dependencies. Check a Node entrypoint and Worker-compatible shared module separately.
-4. Start pinned Herdr in a disposable local test environment if supported. Validate SDK import, protocol handshake, workspace creation, and a socket round trip.
+Pass when reproducible artifacts run on each intended host without hidden incompatible defaults. Stop if no supported package or safe adapter boundary exists; do not import `repos/` as a workaround.
 
-Pass evidence: reproducible lockfile/artifact, compatible Node version, passing imports/typechecks, and protocol 22 handshake. The primary Effect pin's transitive dependencies require at least Node 22.19.0; validate the final dependency graph rather than relying on a package's broad engine declaration.
+## Operator model and credential lifecycle
 
-Stop condition: no installable/supported package or safe adapter boundary. Do not solve it by importing `repos/` into Bridle.
+Evidence: [OpenAI](openai-auth.md), [Effect](effect-v4.md). Use fake HTTP/model fixtures before authorized requests.
 
-## 2. Namespace provisioning and bootstrap
+- Exercise text, tools/results, transformed arguments, structured output, partial streams, finish reasons, encrypted reasoning and assistant phase continuity, model discovery, errors, and cancellation on the selected backend. Unsupported features must fail explicitly.
+- Cross access-token expiry during an active operator session. Concurrent consumers must use one serialized refresh owner with atomic rotated-token persistence. Include restart during renewal, transient failure, revocation, reconnect-required, and disconnect/revoke behavior. Never clone a refresh lineage across devboxes.
+- Verify actual account/workspace usage attribution and absence of inherited API-key fallback. Inject quota failures rather than exhausting a real subscription.
+- Check specialist-host consumption of the managed connection separately from the operator. Codex-managed caches, access tokens, and external-token callbacks have different refresh contracts.
+- With synthetic sentinel secrets, test repository processes, agent tools, subprocess environments, logs/traces, screenshots, histories, and artifacts for credential leakage. For federation, include assertion expiry, protected paths, and replay protection.
 
-Begin with local HTTP mocks. Live work requires explicit cloud authorization, a maximum resource count, and cleanup ownership.
+Pass when required model/tool behavior works, renewal survives intended concurrency, permissions remain scoped, and auth/quota failures pause/report without silently changing billing. Record provider-support questions separately even after success.
 
-Compare a fetch-compatible unary lifecycle adapter with a trusted Node SDK/CLI adapter. Do not spend time expecting Workers compatibility flags to implement Node HTTP/2.
+## Namespace provisioning and lifetime
 
-Create one task dev box with a pinned image and explicit repository assignment. Require a supervisor-ready acknowledgement only after checkout, tools, and task credentials are ready. Disconnect the provisioning client and confirm the operator host remains available. Repeat start/stop to identify actual persistent paths and process loss.
+Evidence: [Namespace](namespace.md). Compare local mock-backed fetch/descriptor lifecycle calls with a trusted Node SDK/CLI adapter before choosing topology.
 
-Pass evidence:
+- With authorization, create/fetch/activate/stop/delete one pinned-image box. Confirm private RPC support and the required grants. Drop create/start responses and reconcile by persisted assignment without another allocation.
+- Require supervisor-ready only after checkout, selected tools, and task credentials are ready. Disconnect provisioner clients; the operator must not depend on an open SDK call. Repeat boot and operator restart without duplicate assignments.
+- Test hook/session startup semantics and unattended Herdr readiness. Validate explicit repository/ref selection, inherited defaults, approved clone/push/PR access, denied unapproved access, workload-token scope, and any required submodules/LFS.
+- Cross idle and token-expiry boundaries with and without task markers. Confirm marker cleanup after success/caught failure, and document external cleanup for lost ownership. Determine provider continuous-runtime caps and stopped-retention policy.
+- Stop/start during work and review; identify actual persistent paths and process loss. Never report killed work as completed or assume a restored layout preserves a pending callback.
+- Measure representative build/agents/browser QA under the chosen size, egress, and privilege settings, including OOM, sandbox/shared memory, and output growth. Validate secret-backed environment/header injection only if selected.
 
-- Create/fetch/start/stop/delete work through the selected supported path.
-- Startup does not require holding an hours-long SDK call open.
-- A lost create response can be reconciled without blindly allocating another box.
-- Workload/GitHub grants are understood and acceptably scoped.
-- Required tools are ready before the first agent prompt.
+Pass when the chosen control/bootstrap path works without an hours-long provisioning call, authority is acceptable, failures reconcile, required QA works, and retention/cleanup costs are bounded. If review cannot restart safely, planning must account for keeping compute alive.
 
-## 3. One operator and one Herdr worker
+## Herdr invocation, continuity, and long waits
 
-Use a private fixture repository and an authorized model identity. Start with a harmless result before requesting code edits.
+Evidence: [Herdr](herdr.md). Start with a simulated slow worker, then one harmless real-agent invocation before code edits.
 
-The operator chooses to launch one worker through an Effect tool. The tool records the invocation, creates its pane, launches the agent, and checks actual interactive readiness. The worker writes a round-tagged Markdown result. The tool validates the invocation and artifact, then returns it for the operator to interpret.
+- Launch into a prepared pane and verify interactive readiness independently of launch acknowledgement. Exercise immediate result, blocked dialog, old done-state, echoed sentinel, stale file, and lost prompt response.
+- Publish a new invocation/revision-tagged result. Validate path/schema/size/hash and reject old artifacts. Permit only one outstanding invocation per session; parallel sessions need an explicit concurrency bound and completion-order-independent results.
+- Detach/reconnect during a turn. Subscription interruption must reconcile snapshots/results without duplicate prompting. Separately request cancellation and observe termination or an explicit unknown outcome, including late completion.
+- Reuse a native reviewer session for two rounds. Restart Herdr with session data and no human TUI; establish whether dimensions/theme bootstrap is required. Unsupported resume must be explicit, with findings retained independently.
+- Hold the preferred tool wait for at least two hours with explicit SDK/server/outer deadlines and a transport interruption. Count operator model calls during the wait. If the host cannot safely hold it, evaluate recorded wait intent plus event-driven resume of the same stored operator thread.
 
-Pass evidence:
+Pass when no waiting model calls occur, stale state cannot complete new work, client detach differs from cancellation, duplicate completion is consumed once, and caught failures reach intervention. Document silent-host-loss detection gaps; full automatic crash recovery is not a prototype prerequisite.
 
-- Launch acknowledgement is not confused with readiness.
-- Old `done` state, echoed prompts, and stale artifacts cannot complete the new round.
-- One outstanding round per worker session prevents cross-turn confusion.
-- Submission timeout triggers reconciliation, not automatic duplicate prompting.
-- The operator chooses the next action; the runtime only executes and records it.
+## Trusted public approval
 
-## 4. Hours-long waiting and interruption
+Evidence: [Plannotator](plannotator.md), [Namespace ingress](namespace.md#review-ingress-and-qa). Use a frozen Markdown revision, strict direct gate, disabled optional AI/sharing/terminal, and private backend. First browser must have no Namespace session.
 
-First use a simulated slow worker so model cost is not required to test timing. Then validate the selected real-agent path.
+- Validate approve, approve-with-notes, annotations, Close, invalid flags/path, missing UI/assets, existing result path, unsupported hard link, killed process, malformed output, and stdout-success/file-failure. Only a reconciled trusted positive outcome may approve.
+- Ensure source mutation cannot change approved bytes. Persist the accepted revision/hash/Markdown and gateway provenance. Agent access to local endpoints/files must not forge that record.
+- Test absent, wrong-task, expired, revoked, completed, and old-revision capabilities on reads, decisions, assets, streams, and upgrades. Exercise expiry-versus-approval races, concurrent reviewers, link previews, CSRF, hostile Host/Origin, forwarded headers, and direct-backend bypass.
+- Validate root-relative UI routing, required route allowlist, no filesystem/terminal/operator exposure, token redaction, private caching, and referrer behavior. A document-only share link does not pass.
+- Exercise reload, proxy/relay loss, sleeping box, stream deadlines, two concurrent gates, occupied/exhausted port ranges, process restart, and port reuse. Old links must not reach replacement reviews; expired/cancelled waiters must clean up.
+- Confirm the planner returns the exact approved Markdown without implementing. If selecting a native host integration later, separately test its handoff/termination and missing-UI fail-closed behavior.
 
-Test the preferred long-running tool with explicit SDK/server/MCP deadlines. Confirm no operator model calls occur while waiting. Cover at least a two-hour interval and transport disconnection. If the selected host cannot safely hold the callback, evaluate ending the turn with recorded wait intent and resuming the same operator thread on completion.
+Pass when an anonymous valid link supports review through the trusted gateway, one accepted outcome binds exact bytes, negative/failure paths never approve, and unrelated devbox access is denied. Resolve private ingress or outbound-relay transport before claiming public approval works.
 
-Run Namespace's idle behavior both with and without active-task markers in a controlled fixture. Confirm marker cleanup after success and caught failure. Do not intentionally leave a billable box running after the test.
+## Control storage and Slack
 
-Pass evidence:
+Evidence: [Cloudflare](cloudflare.md), [Slack](slack.md). Start with fake source delivery, then the selected Slack HTTP adapter. Deploy one SQLite-backed task DO through Alchemy with an inbound hibernatable devbox socket.
 
-- Agent work continues across expected client detach.
-- Unexpected dev-box stopping is not reported as successful work.
-- Disconnecting an observer is distinct from cancelling the worker.
-- A completion delivered twice is consumed once.
-- Parallel jobs preserve their result identities and have an explicit concurrency bound.
-- Caught failures produce intervention messages. Document any silent-host-loss detection gap rather than adding full autonomous recovery by assumption.
+- Verify raw-body signatures, timestamp freshness, actor/installation mapping, bot filtering, retries, required scopes, and thread replies. Acknowledge promptly after durable admission, not after provisioning/model work.
+- Replay task-start events before and after task creation; recover the same task/operation. Wrong-workspace, expired, and obsolete-execution credentials must fail. Review tokens must not authorize operator/control calls.
+- Reconstruct/hibernate/redeploy the DO and reconnect with cursors. Preserve questions, answers, findings, pending deliveries, and accepted decisions. Validate transactions/rollback and concurrent requests in the actual runtime, not only fake SQLite tests.
+- Disconnect after an outbound send but before recording its acknowledgement. Establish Distilled/Slack retry and error behavior; record unavoidable delivery ambiguity instead of promising exactly-once notifications.
+- Verify bounded message sizes, HTTP/SSE/abort behavior, no long-wait model/fiber requirement in the DO, and no Node-only imports in Worker execution.
 
-## 5. Public human approval
+Pass when admitted events and replies survive reconstruction without duplicate allocation, authority checks hold, and notifications return to the recorded origin thread.
 
-Use the direct strict Plannotator gate against an immutable Markdown revision. Disable optional AI, sharing, and terminal capabilities. Put it behind the proposed bearer gateway; do not expose the unauthenticated backend directly.
+## Dispatch persistence and end-to-end evidence
 
-The first browser test must use a browser without a Namespace session. Possession of the Bridle review link, not Namespace membership, is the agreed prototype authorization.
+Evidence: [Effect](effect-v4.md) and the provider notes above. Use mock failure injection before the representative repository.
 
-Pass evidence:
+- Compare journaled auto-resolution with manual tool dispatch. Interrupt before/after intent save, side effect, result save, and chat save. Cover pending approvals, incomplete streams, concurrent chat loads, failed automatic saves, restored response IDs, metadata retention, and bounded history/compaction. No path may blindly replay uncertain effects.
+- Run a genuine finding → fix → re-review cycle plus QA and human handoff. Record base, implementation, reviewed, and handed-off revisions. Do not reuse review evidence after concurrent source mutation.
+- Include empty findings, a repeated unresolved defect, and reviewer disagreement. The model chooses the next action; runtime validation must not equate a text-only turn or process exit with completion.
+- Demonstrate another human-requested cycle and the no-merge boundary through actual credential restrictions, not just tool omission.
+- Export accepted artifacts, delete the box, and read evidence back independently. If using Namespace artifacts, test create/PUT/finalize retry ambiguity, version-specific readback, signed-URL renewal, and expiry.
 
-- Valid link loads the required UI and permits approval or revision feedback.
-- Missing, wrong-task, expired, revoked, and old-revision links fail on reads, writes, and streams.
-- Source edits cannot change which bytes an approval authorizes.
-- Dismissal, browser failure, missing UI/assets, killed process, and malformed result never become approval.
-- Link previews never approve a plan or consume a human decision.
-- Concurrent reviewers produce one recorded accepted outcome; later attempts are explicit.
-- The persisted decision includes the exact plan revision and approved Markdown.
-- The planner returns the plan and does not implement. The operator subsequently decides the implementation action.
-- Local agent access cannot forge the trusted human-approval record.
-- Public review access cannot browse unrelated files, open a terminal, or reach Herdr/operator controls.
-
-If the gateway cannot reach a private Namespace backend reliably, resolve the ingress or outbound-relay design before proceeding. A read-only Plannotator share URL does not pass this test.
-
-## 6. Durable Object transport and one input adapter
-
-Use SQLite-backed task storage and an inbound devbox-to-DO hibernatable WebSocket. Start with a fake input adapter; integrate the first real source only after it is selected.
-
-Pass evidence:
-
-- Source events are authenticated and duplicate task requests do not allocate another task.
-- Status, findings, questions, answers, and pending deliveries persist through DO reconstruction.
-- Reconnect exchanges event cursors and does not lose a human answer.
-- Wrong-workspace and obsolete-execution messages are rejected.
-- Notifications return to the original conversation, not a model-selected arbitrary recipient.
-- No model call or long-lived fiber is needed inside the DO to wait for a human.
-- Delivery ambiguity is documented; do not claim exactly-once Slack/Linear side effects without integration-specific evidence.
-
-## 7. Small end-to-end task
-
-Use one representative repository and Markdown role instructions. Record the exact base revision, implementation revision, and revision each reviewer/QA agent checked. Do not let implementation mutate the code underneath a review and then treat the review as applying to the latest code.
-
-Exercise one task that produces a genuine review finding, one fix, a re-review, QA evidence, and final human handoff. Reuse the same reviewer session and separately persist its findings. Also test an empty-finding round, a still-unfixed repeated finding, and a disagreement requiring operator judgment.
-
-Pass evidence:
-
-- No routine human intervention between approved planning and final handoff.
-- Findings remain traceable through fixes and rechecks.
-- Final evidence applies to the actual handed-off revision.
-- Humans can request another cycle through the selected handoff channel.
-- Bridle cannot merge through its tools or through the credentials available to coding agents.
-- Task artifacts survive dev-box cleanup under the selected retention policy.
-
-Do not require complete automatic crash recovery to pass the prototype. Do require honest status, no false approval/completion, explicit ambiguous outcomes, and a workable manual intervention path.
-
-## After these experiments
-
-Write the detailed architecture and implementation backlog around the validated path:
-
-1. Infrastructure and trust boundaries.
-2. Domain schemas and workspace/task identities.
-3. Effect services and concrete Layers for inputs, task state, dev boxes, agents, artifacts, review access, and operator tools.
-4. Default Markdown process and specialist roles.
-5. Vertical implementation slices with tests and handoff criteria.
-6. Deployment, operational limits, credential rotation, retention, and manual recovery documentation.
-
-Until then, the research reports describe candidates and gaps, not a promise that the integrations already work together.
+Pass when evidence applies to the final revision, findings survive session/box loss, required human boundaries hold, and manual intervention can resolve explicit ambiguous outcomes. Then write infrastructure and service implementation plans around the measured path, including unresolved support assumptions, retention, and cleanup.
