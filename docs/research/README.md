@@ -2,7 +2,7 @@
 
 Source evidence for infrastructure and service planning. This folder does not define [product requirements](../../CONTEXT.md), [architecture conventions](../architecture/CONTEXT.md), or [package ownership](../plans/codebase.md).
 
-The initial review inspected source, upstream test bodies, official documentation, and selected package archives. It did not establish runtime interoperability. No live authentication, agent, browser-approval, or deployment experiment has passed.
+These notes come from source, test-body, documentation, and package-archive inspection. They do not establish runtime interoperability; no Bridle integration experiment has passed.
 
 - [Sources](sources.md): revisions, versions, distribution evidence, and update commands.
 - [Validation plan](validation-plan.md): unresolved experiments, dependencies, and success criteria.
@@ -15,4 +15,4 @@ The initial review inspected source, upstream test bodies, official documentatio
 - [Slack](slack.md): Distilled API evidence and ingress constraints.
 - [Effect](effect-v4.md): reference map and integration-specific caveats.
 
-Integration notes own evidence, not separate implementation backlogs. "Source" describes inspected code; "documented" describes provider claims. Neither means tested in Bridle. Historical web/package observations are dated in [sources](sources.md), not assertions about today's releases.
+"Source" means inspected code; "documented" means provider claims. Observation dates and revisions are in Sources, not assertions about today's releases.

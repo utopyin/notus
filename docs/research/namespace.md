@@ -1,8 +1,10 @@
 # Namespace integration evidence
 
-Source paths are relative to `repos/namespace-sdk/`; pins and distribution gaps are in [sources](sources.md). Official docs describe server behavior; generated fields establish only client/protocol shapes. No live provisioning, renewal, ingress, or QA behavior has been tested. Experiments belong in [validation](validation-plan.md).
+Source paths are relative to `repos/namespace-sdk/`; pins and distribution gaps are in [sources](sources.md). Generated fields establish client/protocol shapes, not server support. The [validation plan](validation-plan.md) defines the control/bootstrap experiment.
 
 ## Control transport
+
+The [rechecked npm archive](sources.md#compatibility-inventory) exposes `@namespacelabs/sdk/proto/namespace/private/devbox/devbox_pb`, including `DevBoxService`, without the newer high-level devbox wrapper. Its inspected local descriptor imports depend only on protobuf codegen/WKT externally. This gives the direct Worker experiment a published descriptor path, without importing the SDK's Node transport or vendored source. A fetch-based Connect client and live API access remain untested.
 
 - `src/devbox/index.ts` exposes `createDevboxClient`. The Devbox endpoint defaults to `https://private-api.iad.namespaceapis.com`, overridable by `NSC_DEVBOX_ENDPOINT`. Endpoint selection does not select machine location; request `site` does. `client.close()` closes cached connections, not resources.
 - Lifecycle RPCs use Connect JSON over HTTP/1.1 through connect-node. The inspected dependency's `dist/esm/node-universal-client.js`, `h1Request`, waits for Node's `socket` event before writing. Workers [does not support that event](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/#other-differences-between-node-js-and-workers-implementation-of-node-http).

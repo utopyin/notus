@@ -1,6 +1,6 @@
 # Plannotator integration evidence
 
-Paths are relative to `repos/plannotator/`. [Sources](sources.md) owns versions and host compatibility. These are source/test-body observations, not a browser, proxy, or approval test. Open experiments and pass criteria are in [validation](validation-plan.md).
+Paths are relative to `repos/plannotator/`. Versions are in [sources](sources.md); the [validation plan](validation-plan.md) defines the public-review experiment.
 
 ## Direct strict gate
 

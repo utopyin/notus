@@ -1,6 +1,6 @@
 # Cloudflare platform constraints
 
-Evidence comes from official documentation at the observation date in [sources](sources.md), not a deployment. [Alchemy](alchemy.md) maps the relevant deployment APIs; [validation](validation-plan.md) owns experiments. Task ownership and protocol design belong to [the codebase plan](../plans/codebase.md).
+Official platform constraints. [Alchemy](alchemy.md) covers deployment APIs; [the codebase plan](../plans/codebase.md) assigns data ownership.
 
 ## Storage and reconstruction
 

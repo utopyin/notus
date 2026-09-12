@@ -1,6 +1,6 @@
 # Slack integration evidence
 
-The selected outbound SDK is recorded in [product context](../../CONTEXT.md); [sources](sources.md) owns its package/archive evidence and Effect compatibility range. The initial review inspected published Distilled Slack/core archives as data. No Slack app, token, message, or Worker integration was exercised.
+Evidence from the published Distilled Slack/core archives recorded in [sources](sources.md).
 
 ## Inspected Distilled behavior
 
@@ -19,4 +19,4 @@ The Web API package does not establish an inbound event receiver. [Slack signatu
 
 Events/interactions need prompt acknowledgement after durable admission, retry deduplication, bot-message filtering, and correct thread correlation. Required scopes and reply access depend on the start gesture. HTTP delivery is the Worker-hosted candidate; SDK availability alone is no reason to introduce Socket Mode.
 
-Slack installation credentials are not users' OpenAI connections. SDK selection does not decide the trigger UX or who may use a saved model account. Those decisions remain in product/service planning. [Validation](validation-plan.md#control-storage-and-slack) owns the ingress, delivery, and runtime checks.
+Slack installation credentials are not users' OpenAI connections. SDK selection does not decide the trigger UX or who may use a saved model account. Those decisions remain in product/service planning. [Validation](validation-plan.md#6-control-persistence-and-slack) owns the ingress, delivery, and runtime checks.

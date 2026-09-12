@@ -1,10 +1,10 @@
 # Effect integration reference
 
-Use the [Effect skill](../../.agents/skills/effect/SKILL.md), [vendored LLMS guide](../../repos/effect/LLMS.md), and relevant `repos/effect/migration/` guides for implementation. Service/Layer conventions belong to [architecture](../architecture/CONTEXT.md). [Sources](sources.md) owns exact dependency/runtime pins. This note keeps integration constraints, not another Effect tutorial.
+Implementation guidance: [Effect skill](../../.agents/skills/effect/SKILL.md), [vendored guide](../../repos/effect/LLMS.md), and `repos/effect/migration/`. Project conventions belong to [architecture](../architecture/CONTEXT.md); pins to [sources](sources.md).
 
 ## Source map
 
-Paths are relative to `repos/effect/`. The initial review inspected these implementations and examples, not runtime behavior in Bridle.
+Paths are relative to `repos/effect/`.
 
 | Concern | Reference |
 | --- | --- |

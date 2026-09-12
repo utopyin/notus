@@ -1,6 +1,6 @@
 # Herdr integration evidence
 
-Paths below are relative to `repos/herdr/` unless prefixed with `repos/herdr-ts-sdk/`. [Sources](sources.md) owns pins and the SDK's unpublished-baseline/Effect mismatch. No agent or SDK runtime was launched. Upstream tests were read, not run. Experiments belong in [validation](validation-plan.md).
+Paths are relative to `repos/herdr/` unless prefixed with `repos/herdr-ts-sdk/`. [Sources](sources.md) records pins and the SDK's unpublished-baseline/Effect mismatch.
 
 ## Compatibility and host boundary
 
