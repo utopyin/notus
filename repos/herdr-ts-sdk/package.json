@@ -1,0 +1,75 @@
+{
+  "name": "@herdr/sdk",
+  "version": "0.9.0",
+  "description": "Effect-native TypeScript SDK for Herdr's local socket API.",
+  "homepage": "https://github.com/dmmulroy/herdr-ts-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/dmmulroy/herdr-ts-sdk/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmmulroy/herdr-ts-sdk.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-wire-types.mjs && node scripts/sdk-verification-cli.mjs fmt src/generated",
+    "build": "pnpm run generate && node scripts/sdk-verification-cli.mjs pack",
+    "dev": "node scripts/sdk-verification-cli.mjs pack --watch",
+    "test": "node scripts/sdk-verification-cli.mjs test",
+    "test:runtime": "node scripts/sdk-verification-cli.mjs test run",
+    "test:platform": "node scripts/sdk-verification-cli.mjs test run src/herdr-platform.test.ts",
+    "test:stress": "node scripts/sdk-verification-cli.mjs test run src/herdr-stress.test.ts",
+    "doctor": "node scripts/sdk-doctor.mjs",
+    "verify:quick": "node scripts/sdk-verify.mjs quick",
+    "verify": "node scripts/sdk-verify.mjs full",
+    "check:generated": "node scripts/sdk-verify.mjs generated",
+    "check:package": "node scripts/check-package.mjs",
+    "lab": "node scripts/sdk-lab.mjs",
+    "trace:viewer": "node scripts/sdk-trace-viewer.mjs",
+    "trace:list": "node scripts/sdk-trace-query.mjs list",
+    "trace:show": "node scripts/sdk-trace-query.mjs show",
+    "check": "node scripts/sdk-verify.mjs quick",
+    "check:docs": "node scripts/check-public-jsdoc.mjs",
+    "check:examples": "tsc --project examples/tsconfig.json",
+    "example": "pnpm run build && node --experimental-strip-types",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@effect/platform-node-shared": "4.0.0-beta.105",
+    "ajv": "^8.20.0",
+    "effect": "4.0.0-beta.105"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "bumpp": "^11.1.0",
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.17.0",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "herdr": {
+    "protocol": 22,
+    "upstreamCommit": "b99002ac99b09e00b4ca692436cb15a6b0d676f1"
+  }
+}
