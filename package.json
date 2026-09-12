@@ -1,0 +1,199 @@
+{
+	"name": "@namespacelabs/sdk",
+	"version": "1.1.0",
+	"description": "TypeScript SDK for Namespace Cloud APIs",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/cjs/index.js",
+	"module": "./dist/esm/index.js",
+	"types": "./dist/types/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/types/index.d.ts",
+				"default": "./dist/esm/index.js"
+			},
+			"require": {
+				"types": "./dist/types/index.d.ts",
+				"default": "./dist/cjs/index.js"
+			}
+		},
+		"./auth": {
+			"import": {
+				"types": "./dist/types/auth/index.d.ts",
+				"default": "./dist/esm/auth/index.js"
+			},
+			"require": {
+				"types": "./dist/types/auth/index.d.ts",
+				"default": "./dist/cjs/auth/index.js"
+			}
+		},
+		"./devbox": {
+			"import": {
+				"types": "./dist/types/devbox/index.d.ts",
+				"default": "./dist/esm/devbox/index.js"
+			},
+			"require": {
+				"types": "./dist/types/devbox/index.d.ts",
+				"default": "./dist/cjs/devbox/index.js"
+			}
+		},
+		"./vnc": {
+			"import": {
+				"types": "./dist/types/vnc/index.d.ts",
+				"default": "./dist/esm/vnc/index.js"
+			},
+			"require": {
+				"types": "./dist/types/vnc/index.d.ts",
+				"default": "./dist/cjs/vnc/index.js"
+			}
+		},
+		"./api": {
+			"import": {
+				"types": "./dist/types/api/index.d.ts",
+				"default": "./dist/esm/api/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/index.d.ts",
+				"default": "./dist/cjs/api/index.js"
+			}
+		},
+		"./api/compute": {
+			"import": {
+				"types": "./dist/types/api/compute/index.d.ts",
+				"default": "./dist/esm/api/compute/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/compute/index.d.ts",
+				"default": "./dist/cjs/api/compute/index.js"
+			}
+		},
+		"./api/iam": {
+			"import": {
+				"types": "./dist/types/api/iam/index.d.ts",
+				"default": "./dist/esm/api/iam/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/iam/index.d.ts",
+				"default": "./dist/cjs/api/iam/index.js"
+			}
+		},
+		"./api/builds": {
+			"import": {
+				"types": "./dist/types/api/builds/index.d.ts",
+				"default": "./dist/esm/api/builds/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/builds/index.d.ts",
+				"default": "./dist/cjs/api/builds/index.js"
+			}
+		},
+		"./api/storage": {
+			"import": {
+				"types": "./dist/types/api/storage/index.d.ts",
+				"default": "./dist/esm/api/storage/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/storage/index.d.ts",
+				"default": "./dist/cjs/api/storage/index.js"
+			}
+		},
+		"./api/registry": {
+			"import": {
+				"types": "./dist/types/api/registry/index.d.ts",
+				"default": "./dist/esm/api/registry/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/registry/index.d.ts",
+				"default": "./dist/cjs/api/registry/index.js"
+			}
+		},
+		"./api/vault": {
+			"import": {
+				"types": "./dist/types/api/vault/index.d.ts",
+				"default": "./dist/esm/api/vault/index.js"
+			},
+			"require": {
+				"types": "./dist/types/api/vault/index.d.ts",
+				"default": "./dist/cjs/api/vault/index.js"
+			}
+		},
+		"./proto": {
+			"import": {
+				"types": "./dist/types/proto/index.d.ts",
+				"default": "./dist/esm/proto/index.js"
+			},
+			"require": {
+				"types": "./dist/types/proto/index.d.ts",
+				"default": "./dist/cjs/proto/index.js"
+			}
+		},
+		"./proto/*": {
+			"import": {
+				"types": "./dist/types/proto/*.d.ts",
+				"default": "./dist/esm/proto/*.js"
+			},
+			"require": {
+				"types": "./dist/types/proto/*.d.ts",
+				"default": "./dist/cjs/proto/*.js"
+			}
+		}
+	},
+	"files": [
+		"dist/",
+		"src/",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"clean": "rm -rf dist/",
+		"generate": "bash scripts/generate-protos.sh",
+		"build": "npm run build:cjs && npm run build:esm && npm run build:types",
+		"build:cjs": "tsc --project tsconfig.json --module commonjs --outDir ./dist/cjs && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
+		"build:esm": "tsc --project tsconfig.json --module es2020 --outDir ./dist/esm && echo '{\"type\":\"module\",\"sideEffects\":false}' > dist/esm/package.json",
+		"build:types": "tsc --project tsconfig.json --declaration --emitDeclarationOnly --outDir ./dist/types",
+		"test:typecheck": "tsc --project tsconfig.test.json",
+		"test:unit": "tsx --test test/*.unit.test.ts",
+		"test:create-instance": "tsx test/create-instance.ts",
+		"test": "npm run test:typecheck && npm run test:unit",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"keywords": [
+		"namespace",
+		"cloud",
+		"sdk",
+		"compute",
+		"api"
+	],
+	"author": "Namespace Labs",
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/namespacelabs/typescript-sdk.git"
+	},
+	"bugs": {
+		"url": "https://github.com/namespacelabs/typescript-sdk/issues"
+	},
+	"homepage": "https://github.com/namespacelabs/typescript-sdk#readme",
+	"peerDependencies": {
+		"@bufbuild/protobuf": "^2.2.0",
+		"@connectrpc/connect": "^2.0.0",
+		"@connectrpc/connect-node": "^2.0.0"
+	},
+	"devDependencies": {
+		"@bufbuild/buf": "^1.72.0",
+		"@bufbuild/protobuf": "^2.2.0",
+		"@bufbuild/protoc-gen-es": "^2.11.0",
+		"@connectrpc/connect": "^2.0.0",
+		"@connectrpc/connect-node": "^2.0.0",
+		"@types/node": "^20.17.10",
+		"@types/ssh2": "^1.15.5",
+		"@types/ws": "^8.18.1",
+		"tsx": "^4.20.6",
+		"typescript": "^5.7.2"
+	},
+	"dependencies": {
+		"ssh2": "^1.17.0",
+		"ws": "^8.21.1"
+	}
+}
