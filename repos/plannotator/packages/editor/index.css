@@ -1,0 +1,80 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist-mono";
+@import "tailwindcss";
+@import "@plannotator/webtui/styles.css";
+
+@plugin "tailwindcss-animate";
+
+/* Tell Tailwind where to scan for classes */
+@source "../ui/components/**/*.tsx";
+@source "../ui/hooks/**/*.ts";
+@source "./*.tsx";
+@source "./components/**/*.tsx";
+
+@import "../ui/theme.css";
+
+/* Keep xterm's scrollback layer aligned with the host app terminal palette. */
+[data-annotate-agent-terminal="true"] .webtui-shell {
+  background-color: var(--webtui-background) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+[data-annotate-agent-terminal="true"] .webtui-terminal,
+[data-annotate-agent-terminal="true"] .xterm,
+[data-annotate-agent-terminal="true"] .xterm-screen {
+  background-color: var(--webtui-background) !important;
+}
+
+[data-annotate-agent-terminal="true"] .webtui-shell .xterm-viewport {
+  background-color: var(--webtui-background) !important;
+  scrollbar-width: none;
+}
+
+[data-annotate-agent-terminal="true"] .webtui-shell .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+[data-annotate-agent-terminal="true"] .webtui-shell .xterm-scrollbar {
+  display: none !important;
+  width: 0 !important;
+}
+
+/* Code blocks.
+ *
+ * Token colours come from the active Shiki theme as inline styles (the same
+ * theme the code-review diff pane resolves), so this rule only owns layout and
+ * the block background. The old `.hljs-*` override stacks that existed to make
+ * highlight.js's hardcoded github-dark palette survive light mode are gone with
+ * it: a light palette now resolves a light Shiki theme. */
+pre code.pn-code {
+  display: block;
+  padding: 1rem;
+  border-radius: var(--radius);
+  background: var(--code-bg) !important;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* The code-file hover preview is not a <pre><code>, so the rule above misses
+   it. Its tokens carry their own theme colours; this supplies the default text
+   colour for the parts that have none. */
+.light .code-snippet-preview {
+  color: oklch(0.25 0.02 260) !important;
+}
+
+/* Annotation highlights moved to packages/ui/theme.css (shared with the
+   code-review description annotations). */
+
+/* Plan Diff Styles also moved to packages/ui/theme.css (imported above). */
+
+/* ========================================
+   Sidebar
+   ======================================== */
+
+.sidebar-tab-flag {
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+.sidebar-tab-flag:hover {
+  transform: translateX(2px);
+}
