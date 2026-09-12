@@ -8,7 +8,7 @@ Start with [product context](../../CONTEXT.md). Source revisions and package ver
 
 | Area | Verified finding | Consequence |
 | --- | --- | --- |
-| OpenAI subscriptions | ChatGPT subscription access and Platform API billing are separate. Effect's OpenAI provider calls the API; it does not implement subscription login. | A subscription-backed operator should first be evaluated as Codex calling Effect-backed tools, not as an ordinary `OpenAiClient` with a different token. |
+| OpenAI subscriptions | Effect does not ship subscription login, but Erudane implements OAuth and configures its existing OpenAI provider for the Codex backend. Platform API billing remains separate. | An Effect-native subscription-backed operator is a concrete candidate. Evaluate Erudane's adapter, runtime refresh, backend support, and exact tool compatibility before requiring a Codex-owned operator. See [correction](erudane-auth.md). |
 | Shared-team identity | Business/Enterprise access tokens support trusted Codex automation. Non-human workspace service accounts explicitly support shared workflows, but require pay-as-you-go plans. | Define whether the goal is no Platform API billing or strictly fixed-price subscription usage. Confirm the allowed shared-team identity and entitlement before provisioning credentials. |
 | Effect versions | Primary source is `4.0.0-rc.115`; `@herdr/sdk@0.9.0` directly depends on `4.0.0-beta.105`. | Choose a tested compatible package set, an updated SDK, or an isolated adapter boundary. Do not assume all v4 prereleases interoperate or solve this with unchecked dependency overrides. |
 | SDK distribution | Herdr SDK's README describes its baseline as unpublished. Namespace source is `1.1.0`, while the inspected public npm `latest` was `1.0.0` without the high-level devbox client. | Recheck releases and packaged exports. Use a released package, a separately built pinned artifact, or a supported CLI adapter. Do not import application code from `repos/`. |
@@ -70,7 +70,7 @@ Artifacts → durable storage independent of dev-box deletion
 
 `Namespace lifecycle adapter` may be a Worker-compatible HTTP service implementation or a separate Node process. The gateway's transport into Namespace is also unselected. Those are real infra decisions, not details to hide in a generic `DevboxService` interface.
 
-If Codex is the operator, it owns the model loop and calls Effect-backed MCP tools or experimental app-server dynamic tools. If an API-backed Effect `LanguageModel` is chosen, Bridle owns that multi-turn driver. A custom Codex-to-`LanguageModel` bridge is possible to investigate but carries more protocol work than exposing tools. No option has been selected by the user yet.
+If Codex is the operator, it owns the model loop and calls Effect-backed MCP tools or experimental app-server dynamic tools. With an Effect `LanguageModel`, Bridle owns that multi-turn driver. The latter can target the ordinary API or an Erudane-style OAuth-configured Codex backend, subject to validation. A custom full `LanguageModel` bridge is not automatically required. No option has been selected by the user yet.
 
 Credential isolation matters in either design. A task VM's default workload token may be broader than one task. A GitHub token that can merge undermines the no-merge rule even when no merge tool exists. Keep infrastructure credentials away from repository-controlled processes and enforce repository restrictions outside prompts where possible.
 
@@ -92,7 +92,7 @@ Local mock tests can proceed without credentials once authorized. Live tests nee
 Research surfaced three architecture choices that should be answered before the detailed service plan:
 
 - Is subscription preference about avoiding Platform API billing, or about fixed-price included usage only? Which legitimate team automation identity should Bridle use?
-- Should the first operator be Codex calling Effect-backed tools, or should we accept API billing for an Effect-native model loop? A custom subscription provider bridge is a separate, more expensive option to investigate.
+- Should we adapt Erudane's existing OAuth/client layer for the desired Effect-native operator, or choose Codex calling Effect-backed tools? API billing is a separate alternative, not a prerequisite for an Effect-native loop.
 - Should the first prototype keep dev boxes running throughout human review, or invest immediately in stop/resume-safe review sessions? Token lifetime and compute budget must agree with that choice.
 
 The first input adapter, representative repository, final code-review channel, retention, limits, and one-versus-multiple repositories per task remain product choices from [CONTEXT.md](../../CONTEXT.md). They do not prevent source research, but a precise implementation plan must state its assumptions rather than silently pick them.
@@ -103,6 +103,7 @@ The first input adapter, representative repository, final code-review channel, r
 - [Herdr sessions and Plannotator approval](herdr-plannotator.md)
 - [Namespace lifecycle, SDK, authentication, and ingress](namespace.md)
 - [OpenAI subscriptions, Codex automation, and team identity](openai-auth.md)
+- [Correction: Erudane's existing subscription-backed Effect provider](erudane-auth.md)
 - [Cloudflare storage, routing, hibernation, and alarms](cloudflare.md)
 - [Source inventory](sources.md)
 

@@ -29,6 +29,16 @@ Input types are interchangeable behind neutral Effect service contracts. Initial
 
 Anyone who can participate in the task's originating conversation can answer its questions. The prototype does not require an additional task-owner authorization role.
 
+### Provider login
+
+The UX goal is one interactive provider login per user, with the connection securely persisted and reused across tasks and dev boxes. Users should not have to log in again for every task, agent, or dev-box replacement.
+
+Refresh short-lived access tokens automatically and retain rotated credentials. Ordinary token expiry must not require human intervention. Ask the user to reconnect only when the provider requires it, such as revocation or an expired/nonrenewable session; a temporary network failure should not invalidate the saved connection.
+
+The provider connection belongs to a user, independently of any task or dev-box lifetime. Scope access through the workspace's authorization rules. Being able to answer a task question or approve its plan does not grant access to another user's provider connection. Source-identity mapping and task credential selection still need design.
+
+Provide an explicit disconnect/revoke flow. Do not promise that one login lasts forever or silently fall back to API billing. The credential store, refresh ownership, and specialist-agent authentication adapters remain implementation decisions to validate.
+
 ### Planning
 
 The planner may ask multiple questions. The operator routes them through tools to the task Durable Object, which deterministically forwards them to the configured external integration.
@@ -89,6 +99,6 @@ Do not silently decide these during research:
 - How the final review and subsequent human-requested changes enter the existing task.
 - Execution limits, cancellation, duplicate/conflicting replies, and review disagreement handling.
 - Dev-box and artifact retention while waiting for humans and after handoff.
-- Identity used for GitHub changes and subscription-backed agents in a shared team service.
+- Identity used for GitHub changes, mapping input-source users to saved provider connections, and selecting the authorized connection for a task.
 
 Research may uncover additional feasibility decisions. Capture them separately from settled product requirements.

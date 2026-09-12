@@ -4,7 +4,9 @@ Research date: 2026-09-12 UTC. Status: research, not an implementation decision.
 
 ## Conclusion
 
-**Subscription-backed Bridle is technically plausible if Codex itself is the AI operator. A ChatGPT subscription is not a credential or billing plan for arbitrary OpenAI API calls.** Effect can implement the operator's tools and durable coordination without using Effect's OpenAI model provider.
+**Correction after inspecting Erudane:** subscription-backed calls can use Effect's existing OpenAI provider with application-owned OAuth and Codex-backend configuration. Codex does not have to own the operator loop. See [the implementation evidence and remaining gaps](erudane-auth.md).
+
+A ChatGPT subscription is not a billing plan for ordinary OpenAI Platform API calls. That remains distinct from configuring Effect's client for the Codex product backend. The earlier conclusion conflated missing built-in OAuth with an architectural requirement to run Codex as the operator.
 
 The strongest current evidence is more permissive about automation than older advice suggests:
 
@@ -19,13 +21,14 @@ The unresolved product question is whether "subscriptions for all AI" means no P
 
 | Choice | Evidence and feasibility | Blocker or trade-off |
 | --- | --- | --- |
+| Effect-native operator with Erudane-style OAuth/client configuration | Existing local source uses `OpenAiLanguageModel` and `OpenAiClient` against the Codex backend, without a Codex process. | Live compatibility, runtime refresh, independent-client support, and team entitlement need validation. See [Erudane evidence](erudane-auth.md). |
 | Codex operator and Codex workers, with each human using their own subscription identity | Documented login and scripting mechanisms. Effect tools exposed through MCP, or experimental app-server dynamic tools. | Pilot candidate, not proof that a multi-user conversation may consume one person's allowance. Do not pool personal accounts or copy one refresh-token lineage across parallel devboxes. |
 | Business or Enterprise workflow-owner Codex access token | Explicitly documented for trusted automation, including app-server. No browser login needed for each job. | Confirm workspace availability, whose entitlement pays, and whether Bridle's shared-team workload fits that member-owned identity. Token creation does not create another seat or more allowance. |
 | Workspace service account, optionally using workload identity federation | Official non-human identity for shared integrations. Best identity model for a team service. | Service accounts require pay-as-you-go. Federation is beta, requires workspace enablement, and does not change billing. |
 | API-backed Effect operator, subscription-backed Codex workers | Direct Effect OpenAI calls use the documented API model. Worker subscription login is independent. | Does not meet subscription-only AI. Shared workers still need a legitimate identity model. |
 | API-backed operator and workers | OpenAI recommends API keys for general CI/shared automation. | Metered API billing rather than subscription usage. |
 
-Recommendation: evaluate Codex as the operator with Effect tools before designing any provider adapter. For a shared production service, settle the workspace identity and billing agreement first. Do not promise unlimited parallel agents for a flat subscription fee.
+Updated recommendation: evaluate the existing Erudane-style OAuth/client adapter alongside Codex with Effect tools. Erudane supplies concrete source evidence for retaining an Effect-native model loop; a new full `LanguageModel` bridge is not automatically necessary. For a shared production service, settle the workspace identity and billing agreement first. Do not promise unlimited parallel agents for a flat subscription fee.
 
 ## Evidence and scope
 
@@ -52,7 +55,7 @@ Business flexible pricing starts with per-seat limits and uses optional purchase
 
 Use the account's actual usage dashboard and `account/rateLimits/read`, not a hard-coded estimate of messages per subscription. Pricing estimates depend on model, context, reasoning, tools, caching, and task duration. Five-hour windows and weekly limits can apply. The docs allow an active turn to continue after a limit is reached, subject to fair use. That is not an entitlement to keep a turn open indefinitely. [S3, S4, S11]
 
-### Arbitrary Effect OpenAI calls cannot use the subscription as documented API auth
+### Default API authentication versus a configured Codex backend
 
 Local evidence:
 
@@ -65,10 +68,10 @@ Being able to set an arbitrary URL or bearer string is a transport capability, n
 
 Therefore:
 
-1. Ordinary `LanguageModel` calls through `@effect/ai-openai` remain API-billed.
+1. Calls through `@effect/ai-openai` targeting the ordinary OpenAI Platform API remain API-billed. The package name alone does not determine billing; Erudane configures that provider for a different backend and OAuth identity.
 2. A custom Effect service may drive the official Codex CLI, SDK, or app-server and execute typed tools. That changes the agent runtime; it does not add subscription authentication to `OpenAiClient`.
 3. A custom `LanguageModel` adapter around Codex is conceivable, but no official OpenAI/Effect adapter was found. It would have to translate thread state, built-in tools, approvals, streaming, errors, structured output, and cancellation. Do not advertise general API compatibility or assume embeddings and every API model are available.
-4. Do not extract ChatGPT tokens for direct model requests, call undocumented ChatGPT endpoints, or build a refresh-token client outside Codex.
+4. Erudane already implements OAuth login/refresh and Codex-backend requests outside the Codex process. That establishes an implementation path, not an official independent-client support guarantee. Keep service support, account permissions, and backend stability as explicit validation questions rather than declaring this architecture impossible.
 
 ## Supported authentication paths and remote devboxes
 
@@ -112,7 +115,7 @@ Workload identity federation is beta, requires OpenAI enablement and Codex `0.14
 
 ### Proposal A: Codex calls an Effect-backed MCP server
 
-This is the first integration to evaluate. Codex is the AI operator and chooses workflow actions. Effect validates and executes those actions, persists results, and delivers later events. Effect does not need to make its own model requests.
+This remains one integration candidate alongside the Erudane-style Effect provider configuration. Codex is the AI operator and chooses workflow actions. Effect validates and executes those actions, persists results, and delivers later events. Effect does not need to make its own model requests.
 
 OpenAI documents local stdio and Streamable HTTP MCP servers, bearer/OAuth authentication, tool allow/deny lists, required-server startup, and per-tool approval settings. `codex exec` exposes MCP call events in its JSONL output. These are enough documented components to justify a small integration test, not evidence that the complete Bridle workflow already works. [S6, S10]
 
