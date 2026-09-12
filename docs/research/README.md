@@ -51,6 +51,8 @@ Native Plannotator integrations differ. For example, Pi's external handoff exist
 
 ## Candidate deployment, not yet an approved plan
 
+**Alchemy v2 is the selected deployment tool**, with `alchemy.run.ts` as the infrastructure entrypoint. See [Alchemy source notes](alchemy.md). This settles the tool choice, not the resource topology below.
+
 ```text
 Input adapters
     → Cloudflare Worker
@@ -105,11 +107,12 @@ The first input adapter, representative repository, final code-review channel, r
 - [OpenAI subscriptions, Codex automation, and team identity](openai-auth.md)
 - [Correction: Erudane's existing subscription-backed Effect provider](erudane-auth.md)
 - [Cloudflare storage, routing, hibernation, and alarms](cloudflare.md)
+- [Alchemy v2 deployment and source reference](alchemy.md)
 - [Source inventory](sources.md)
 
 ## Checks performed
 
-- Initialized Git, committed the bootstrap, and imported five squashed subtrees.
+- Initialized Git, committed the bootstrap, and imported six squashed subtrees, including Alchemy after the initial research pass.
 - Compared each subtree's Git tree against the recorded upstream revision: all matched.
 - Compared parsed Herdr and SDK API schemas: equal, protocol 22.
 - Inspected source, manifests, example/test bodies, official documentation, and selected public npm metadata/archives. Reading an upstream test is not running it.

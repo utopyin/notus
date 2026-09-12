@@ -4,7 +4,7 @@ Research date: 2026-09-12. Local source references in this folder refer to the r
 
 ## Vendored repositories
 
-These are squashed Git subtrees, not submodules or nested clones. Their files are available after a normal checkout. The bootstrap and subtree imports are committed; research documents are maintained separately.
+These are squashed Git subtrees, not submodules or nested clones. Their ordinary tracked files are available after a normal checkout. Alchemy's upstream `distilled` and `floci` submodules remain uninitialized gitlinks; they are not bundled source. The bootstrap and subtree imports are committed; research documents are maintained separately.
 
 | Local directory | Upstream | Imported ref | Upstream revision |
 | --- | --- | --- | --- |
@@ -13,6 +13,7 @@ These are squashed Git subtrees, not submodules or nested clones. Their files ar
 | `repos/herdr` | https://github.com/herdrdev/herdr | `master` | `a5d5f6f654a32b27b2bd4dd8edd82f6795359269` |
 | `repos/plannotator` | https://github.com/backnotprop/plannotator | `main` | `0f2bd6051c66d26f2d776a2a521d856627b3316c` |
 | `repos/namespace-sdk` | https://github.com/namespacelabs/typescript-sdk | `main` | `a72324a20c4c6402960a2fd4ed6382624691b8d9` |
+| `repos/alchemy` | https://github.com/alchemy-run/alchemy | `main` | `e6c5a3838f742443164a86708e2e4abca781aa92` |
 
 The Namespace SDK repository was resolved through Namespace's API/SDK documentation. Herdr and Plannotator implementation repositories were resolved through their supplied documentation.
 
@@ -22,8 +23,9 @@ The Namespace SDK repository was resolved through Namespace's API/SDK documentat
 - Herdr TypeScript SDK: `@herdr/sdk@0.9.0`, with exact dependencies on `effect@4.0.0-beta.105` and `@effect/platform-node-shared@4.0.0-beta.105`. These differ from the imported Effect revision.
 - Namespace SDK: `@namespacelabs/sdk@1.1.0`.
 - Plannotator root package: `0.27.14`.
+- Alchemy: `2.0.0-beta.77`, the Effect-based v2 implementation. Its workspace overrides core Effect to `4.0.0-rc.115`.
 
-These are source manifest versions, not evidence that every package or binary has been published and tested together. All five imported subtree trees were compared against their recorded upstream commit trees and matched exactly.
+These are source manifest versions, not evidence that every package or binary has been published and tested together. All six imported subtree trees were compared against their recorded upstream commit trees and matched exactly.
 
 ## Updating references
 
@@ -40,6 +42,7 @@ See the [Effect subtree article](https://effect.website/blog/the-one-weird-git-t
 
 ## User-provided starting documentation
 
+- https://alchemy.run
 - https://namespace.so/docs/devbox
 - https://namespace.so/docs/reference/typescript-sdk
 - https://docs.plannotator.ai/open-source/start/installation

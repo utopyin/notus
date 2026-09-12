@@ -2,7 +2,7 @@
 
 Status: proposed experiments, not permission to deploy or a finalized implementation backlog. No experiment below has been run. The purpose is to remove the specific uncertainties found in the source research before writing the full infrastructure and Effect service plan.
 
-Use disposable fixture projects or separate build checkouts. Keep `repos/` read-only. Record package versions, image digests, runtime versions, protocol fixtures, compatibility dates, actual observations, and cleanup results for every experiment. Do not record credentials.
+Use Alchemy v2 and `alchemy.run.ts` for infrastructure deployment experiments. Workerd/local runtime checks can still be useful, but direct Wrangler deployment is not the chosen IaC workflow. Use disposable fixture projects or separate build checkouts. Keep `repos/` read-only. Record package versions, image digests, runtime versions, protocol fixtures, compatibility dates, actual observations, and cleanup results for every experiment. Do not record credentials.
 
 ## 0. Identity and billing decision
 

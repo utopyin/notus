@@ -74,6 +74,7 @@ Design requirement to investigate: omitting a merge tool is insufficient if a co
 ## Technology intent
 
 - Effect TypeScript **v4** for service contracts, implementations, tool definitions, and runtime logic.
+- **Alchemy v2** for infrastructure-as-code and deployment, with `alchemy.run.ts` as the stack entrypoint. Use its Effect-based APIs. Infrastructure deployment and per-task devbox lifecycle are separate concerns; exact resource ownership remains part of the architecture plan.
 - Cloudflare Workers and Durable Objects for ingress, task state, and deterministic external routing.
 - Namespace dev boxes for isolated execution environments and project service setup.
 - Herdr and the Dylan Milroy TypeScript SDK for coding-agent terminal management.
