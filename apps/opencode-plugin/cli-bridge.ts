@@ -1,0 +1,788 @@
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { parseAnnotateArgs, type ParsedAnnotateArgs } from "@plannotator/shared/annotate-args";
+import {
+  composeReviewApprovedMessage,
+  getAnnotateApprovedWithNotesPrompt,
+  getAnnotateFileFeedbackPrompt,
+  getAnnotateMessageFeedbackPrompt,
+  getReviewDeniedSuffix,
+} from "@plannotator/shared/prompts";
+import { resolveTargetAgent, resolveValidatedTargetAgent } from "./agent-switch";
+import {
+  deliverOpenCodePrompt,
+  isOpenCodePromptDeliveryError,
+} from "./prompt-delivery-error";
+
+type LogLevel = "info" | "error";
+
+interface OpenCodeClient {
+  app?: {
+    log?: (entry: { level: LogLevel; message: string }) => unknown;
+    agents?: (input?: unknown) => Promise<{ data?: OpenCodeBridgeAgent[] }>;
+  };
+  tui?: {
+    showToast?: (input: unknown) => unknown;
+  };
+  /**
+   * Host-provided visible delivery for a session URL, preferred over the toast
+   * when present. OpenCode 1 clients carry none and keep the toast unchanged;
+   * OpenCode 2's bridge client supplies one because it has no `tui` domain
+   * (see `createSessionUrlNotifier` in `v2-client.ts`).
+   */
+  notifyUrl?: (input: { url: string; message: string }) => unknown;
+  session?: {
+    messages?: (input: unknown) => Promise<{ data?: any[] }>;
+    prompt?: (input: unknown) => Promise<unknown>;
+  };
+}
+
+export interface OpenCodePlanReviewResult {
+  approved: boolean;
+  feedback?: string;
+  savedPath?: string;
+  agentSwitch?: string;
+}
+
+export interface OpenCodeBridgeAgent {
+  name: string;
+  description?: string;
+  mode?: string;
+  hidden?: boolean;
+}
+
+export interface OpenCodeBridgeContext {
+  sharingEnabled?: boolean;
+  shareBaseUrl?: string;
+  pasteApiUrl?: string;
+  agents?: OpenCodeBridgeAgent[];
+}
+
+interface RunCliOptions {
+  client: OpenCodeClient;
+  args: string[];
+  cwd?: string;
+  input?: string;
+  readyLabel: string;
+  extraEnv?: Record<string, string | undefined>;
+  bridge?: OpenCodeBridgeContext;
+  abortSignal?: AbortSignal;
+}
+
+interface RunCliResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+}
+
+interface CliSpawnConfig {
+  command: string;
+  args: string[];
+  shell: false;
+}
+
+export interface CliAnnotateOutcome {
+  decision?: "approved" | "dismissed" | "annotated";
+  feedback?: string;
+  selectedMessageId?: string;
+  feedbackScope?: "message" | "messages";
+}
+
+export interface CliReviewOutcome {
+  decision?: "approved" | "dismissed" | "annotated";
+  approved?: boolean;
+  feedback?: string;
+  agentSwitch?: string;
+  isPRMode?: boolean;
+}
+
+export interface RecentAssistantMessage {
+  messageId: string;
+  text: string;
+  timestamp?: string;
+}
+
+function log(client: OpenCodeClient, level: LogLevel, message: string): void {
+  try {
+    void client.app?.log?.({ level, message });
+  } catch {
+    // OpenCode logging is best-effort.
+  }
+}
+
+function getPlannotatorBin(): string {
+  return process.env.PLANNOTATOR_BIN?.trim() || "plannotator";
+}
+
+const TOAST_URL_RE = /https?:\/\/\S+/;
+
+// client.app.log only reaches OpenCode's server log file — it is never shown
+// in the TUI, and on OpenCode 2 it is a console.error the host discards
+// outright. Remote users, who get no auto-opened browser, therefore never saw
+// the session URL. Any URL-bearing message must ALSO go through a VISIBLE
+// surface: tui.showToast on OpenCode 1, and client.notifyUrl on OpenCode 2,
+// whose server-plugin context has no tui domain at all. Best-effort on both: a
+// host without the /tui/show-toast endpoint, or without any way to notify,
+// just no-ops. `toastedUrls` dedupes across the two delivery paths (stderr
+// forwarder + ready-file poller) so one session never stacks two notices for
+// the same URL.
+function toastPlannotatorUrl(client: OpenCodeClient, message: string, toastedUrls: Set<string>): void {
+  const url = TOAST_URL_RE.exec(message)?.[0];
+  if (!url || toastedUrls.has(url)) return;
+  toastedUrls.add(url);
+  try {
+    const notify = client.notifyUrl;
+    const result = typeof notify === "function"
+      ? notify({ url, message })
+      : (client as any).tui?.showToast?.({
+        body: { title: "Plannotator", message, variant: "info" },
+      });
+    // A fetch-level failure (host restarting) rejects the SDK promise; swallow
+    // it so a cosmetic notice can never surface an unhandled rejection — but
+    // un-mark the URL so the other delivery path (stderr forwarder vs
+    // ready-file poller) can still attempt one, and leave a log trail.
+    if (result && typeof result.catch === "function") {
+      result.catch(() => {
+        toastedUrls.delete(url);
+        log(client, "info", `[Plannotator] URL delivery failed for ${url}`);
+      });
+    }
+  } catch {
+    // Visible URL delivery is best-effort.
+  }
+}
+
+function getWindowsPathCandidates(bin: string, env: NodeJS.ProcessEnv): string[] {
+  if (path.extname(bin)) return [bin];
+
+  const extensions = (env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .map((ext) => ext.trim().toLowerCase())
+    .filter(Boolean);
+  // The Windows installer ships plannotator.exe. Avoid auto-resolving .cmd/.bat
+  // shims because those require cmd.exe and would reintroduce shell tokenization.
+  const executableExtensions = extensions.filter((ext) => ext !== ".cmd" && ext !== ".bat");
+  const preferred = [".exe", ".com"];
+  const orderedExtensions = [
+    ...preferred.filter((ext) => executableExtensions.includes(ext)),
+    ...executableExtensions.filter((ext) => !preferred.includes(ext)),
+  ];
+
+  return [...orderedExtensions.map((ext) => `${bin}${ext}`), bin];
+}
+
+export function resolveWindowsCliCommand(bin: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const pathValue = env.PATH || "";
+  if (!pathValue) return undefined;
+
+  const candidates = getWindowsPathCandidates(bin, env);
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (existsSync(fullPath)) return fullPath;
+    }
+  }
+
+  return undefined;
+}
+
+export function buildCliSpawnConfig(
+  bin: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): CliSpawnConfig {
+  if (platform === "win32" && !path.isAbsolute(bin)) {
+    return {
+      command: resolveWindowsCliCommand(bin, env) || bin,
+      args,
+      shell: false,
+    };
+  }
+
+  return { command: bin, args, shell: false };
+}
+
+function parseLastJson<T>(stdout: string): T {
+  const lines = stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.startsWith("{")) continue;
+    return JSON.parse(line) as T;
+  }
+  throw new Error("Plannotator CLI did not return JSON.");
+}
+
+export function buildCliBridgeEnv(
+  bridge: OpenCodeBridgeContext | undefined,
+): Record<string, string | undefined> {
+  return {
+    ...(bridge?.sharingEnabled !== undefined && {
+      PLANNOTATOR_SHARE: bridge.sharingEnabled ? "enabled" : "disabled",
+    }),
+    ...(bridge?.shareBaseUrl && { PLANNOTATOR_SHARE_URL: bridge.shareBaseUrl }),
+    ...(bridge?.pasteApiUrl && { PLANNOTATOR_PASTE_URL: bridge.pasteApiUrl }),
+  };
+}
+
+function buildBridgePayload(bridge: OpenCodeBridgeContext | undefined): OpenCodeBridgeContext {
+  return {
+    ...(bridge?.sharingEnabled !== undefined && { sharingEnabled: bridge.sharingEnabled }),
+    ...(bridge?.shareBaseUrl && { shareBaseUrl: bridge.shareBaseUrl }),
+    ...(bridge?.pasteApiUrl && { pasteApiUrl: bridge.pasteApiUrl }),
+    ...(bridge?.agents && { agents: bridge.agents }),
+  };
+}
+
+function logCliWarnings(client: OpenCodeClient, stderr: string): void {
+  const warningLines = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /\bwarn(?:ing)?\b/i.test(line));
+
+  for (const line of warningLines) {
+    log(client, "info", `[Plannotator] ${line}`);
+  }
+}
+
+export function formatUserFacingCliStderrLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) return undefined;
+  if (/^Open this link on your local machine to\b/.test(trimmed)) return trimmed;
+  // Current binary phrasing ("Plannotator session ready — open on your local
+  // machine (forward port N if needed):"); the older "Open this link" match is
+  // kept for users running an older plannotator binary.
+  if (/^Plannotator session ready\b/.test(trimmed)) return trimmed;
+  if (/^https?:\/\/\S+/.test(trimmed)) return trimmed;
+  if (/^\(.+annotations added in browser\)$/.test(trimmed)) return trimmed;
+  return undefined;
+}
+
+/**
+ * Exported for tests: the stderr forwarder is one of the two paths a session
+ * URL reaches the user by, and both route through `toastPlannotatorUrl`.
+ */
+export function createCliStderrForwarder(client: OpenCodeClient, toastedUrls: Set<string>) {
+  let pending = "";
+  const forwarded = new Set<string>();
+
+  const forwardLine = (line: string) => {
+    const message = formatUserFacingCliStderrLine(line);
+    if (!message || forwarded.has(message)) return;
+    forwarded.add(message);
+    log(client, "info", `[Plannotator] ${message}`);
+    toastPlannotatorUrl(client, message, toastedUrls);
+  };
+
+  return {
+    push(chunk: string) {
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? "";
+      for (const line of lines) forwardLine(line);
+    },
+    flush() {
+      if (!pending) return;
+      forwardLine(pending);
+      pending = "";
+    },
+  };
+}
+
+function logReadyFile(client: OpenCodeClient, readyFile: string, readyLabel: string, loggedUrls: Set<string>, toastedUrls: Set<string>): void {
+  if (!existsSync(readyFile)) return;
+
+  const contents = readFileSync(readyFile, "utf-8");
+  for (const line of contents.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const metadata = JSON.parse(line) as { url?: string };
+      if (!metadata.url || loggedUrls.has(metadata.url)) continue;
+      loggedUrls.add(metadata.url);
+      log(client, "info", `[Plannotator] Open ${readyLabel}: ${metadata.url}`);
+      toastPlannotatorUrl(client, `Open ${readyLabel}: ${metadata.url}`, toastedUrls);
+    } catch {
+      // Ignore partial lines while the child process is writing.
+    }
+  }
+}
+
+function getAbortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The operation was aborted", "AbortError");
+}
+
+function getErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof Error)) return undefined;
+  const code = Reflect.get(error, "code");
+  return typeof code === "string" ? code : undefined;
+}
+
+function signalChildProcess(
+  child: ReturnType<typeof spawn>,
+  signal: NodeJS.Signals,
+  detached: boolean,
+): void {
+  if (detached && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if (getErrorCode(error) !== "ESRCH") throw error;
+    }
+  }
+  child.kill(signal);
+}
+
+async function runPlannotatorCli(options: RunCliOptions): Promise<RunCliResult> {
+  options.abortSignal?.throwIfAborted();
+  const readyFile = path.join(
+    tmpdir(),
+    `plannotator-opencode-${process.pid}-${Date.now()}-${randomUUID()}.jsonl`,
+  );
+  const loggedUrls = new Set<string>();
+  const toastedUrls = new Set<string>();
+  const cwd = options.cwd ?? process.cwd();
+  const env = {
+    ...process.env,
+    ...options.extraEnv,
+    ...buildCliBridgeEnv(options.bridge),
+    OPENCODE: "1",
+    PLANNOTATOR_ORIGIN: "opencode",
+    PLANNOTATOR_CWD: cwd,
+    PLANNOTATOR_READY_FILE: readyFile,
+  };
+
+  const bin = getPlannotatorBin();
+  const spawnConfig = buildCliSpawnConfig(bin, options.args);
+  log(options.client, "info", `[Plannotator] Starting ${options.readyLabel}...`);
+
+  const abortSignal = options.abortSignal;
+  const detached = abortSignal !== undefined && process.platform !== "win32";
+  let child: ReturnType<typeof spawn> | undefined;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+  let abortListener: (() => void) | undefined;
+  let stderrForwarder: ReturnType<typeof createCliStderrForwarder> | undefined;
+
+  try {
+    return await new Promise<RunCliResult>((resolve, reject) => {
+      let stdout = "";
+      let stderr = "";
+      let processError: NodeJS.ErrnoException | undefined;
+      let aborted = false;
+
+      const requestTermination = () => {
+        if (!child || child.exitCode !== null || child.signalCode !== null) return;
+        try {
+          signalChildProcess(child, "SIGTERM", detached);
+        } catch (error) {
+          processError = error instanceof Error ? error : new Error(String(error));
+        }
+        if (forceKillTimer !== undefined) return;
+        forceKillTimer = setTimeout(() => {
+          if (!child || child.exitCode !== null || child.signalCode !== null) return;
+          try {
+            signalChildProcess(child, "SIGKILL", detached);
+          } catch {
+            // The close/error handlers report the original termination failure.
+          }
+        }, 1000);
+      };
+
+      child = spawn(spawnConfig.command, spawnConfig.args, {
+        cwd,
+        env,
+        shell: spawnConfig.shell,
+        stdio: ["pipe", "pipe", "pipe"],
+        detached,
+      });
+      stderrForwarder = createCliStderrForwarder(options.client, toastedUrls);
+      interval = setInterval(
+        () => logReadyFile(options.client, readyFile, options.readyLabel, loggedUrls, toastedUrls),
+        250,
+      );
+
+      if (!child.stdin || !child.stdout || !child.stderr) {
+        processError = new Error("Failed to open pipes for the plannotator CLI process.");
+        requestTermination();
+      } else {
+        child.stdout.setEncoding("utf-8");
+        child.stderr.setEncoding("utf-8");
+        child.stdout.on("data", (chunk) => {
+          stdout += chunk;
+        });
+        child.stderr.on("data", (chunk) => {
+          stderr += chunk;
+          stderrForwarder?.push(chunk);
+        });
+        child.stdin.once("error", (error: NodeJS.ErrnoException) => {
+          processError ??= error;
+          requestTermination();
+        });
+        child.stdin.end(options.input ?? "");
+      }
+
+      child.once("error", (error: NodeJS.ErrnoException) => {
+        processError ??= error;
+        requestTermination();
+      });
+      child.once("close", (exitCode) => {
+        if (aborted && abortSignal) {
+          reject(getAbortReason(abortSignal));
+          return;
+        }
+        if (processError?.code === "ENOENT") {
+          reject(new Error("Could not find the plannotator CLI. Install it with: curl -fsSL https://plannotator.ai/install.sh | bash"));
+          return;
+        }
+        if (processError) {
+          reject(processError);
+          return;
+        }
+        resolve({ stdout, stderr, exitCode });
+      });
+
+      if (abortSignal) {
+        abortListener = () => {
+          aborted = true;
+          requestTermination();
+        };
+        abortSignal.addEventListener("abort", abortListener, { once: true });
+        if (abortSignal.aborted) abortListener();
+      }
+    });
+  } finally {
+    if (interval !== undefined) clearInterval(interval);
+    if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
+    if (abortSignal && abortListener) abortSignal.removeEventListener("abort", abortListener);
+    stderrForwarder?.flush();
+    try {
+      logReadyFile(options.client, readyFile, options.readyLabel, loggedUrls, toastedUrls);
+    } catch {
+      // Ready metadata is best-effort during child teardown.
+    }
+    rmSync(readyFile, { force: true });
+  }
+}
+
+export function buildAnnotateCliArgs(parsed: ParsedAnnotateArgs): string[] {
+  const args = ["annotate", parsed.rawFilePath, "--json"];
+  if (parsed.gate) args.push("--gate");
+  if (parsed.renderHtml) args.push("--render-html");
+  if (parsed.renderMarkdown) args.push("--markdown");
+  if (parsed.noJina) args.push("--no-jina");
+  return args;
+}
+
+export function canLaunchGatedAnnotate(
+  parsed: Pick<ParsedAnnotateArgs, "gate">,
+  sessionId: string | undefined,
+): boolean {
+  return !parsed.gate || Boolean(sessionId);
+}
+
+export async function runCliPlanReview(input: {
+  client: OpenCodeClient;
+  planContent: string;
+  cwd?: string;
+  timeoutSeconds: number | null;
+  abortSignal?: AbortSignal;
+  bridge?: OpenCodeBridgeContext;
+}): Promise<OpenCodePlanReviewResult> {
+  const result = await runPlannotatorCli({
+    client: input.client,
+    args: ["opencode-plan"],
+    cwd: input.cwd,
+    input: JSON.stringify({
+      plan: input.planContent,
+      timeoutSeconds: input.timeoutSeconds,
+      ...buildBridgePayload(input.bridge),
+    }),
+    readyLabel: "plan review",
+    bridge: input.bridge,
+    abortSignal: input.abortSignal,
+  });
+
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.trim() || `Plannotator CLI exited with code ${result.exitCode}`);
+  }
+
+  logCliWarnings(input.client, result.stderr);
+  return parseLastJson<OpenCodePlanReviewResult>(result.stdout);
+}
+
+export async function injectSessionPrompt(
+  client: OpenCodeClient,
+  sessionId: string | undefined,
+  text: string,
+  options?: { agent?: string; noReply?: boolean },
+): Promise<void> {
+  if (!sessionId || !text.trim()) return;
+  await deliverOpenCodePrompt({
+    client,
+    prompt: {
+      path: { id: sessionId },
+      body: {
+        ...(options?.agent && { agent: options.agent }),
+        ...(options?.noReply && { noReply: true }),
+        parts: [{ type: "text", text }],
+      },
+    },
+    failureMessage: "Could not deliver Plannotator feedback to the OpenCode session.",
+  });
+}
+
+export async function getRecentAssistantMessages(
+  client: OpenCodeClient,
+  sessionId: string,
+  limit = 25,
+): Promise<RecentAssistantMessage[]> {
+  const messagesResponse = await client.session?.messages?.({
+    path: { id: sessionId },
+  });
+  const messages = messagesResponse?.data;
+  if (!messages) return [];
+
+  const recentMessages: RecentAssistantMessage[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (recentMessages.length >= limit) break;
+    const msg = messages[i];
+    if (msg.info?.role !== "assistant") continue;
+    const textParts = (msg.parts ?? [])
+      .filter((part: any) => part.type === "text" && part.text?.trim())
+      .map((part: any) => part.text);
+    if (textParts.length === 0) continue;
+    recentMessages.push({
+      messageId: msg.info?.id ?? `opencode-${i}`,
+      text: textParts.join("\n"),
+      timestamp: msg.info?.time?.created ? new Date(msg.info.time.created).toISOString() : undefined,
+    });
+  }
+
+  return recentMessages;
+}
+
+export function buildReviewPromptFromBridgeOutcome(outcome: CliReviewOutcome): {
+  message: string | null;
+  agent?: string;
+} {
+  if (outcome.decision === "dismissed") return { message: null };
+
+  const targetAgent = resolveTargetAgent(outcome.agentSwitch);
+
+  if (outcome.approved || outcome.decision === "approved") {
+    // PR5 delivery (spec §6.4, consumer #3): the CLI's JSON record carries
+    // feedback on approve; deliver it in the approved-with-notes framing
+    // instead of discarding it.
+    return {
+      message: composeReviewApprovedMessage("opencode", outcome.feedback),
+      ...(targetAgent && { agent: targetAgent }),
+    };
+  }
+
+  if (!outcome.feedback?.trim()) {
+    return {
+      message: null,
+      ...(targetAgent && { agent: targetAgent }),
+    };
+  }
+
+  return {
+    message: outcome.isPRMode
+      ? outcome.feedback
+      : `${outcome.feedback}${getReviewDeniedSuffix("opencode")}`,
+    ...(targetAgent && { agent: targetAgent }),
+  };
+}
+
+function getAnnotateFileHeader(filePath: string, cwd?: string): "File" | "Folder" {
+  if (/^https?:\/\//i.test(filePath)) return "File";
+
+  try {
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(cwd || process.cwd(), filePath);
+    return statSync(resolved).isDirectory() ? "Folder" : "File";
+  } catch {
+    return "File";
+  }
+}
+
+export function buildAnnotatePromptFromBridgeOutcome(
+  outcome: CliAnnotateOutcome,
+  target:
+    | { kind: "file"; fileHeader: "File" | "Folder"; filePath: string }
+    | { kind: "message" },
+): string | null {
+  if (outcome.decision === "dismissed" || !outcome.feedback?.trim()) return null;
+  if (outcome.decision !== "annotated" && outcome.decision !== "approved") return null;
+
+  if (outcome.decision === "approved") {
+    return getAnnotateApprovedWithNotesPrompt("opencode", undefined, {
+      context: target.kind === "file"
+        ? `${target.fileHeader}: ${target.filePath}`
+        : undefined,
+      feedback: outcome.feedback,
+    });
+  }
+
+  return target.kind === "message"
+    ? getAnnotateMessageFeedbackPrompt("opencode", undefined, {
+        feedback: outcome.feedback,
+      })
+    : getAnnotateFileFeedbackPrompt("opencode", undefined, {
+        fileHeader: target.fileHeader,
+        filePath: target.filePath,
+        feedback: outcome.feedback,
+      });
+}
+
+export async function handleCliCommand(input: {
+  command: string;
+  client: OpenCodeClient;
+  sessionId?: string;
+  rawArgs: string;
+  cwd?: string;
+  bridge?: OpenCodeBridgeContext;
+}): Promise<void> {
+  const cwd = input.cwd ?? process.cwd();
+
+  try {
+    if (input.command === "plannotator-review") {
+      const result = await runPlannotatorCli({
+        client: input.client,
+        args: ["opencode-review"],
+        cwd,
+        input: JSON.stringify({
+          arguments: input.rawArgs,
+          // Fail-closed approval-notes handshake (same version-skew reasoning
+          // as formatUserFacingCliStderrLine above: the binary and this plugin
+          // version independently). The advert lives in the binary's review
+          // server while DELIVERY lives in this plugin's
+          // buildReviewPromptFromBridgeOutcome, so the binary must advertise
+          // approvalNotesSupported for opencode ONLY when the plugin declares
+          // it delivers approve-time feedback. An old plugin omits the field,
+          // the advert stays false, and the approve-carrying menu items never
+          // render — nothing a new binary does can make an old plugin drop a
+          // reviewer's note.
+          supportsApprovalNotes: true,
+          ...buildBridgePayload(input.bridge),
+        }),
+        readyLabel: "code review",
+        bridge: input.bridge,
+      });
+      if (result.exitCode !== 0) {
+        log(input.client, "error", result.stderr.trim() || `Plannotator CLI exited with code ${result.exitCode}`);
+        return;
+      }
+
+      logCliWarnings(input.client, result.stderr);
+      const outcome = parseLastJson<CliReviewOutcome>(result.stdout);
+      const prompt = buildReviewPromptFromBridgeOutcome(outcome);
+      if (prompt.message) {
+        const targetAgent = await resolveValidatedTargetAgent({
+          client: input.client,
+          targetAgent: prompt.agent,
+          directory: cwd,
+        });
+        await injectSessionPrompt(input.client, input.sessionId, prompt.message, {
+          agent: targetAgent,
+        });
+      }
+      return;
+    }
+
+    if (input.command === "plannotator-annotate") {
+      const parsed = parseAnnotateArgs(input.rawArgs);
+      if (!parsed.filePath) {
+        log(input.client, "error", "Usage: /plannotator-annotate <file.md | file.txt | file.html | https://... | folder/> [--markdown] [--no-jina] [--gate] [--json]");
+        return;
+      }
+      if (!canLaunchGatedAnnotate(parsed, input.sessionId)) {
+        log(input.client, "error", "No active session.");
+        return;
+      }
+
+      const result = await runPlannotatorCli({
+        client: input.client,
+        args: buildAnnotateCliArgs(parsed),
+        cwd,
+        readyLabel: "annotation UI",
+        bridge: input.bridge,
+      });
+      if (result.exitCode !== 0) {
+        log(input.client, "error", result.stderr.trim() || `Plannotator CLI exited with code ${result.exitCode}`);
+        return;
+      }
+
+      logCliWarnings(input.client, result.stderr);
+      const outcome = parseLastJson<CliAnnotateOutcome>(result.stdout);
+      const prompt = buildAnnotatePromptFromBridgeOutcome(outcome, {
+        kind: "file",
+        fileHeader: getAnnotateFileHeader(parsed.filePath, input.cwd),
+        filePath: parsed.filePath,
+      });
+      if (prompt) {
+        await injectSessionPrompt(
+          input.client,
+          input.sessionId,
+          prompt,
+        );
+      }
+      return;
+    }
+
+    if (input.command === "plannotator-last") {
+      if (!input.sessionId) {
+        log(input.client, "error", "No active session.");
+        return;
+      }
+
+      const recentMessages = await getRecentAssistantMessages(input.client, input.sessionId);
+      if (recentMessages.length === 0) {
+        log(input.client, "error", "No assistant message found in session.");
+        return;
+      }
+
+      const parsed = parseAnnotateArgs(input.rawArgs);
+      const result = await runPlannotatorCli({
+        client: input.client,
+        args: ["opencode-annotate-last"],
+        cwd,
+        input: JSON.stringify({
+          gate: parsed.gate,
+          recentMessages,
+          ...buildBridgePayload(input.bridge),
+        }),
+        readyLabel: "annotation UI",
+        bridge: input.bridge,
+      });
+      if (result.exitCode !== 0) {
+        log(input.client, "error", result.stderr.trim() || `Plannotator CLI exited with code ${result.exitCode}`);
+        return;
+      }
+
+      logCliWarnings(input.client, result.stderr);
+      const outcome = parseLastJson<CliAnnotateOutcome>(result.stdout);
+      const prompt = buildAnnotatePromptFromBridgeOutcome(outcome, {
+        kind: "message",
+      });
+      if (prompt) {
+        await injectSessionPrompt(
+          input.client,
+          input.sessionId,
+          prompt,
+        );
+      }
+      return;
+    }
+
+  } catch (error) {
+    log(input.client, "error", `[Plannotator] ${error instanceof Error ? error.message : String(error)}`);
+    if (isOpenCodePromptDeliveryError(error)) throw error;
+  }
+}

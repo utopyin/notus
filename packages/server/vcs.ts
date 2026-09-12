@@ -1,0 +1,89 @@
+import {
+  type DiffType,
+  type GitDiffOptions,
+  type VcsProvider,
+  createGitButlerProvider,
+  createGitProvider,
+  createJjProvider,
+  createVcsApi,
+  resolveAvailableDiffType,
+  resolveInitialDiffType,
+} from "@plannotator/shared/vcs-core";
+import {
+  detectP4Workspace,
+  getP4Context,
+  getP4FileContentsForDiff,
+  runP4Diff,
+} from "./p4";
+import { runtime as gitRuntime } from "./git";
+import { runtime as gitButlerRuntime } from "./gitbutler";
+import { runtime as jjRuntime } from "./jj";
+
+const p4Provider: VcsProvider = {
+  id: "p4",
+
+  async detect(cwd?: string): Promise<boolean> {
+    return (await detectP4Workspace(cwd)) !== null;
+  },
+
+  ownsDiffType(diffType: string): boolean {
+    return diffType === "p4-default" || diffType.startsWith("p4-changelist:");
+  },
+
+  getContext: getP4Context,
+
+  runDiff(diffType: DiffType, _defaultBranch: string, cwd?: string, _options?: GitDiffOptions) {
+    return runP4Diff(diffType, cwd);
+  },
+
+  getFileContents(diffType, _defaultBranch, filePath, _oldPath?, cwd?) {
+    return getP4FileContentsForDiff(diffType, filePath, cwd);
+  },
+};
+
+const api = createVcsApi([
+  createJjProvider(jjRuntime, gitRuntime),
+  createGitButlerProvider(gitButlerRuntime),
+  createGitProvider(gitRuntime),
+  p4Provider,
+]);
+
+export const {
+  detectVcs,
+  detectManagedVcs,
+  vcsOwnsDiffType,
+  getVcsContext,
+  detectRemoteDefaultCompareTarget,
+  prepareLocalReviewDiff,
+  runVcsDiff,
+  getVcsFileContentsForDiff,
+  getVcsDiffFingerprint,
+  canStageFiles,
+  stageFile,
+  unstageFile,
+  resolveVcsCwd,
+  vcsSupportsSnapshot,
+  materializeVcsSnapshot,
+} = api;
+
+export { resolveAvailableDiffType, resolveInitialDiffType, gitRuntime };
+
+export type {
+  DiffOption,
+  DiffType,
+  GitContext,
+  GitDiffOptions,
+  VcsProvider,
+  VcsSelection,
+  WorktreeInfo,
+} from "@plannotator/shared/vcs-core";
+
+export {
+  JJ_TRUNK_REVSET,
+  jjCompareTargetRevset,
+  jjLineBaseRevset,
+  parseCommitDiffType,
+  parseRemoteBookmark,
+  parseWorktreeDiffType,
+  validateFilePath,
+} from "@plannotator/shared/vcs-core";
