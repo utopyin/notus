@@ -2,6 +2,10 @@ import * as Schema from "effect/Schema";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
+/** Subscription login through the Codex backend, or Platform API key billing. */
+export const Provider = Schema.Literals(["openai-chatgpt", "openai-api"]);
+export type Provider = typeof Provider.Type;
+
 /** A ChatGPT subscription login as the Codex public client issues it. */
 export const TokenSet = Schema.Struct({
   access: Schema.NonEmptyString,

@@ -1,5 +1,6 @@
 import { Failure as AuthenticationFailure } from "@notus/control/runtime/auth";
 import { Mode } from "@notus/executions/types";
+import { Provider } from "@notus/openai/types";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -46,9 +47,15 @@ export const runtimeConfig = Effect.gen(function* () {
 });
 export type RuntimeConfig = NonNullable<Effect.Success<typeof runtimeConfig>>;
 
-/** Read by the Task host for operator turns. Contains no credentials. */
+/**
+ * Read by the Task and Connection hosts. Contains no credentials. The subscription backend
+ * is the default; Platform API billing must be selected explicitly.
+ */
 export const operatorConfig = Effect.gen(function* () {
   return {
+    provider: yield* Config.schema(Provider, "NOTUS_MODEL_PROVIDER").pipe(
+      Config.withDefault("openai-chatgpt"),
+    ),
     model: yield* Config.schema(Schema.NonEmptyString, "NOTUS_MODEL").pipe(
       Config.withDefault("gpt-5.4"),
     ),
@@ -64,7 +71,8 @@ export type OperatorConfig = Effect.Success<typeof operatorConfig>;
  */
 export const fixtureConnection = Effect.gen(function* () {
   const login = yield* Config.option(Config.redacted("NOTUS_FIXTURE_CHATGPT_OAUTH"));
-  return Option.getOrNull(login);
+  const apiKey = yield* Config.option(Config.redacted("NOTUS_FIXTURE_OPENAI_API_KEY"));
+  return { login: Option.getOrNull(login), apiKey: Option.getOrNull(apiKey) };
 });
 
 /** Read only by the execution host, not the Slack ingress or the devbox. */

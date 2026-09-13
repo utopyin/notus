@@ -9,7 +9,8 @@ import * as Schema from "effect/Schema";
 export const connections = sqliteTable("account_connections", {
   singleton: integer().primaryKey().$type<1>(),
   userId: text().notNull(),
-  provider: text({ enum: ["openai-chatgpt"] }).notNull(),
+  provider: text({ enum: ["openai-chatgpt", "openai-api"] }).notNull(),
+  /** Subscription logins carry account, access and refresh; API keys store the key as access. */
   accountId: text().notNull(),
   access: text().notNull(),
   refresh: text().notNull(),

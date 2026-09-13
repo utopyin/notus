@@ -1,7 +1,13 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { Codex } from "@notus/openai/codex";
+import { Backend } from "@notus/openai/backend";
 import { OAuth } from "@notus/openai/oauth";
-import { ForwardRequest, ForwardResponse, TokenSet, replayable } from "@notus/openai/types";
+import {
+  ForwardRequest,
+  ForwardResponse,
+  Provider,
+  TokenSet,
+  replayable,
+} from "@notus/openai/types";
 import { eq, lt } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -16,17 +22,35 @@ import { ConnectionRow, ForwardRow, connections, forwards } from "./connection";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 /** Explicit administrator link. Possession of a login file is not a link. */
-export const Seed = Schema.Struct({
-  userId: Schema.NonEmptyString,
-  provider: Schema.Literal("openai-chatgpt"),
-  tokens: TokenSet,
-  fingerprint: Schema.NonEmptyString,
-});
-export interface Seed extends Schema.Schema.Type<typeof Seed> {}
+export const Seed = Schema.Union([
+  Schema.Struct({
+    userId: Schema.NonEmptyString,
+    provider: Schema.Literal("openai-chatgpt"),
+    tokens: TokenSet,
+    fingerprint: Schema.NonEmptyString,
+  }),
+  Schema.Struct({
+    userId: Schema.NonEmptyString,
+    provider: Schema.Literal("openai-api"),
+    key: Schema.NonEmptyString,
+    fingerprint: Schema.NonEmptyString,
+  }),
+]);
+export type Seed = typeof Seed.Type;
+const stored = (seed: Seed) =>
+  seed.provider === "openai-chatgpt"
+    ? {
+        provider: seed.provider,
+        accountId: seed.tokens.accountId,
+        access: seed.tokens.access,
+        refresh: seed.tokens.refresh,
+        expiresAt: seed.tokens.expiresAt,
+      }
+    : { provider: seed.provider, accountId: "", access: seed.key, refresh: "", expiresAt: 0 };
 export const ConnectionStatus = Schema.Struct({
   userId: Schema.NonEmptyString,
   linked: Schema.Boolean,
-  provider: Schema.NullOr(Schema.Literal("openai-chatgpt")),
+  provider: Schema.NullOr(Provider),
   accountId: Schema.NullOr(Schema.NonEmptyString),
   expiresAt: Schema.NullOr(Millis),
   rotatedAt: Schema.NullOr(Millis),
@@ -136,11 +160,7 @@ export const layerNoDeps = Layer.effect(
               yield* tx
                 .update(connections)
                 .set({
-                  provider: seed.provider,
-                  accountId: seed.tokens.accountId,
-                  access: seed.tokens.access,
-                  refresh: seed.tokens.refresh,
-                  expiresAt: seed.tokens.expiresAt,
+                  ...stored(seed),
                   seedFingerprint: seed.fingerprint,
                   linkedAt: now,
                   rotatedAt: null,
@@ -151,11 +171,7 @@ export const layerNoDeps = Layer.effect(
               yield* tx.insert(connections).values({
                 singleton: 1,
                 userId: seed.userId,
-                provider: seed.provider,
-                accountId: seed.tokens.accountId,
-                access: seed.tokens.access,
-                refresh: seed.tokens.refresh,
-                expiresAt: seed.tokens.expiresAt,
+                ...stored(seed),
                 seedFingerprint: seed.fingerprint,
                 linkedAt: now,
               });
@@ -185,7 +201,8 @@ export const layerNoDeps = Layer.effect(
     });
     /** Rotation is persisted before the new access token is ever used. */
     const fresh = Effect.fn("Connections.fresh")(function* (row: ConnectionRow, now: number) {
-      if (row.expiresAt - now > refreshWindow) return row;
+      // API keys do not rotate; only subscription logins expire.
+      if (row.provider !== "openai-chatgpt" || row.expiresAt - now > refreshWindow) return row;
       const rotated = yield* OAuth.refresh(Redacted.make(row.refresh)).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.mapError((error) =>
@@ -251,17 +268,19 @@ export const layerNoDeps = Layer.effect(
           }
           const now = yield* Clock.currentTimeMillis;
           const current = yield* fresh(row, now);
-          return {
-            _tag: "Grant" as const,
-            credentials: {
-              access: Redacted.make(current.access),
-              accountId: current.accountId,
-            },
-          };
+          const credentials: Backend.Credentials =
+            current.provider === "openai-chatgpt"
+              ? {
+                  provider: current.provider,
+                  access: Redacted.make(current.access),
+                  accountId: current.accountId,
+                }
+              : { provider: current.provider, key: Redacted.make(current.access) };
+          return { _tag: "Grant" as const, credentials };
         }),
       );
       if (authorized._tag === "Replay") return authorized.response;
-      const response = yield* Codex.forward(authorized.credentials, request).pipe(
+      const response = yield* Backend.forward(authorized.credentials, request).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.mapError((error) =>
           fail(error.reason === "unsupported-request" ? "invalid-input" : "provider-unavailable"),

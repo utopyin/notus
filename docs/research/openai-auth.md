@@ -20,7 +20,7 @@ Two independent checks after the first operator deployment, both recorded withou
 - From a deployed Cloudflare Worker, `POST https://chatgpt.com/backend-api/codex/responses` returns HTTP 403 with a Cloudflare challenge HTML page even with an invalid bearer, so the rejection precedes authentication. A throwaway edge preview reproduced it (`.alchemy/inspection/edge-probe.ts`). The subscription backend is therefore unreachable from Workers egress as deployed; the operator's first live turns failed as `AuthenticationError:InsufficientPermissions`.
 - From the user's machine with the fresh login, the same request authenticates but returns HTTP 400 `The '<model>' model is not supported when using Codex with a ChatGPT account.` for `gpt-5.4`, `gpt-5.4-codex`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5-codex` and `codex-mini-latest`, with and without streaming, instructions, or the Codex CLI originator and user agent. This reads as an account entitlement, not a request-shape problem, and is unresolved.
 
-Neither finding changes the requirement to prefer subscription-backed usage; both block it on the current path.
+Neither finding changes the requirement to prefer subscription-backed usage; both block it on the current path. The user reports that the Codex CLI works with the same account, so the 400 is specific to this client and remains open. The user explicitly selected the Platform API key for the test stage instead; that is a recorded decision, not a silent fallback.
 
 ## Effect compatibility
 

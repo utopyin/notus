@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { deploymentConfig, fixtureConnection } from "./config";
+import { deploymentConfig, fixtureConnection, operatorConfig } from "./config";
 import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/connection/migrations";
 
@@ -29,13 +29,14 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
     const host = yield* Cloudflare.DurableObjectState;
     const config = yield* deploymentConfig.pipe(Effect.orDie);
     const fixture = yield* fixtureConnection.pipe(Effect.orDie);
+    const operator = yield* operatorConfig.pipe(Effect.orDie);
     const context = yield* CurrentRuntimeContext;
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
-    return { host, config, fixture, context };
+    return { host, config, fixture, operator, context };
   }).pipe(
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, config, fixture, context }) =>
+    Effect.map(({ host, config, fixture, operator, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         const services = yield* Layer.build(
@@ -51,21 +52,32 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
             const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
             return yield* exit;
           }).pipe(Effect.provideService(RuntimeContext, context));
+        const fingerprintOf = (material: string) =>
+          crypto.digest("SHA-256", new TextEncoder().encode(material)).pipe(
+            Effect.map(Encoding.encodeHex),
+            Effect.mapError(() => new ConnectionError({ reason: "storage" })),
+          );
         /**
-         * Only the deployment's fixture user, only from the explicit deployment secret, only
-         * while unlinked, and never the same seed twice. Revoking blocks automatic re-seeding.
+         * Only the deployment's fixture user, only the explicitly selected provider's deployment
+         * secret, only while unlinked, and never the same seed twice. Revoking blocks re-seeding.
          */
         const seed = Effect.fn("Connection.seed")(function* (userId: string) {
-          if (fixture === null || userId !== config.canonicalUserId) return;
+          if (userId !== config.canonicalUserId) return;
           const status = yield* connections.status(userId);
           if (status.linked) return;
-          const login = yield* Schema.decodeEffect(loginJson)(Redacted.value(fixture)).pipe(
+          if (operator.provider === "openai-api") {
+            if (fixture.apiKey === null) return;
+            const key = Redacted.value(fixture.apiKey);
+            const fingerprint = yield* fingerprintOf(`openai-api:${key}`);
+            if (status.seedFingerprint === fingerprint) return;
+            yield* connections.link({ userId, provider: "openai-api", key, fingerprint });
+            return;
+          }
+          if (fixture.login === null) return;
+          const login = yield* Schema.decodeEffect(loginJson)(Redacted.value(fixture.login)).pipe(
             Effect.mapError(() => new ConnectionError({ reason: "invalid-input" })),
           );
-          const digest = yield* crypto
-            .digest("SHA-256", new TextEncoder().encode(`${login.accountId}:${login.refresh}`))
-            .pipe(Effect.mapError(() => new ConnectionError({ reason: "storage" })));
-          const fingerprint = Encoding.encodeHex(digest);
+          const fingerprint = yield* fingerprintOf(`${login.accountId}:${login.refresh}`);
           if (status.seedFingerprint === fingerprint) return;
           yield* connections.link({
             userId,
