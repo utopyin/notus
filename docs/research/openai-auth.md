@@ -13,6 +13,15 @@ Erudane's inspected source provides a concrete configuration pattern:
 
 Notus now implements this pattern for the Worker: `@notus/openai` owns the Codex public-client refresh, the subscription-backend forward with a strict request allowlist, and the `LanguageModel` layer; `accounts/connections` owns one saved login per user with serialized refresh, rotated-pair persistence before use, revocation and operation-keyed replay; the Connection Durable Object hosts it. The [login](../../scripts/chatgpt/login.ts) and [token](../../scripts/chatgpt/token.ts) scripts remain development helpers whose plaintext file is only a seed for an explicit administrator link. Account-ID extraction still decodes an unverified JWT claim; it routes requests and authenticates nobody. Offline native validation is recorded in the [operator plan](../plans/operator.md); live backend behavior is not yet observed.
 
+## Live findings, 2026-09-14
+
+Two independent checks after the first operator deployment, both recorded without credential material:
+
+- From a deployed Cloudflare Worker, `POST https://chatgpt.com/backend-api/codex/responses` returns HTTP 403 with a Cloudflare challenge HTML page even with an invalid bearer, so the rejection precedes authentication. A throwaway edge preview reproduced it (`.alchemy/inspection/edge-probe.ts`). The subscription backend is therefore unreachable from Workers egress as deployed; the operator's first live turns failed as `AuthenticationError:InsufficientPermissions`.
+- From the user's machine with the fresh login, the same request authenticates but returns HTTP 400 `The '<model>' model is not supported when using Codex with a ChatGPT account.` for `gpt-5.4`, `gpt-5.4-codex`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5-codex` and `codex-mini-latest`, with and without streaming, instructions, or the Codex CLI originator and user agent. This reads as an account entitlement, not a request-shape problem, and is unresolved.
+
+Neither finding changes the requirement to prefer subscription-backed usage; both block it on the current path.
+
 ## Effect compatibility
 
 Evidence: `repos/effect/packages/ai/openai/src/{OpenAiClient,OpenAiLanguageModel,OpenAiStructuredOutput}.ts`; [Effect notes](effect-v4.md).

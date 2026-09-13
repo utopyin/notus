@@ -175,9 +175,14 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   final: result.final,
                 })),
                 Effect.catch((error) =>
-                  Effect.map(Clock.currentTimeMillis, (now): StepOutcome =>
-                    Operator.classify(error, claimed.step.attempts, now),
-                  ),
+                  Effect.gen(function* () {
+                    // Provider descriptions carry status and error code; headers are redacted.
+                    yield* Effect.logWarning(
+                      `task.operator_step_failed ${error.cause._tag}: ${error.message.slice(0, 500)}`,
+                    );
+                    const now = yield* Clock.currentTimeMillis;
+                    return Operator.classify(error, claimed.step.attempts, now) as StepOutcome;
+                  }),
                 ),
               );
               yield* gate(

@@ -4,7 +4,9 @@ Implementation and verification of the authorized [source round trip](../plans/i
 
 ## Current status
 
-The dedicated Notus Slack test Worker now provisions retained Namespace devboxes and reports authenticated native Herdr readiness. The user confirmed a successful real Slack test on devbox `94cpdvujqgg92`, then confirmed warm and cold wake in the same thread. This deployed round-trip evidence is user-reported; the isolated live lifecycle and native-workerd checks are recorded separately in [Namespace evidence](namespace.md#readiness-automation-probe-2026-09-13).
+The test Worker now runs in operator mode for new tasks. On 2026-09-14 two live mentions were admitted, answered in-thread, and fulfilled, but each answer was the operator's fallback because the model request failed at the provider; see the [OpenAI live findings](openai-auth.md#live-findings-2026-09-14). Readiness and simulation tasks keep their persisted modes and the retained devbox is unaffected.
+
+The dedicated Notus Slack test Worker also provisions retained Namespace devboxes and reports authenticated native Herdr readiness. The user confirmed a successful real Slack test on devbox `94cpdvujqgg92`, then confirmed warm and cold wake in the same thread. This deployed round-trip evidence is user-reported; the isolated live lifecycle and native-workerd checks are recorded separately in [Namespace evidence](namespace.md#readiness-automation-probe-2026-09-13).
 
 The deployment uses workspace environment revision 1 and the approved callback-enabled image. New tasks select readiness mode; existing simulation tasks keep their persisted mode. The preparation deployment kept simulation selected while migrations and workspace configuration were applied. A subsequent forced test-stage deployment applied the readiness configuration because an ordinary Alchemy plan did not detect the changed secret-backed mode value. Only the existing test Worker and D1 resource were updated. No models, repository execution, or production deployment are enabled.
 
