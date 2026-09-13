@@ -1,6 +1,7 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
 import type { Admission } from "@notus/contracts/source";
 import * as Control from "@notus/control/task";
+import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";
 import * as Authentication from "@notus/control/runtime/auth";
 import { Failure as RuntimeFailure } from "@notus/control/runtime/errors";
@@ -9,18 +10,24 @@ import * as Runtime from "@notus/control/runtime/server";
 import { Attempts } from "@notus/executions/attempts";
 import { Devbox } from "@notus/executions/devbox";
 import { Provisioning } from "@notus/executions/provisioning";
+import { Steps, type StepOutcome } from "@notus/executions/steps";
 import type { Observation } from "@notus/executions/types";
+import { Operator } from "@notus/operator/operator";
 import { Slack } from "@notus/slack/service";
 import { Sources } from "@notus/tasks/sources";
 import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle/Cloudflare";
+import { CurrentRuntimeContext } from "alchemy/RuntimeContext";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { deploymentConfig, providerConfig, runtimeConfig } from "./config";
+import * as Broker from "./broker";
+import { deploymentConfig, operatorConfig, providerConfig, runtimeConfig } from "./config";
+import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/task/migrations";
@@ -34,16 +41,22 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const provider = runtime ? yield* providerConfig.pipe(Effect.orDie) : null;
     if (config.mode === "readiness" && !runtime)
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
-    return { host, config, runtime, provider };
+    const operator = yield* operatorConfig.pipe(Effect.orDie);
+    // Model requests leave this object only through the initiator's Connection object.
+    const connections = yield* Connection;
+    const context = yield* CurrentRuntimeContext;
+    if (!context) return yield* Effect.die("Task initialization requires Alchemy RuntimeContext");
+    return { host, config, runtime, provider, operator, connections, context };
   }).pipe(
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, config, runtime, provider }) =>
+    Effect.map(({ host, config, runtime, provider, operator, connections, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         const database = Sqlite.layer(db);
         const stateLayer = State.layer.pipe(Layer.provide([database, State.configuration(config)]));
         const attemptsLayer = Attempts.layer.pipe(Layer.provide(database));
         const provisioningLayer = Provisioning.layer.pipe(Layer.provide(database));
+        const stepsLayer = Steps.layer.pipe(Layer.provide(database));
         const sourcesLayer = Sources.layer.pipe(
           Layer.provide([
             Layer.succeed(Sources.ConfigurationService, config),
@@ -56,7 +69,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const services = yield* Layer.build(
           Layer.merge(
             Layer.merge(stateLayer, sourcesLayer),
-            Layer.merge(attemptsLayer, provisioningLayer),
+            Layer.merge(Layer.merge(attemptsLayer, provisioningLayer), stepsLayer),
           ).pipe(
             Layer.provideMerge(RuntimeLayers.execution(runtime, provider)),
             Layer.provide(cryptoLayer),
@@ -65,12 +78,19 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const state = yield* State.Service.pipe(Effect.provideContext(services));
         const provisioning = yield* Provisioning.Service.pipe(Effect.provideContext(services));
         const devbox = yield* Devbox.Service.pipe(Effect.provideContext(services));
+        const steps = yield* Steps.Service.pipe(Effect.provideContext(services));
+        // Built once per object lifetime; each model request selects its operation at call time.
+        const model = yield* Layer.build(Broker.languageModel(connections, context, operator)).pipe(
+          Effect.orDie,
+        );
         const mode = state.snapshot.pipe(
           Effect.map((snapshot) => snapshot.task?.mode ?? config.mode),
         );
         const advance = Effect.fn("Task.advance")((now: number) =>
           Effect.gen(function* () {
-            if ((yield* mode) === "readiness") return yield* ReadinessControl.advance(now);
+            const selected = yield* mode;
+            if (selected === "readiness") return yield* ReadinessControl.advance(now);
+            if (selected === "operator") return yield* OperatorControl.advance(now);
             return yield* Control.advance(now, config.simulationDelayMs);
           }).pipe(Effect.provideContext(services)),
         );
@@ -87,10 +107,13 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         });
         const recompute = Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
+          const selected = yield* mode;
           const next =
-            (yield* mode) === "readiness"
+            selected === "readiness"
               ? yield* ReadinessControl.nextWake(now).pipe(Effect.provideContext(services))
-              : yield* Control.nextWake(now).pipe(Effect.provideContext(services));
+              : selected === "operator"
+                ? yield* OperatorControl.nextWake(now).pipe(Effect.provideContext(services))
+                : yield* Control.nextWake(now).pipe(Effect.provideContext(services));
           if (next === null) yield* host.storage.deleteAlarm();
           else yield* host.storage.setAlarm(Math.max(now + 1, next));
         });
@@ -125,6 +148,48 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   }),
                 );
               }).pipe(Effect.catchCause(() => Effect.logError("task.provisioning_failed")));
+            }
+          }
+          if ((yield* mode) === "operator") {
+            for (let index = 0; index < 4; index++) {
+              const claimed = yield* gate(
+                Effect.gen(function* () {
+                  const now = yield* Clock.currentTimeMillis;
+                  // Cover the step lease so a lost isolate re-offers the step.
+                  yield* arm(now + 150_000);
+                  return yield* OperatorControl.claim(now).pipe(Effect.provideContext(services));
+                }),
+              );
+              if (!claimed) break;
+              // The model round runs outside the gate; the Connection object owns credentials.
+              const outcome = yield* Operator.run(claimed.briefing, claimed.step.priorParts).pipe(
+                Effect.provideService(Broker.Operation, {
+                  userId: claimed.briefing.initiatorId,
+                  operationId: claimed.step.operationId,
+                }),
+                Effect.provideContext(model),
+                Effect.map((result): StepOutcome => ({
+                  _tag: "Completed",
+                  parts: result.parts,
+                  text: result.text,
+                  final: result.final,
+                })),
+                Effect.catch((error) =>
+                  Effect.map(Clock.currentTimeMillis, (now): StepOutcome =>
+                    Operator.classify(error, claimed.step.attempts, now),
+                  ),
+                ),
+              );
+              yield* gate(
+                Effect.gen(function* () {
+                  const now = yield* Clock.currentTimeMillis;
+                  yield* arm(now + 1);
+                  yield* OperatorControl.record(claimed.step, outcome, now).pipe(
+                    Effect.provideContext(services),
+                  );
+                  yield* recompute;
+                }),
+              ).pipe(Effect.catchCause(() => Effect.logError("task.operator_record_failed")));
             }
           }
           const counts = { claimed: 0, confirmed: 0, rateLimited: 0, rejected: 0, ambiguous: 0 };
@@ -178,7 +243,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
           yield* Effect.logInfo("task.drain", counts);
         }).pipe(
           Effect.catchCause((cause) =>
-            Effect.logError("task.drain_failed").pipe(Effect.andThen(Effect.failCause(cause))),
+            Effect.logError("task.drain_failed", Cause.pretty(cause)).pipe(
+              Effect.andThen(Effect.failCause(cause)),
+            ),
           ),
           // Alchemy serializes typed errors. A defect rejects the alarm for CF retry.
           Effect.orDie,
@@ -202,7 +269,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 const receipt = yield* (
                   selected === "readiness"
                     ? ReadinessControl.admit(command)
-                    : Control.admit(command, config.simulationDelayMs)
+                    : selected === "operator"
+                      ? OperatorControl.admit(command)
+                      : Control.admit(command, config.simulationDelayMs)
                 ).pipe(Effect.provideContext(services));
                 return {
                   receipt,
@@ -330,9 +399,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             gate(
               Effect.gen(function* () {
                 const snapshot = yield* Control.snapshot().pipe(Effect.provideContext(services));
-                return (yield* mode) === "readiness"
+                const selected = yield* mode;
+                return selected === "readiness"
                   ? { ...snapshot, provisioning: yield* provisioning.current }
-                  : snapshot;
+                  : selected === "operator"
+                    ? { ...snapshot, steps: yield* steps.snapshot }
+                    : snapshot;
               }),
             ),
           alarm: () => alarm,

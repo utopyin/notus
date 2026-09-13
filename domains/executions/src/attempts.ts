@@ -8,23 +8,29 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Conflict, StaleAttempt, StorageFailure, type ExecutionError } from "./errors";
 import { Attempt, Invocation, Outcome, attempts, invocations, outcomes } from "./schema";
-import { Millis, Observation, digest } from "./types";
+import { Millis, Mode, Observation, digest } from "./types";
 
 /** Execution-owned transactions contain no external effects. */
 const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
-  const ensure = Effect.fn("Attempts.ensure")(function* (taskId: string, now: number) {
+  const ensure = Effect.fn("Attempts.ensure")(function* (taskId: string, now: number, mode: Mode) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(taskId);
     yield* Schema.decodeEffect(Millis)(now);
+    yield* Schema.decodeEffect(Mode)(mode);
     const [row] = yield* db
       .select()
       .from(attempts)
       .where(and(eq(attempts.taskId, taskId), eq(attempts.active, true)));
-    if (row) return yield* Schema.decodeEffect(Attempt)(row);
+    if (row) {
+      const active = yield* Schema.decodeEffect(Attempt)(row);
+      // The persisted attempt mode is immutable; a deployment default never rewrites it.
+      if (active.mode !== mode) return yield* new Conflict({ message: "Attempt mode mismatch" });
+      return active;
+    }
     const attempt: Attempt = {
       id: yield* crypto.randomUUIDv4,
       taskId,
       generation: 1,
-      mode: "simulation",
+      mode,
       active: true,
       createdAt: now,
     };
@@ -181,7 +187,11 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 };
 
 export interface Interface {
-  readonly ensure: (taskId: string, now: number) => Effect.Effect<Attempt, ExecutionError>;
+  readonly ensure: (
+    taskId: string,
+    now: number,
+    mode: Mode,
+  ) => Effect.Effect<Attempt, ExecutionError>;
   readonly schedule: (
     attempt: Attempt,
     inputId: string,
@@ -229,10 +239,10 @@ export const layerNoDeps = Layer.effect(
         }),
       );
     return Service.of({
-      ensure: Effect.fn("Attempts.ensureAtomic")((taskId, now) =>
+      ensure: Effect.fn("Attempts.ensureAtomic")((taskId, now, mode) =>
         wrap(
           "ensure",
-          db.transaction((tx) => queries(tx).ensure(taskId, now)),
+          db.transaction((tx) => queries(tx).ensure(taskId, now, mode)),
         ),
       ),
       schedule: Effect.fn("Attempts.scheduleAtomic")((attempt, inputId, dueAt, content) =>

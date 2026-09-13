@@ -11,6 +11,7 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as Callback from "./callback";
 import { deploymentConfig, runtimeConfig } from "./config";
+import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import { SharedDatabase } from "./database";
@@ -24,6 +25,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
     const tasks = yield* Task;
+    const connections = yield* Connection;
     const database = yield* SharedDatabase;
     const binding = yield* Cloudflare.D1.QueryDatabase(database);
     const execution = yield* Cloudflare.WorkerExecutionContext;
@@ -94,6 +96,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
       }),
       // Binding RPC only. No fetch route exposes task state or seed authority.
       snapshot: (taskId: string) => tasks.getByName(taskId).snapshot(),
+      // Status only: no method here returns or accepts provider tokens.
+      connectionStatus: (userId: string) => connections.getByName(userId).status(userId),
+      revokeConnection: (userId: string) => connections.getByName(userId).revoke(userId),
       inboxSnapshot: () => withInbox((inbox) => inbox.snapshot(config.workspaceId)),
       configureEnvironment: (provider: string, environment: Schema.Json) =>
         withInbox(() =>

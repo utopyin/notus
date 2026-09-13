@@ -13,6 +13,7 @@
     "@notus/cloudflare": "workspace:*",
     "@notus/contracts": "workspace:*",
     "@notus/executions": "workspace:*",
+    "@notus/operator": "workspace:*",
     "@notus/slack": "workspace:*",
     "@notus/tasks": "workspace:*",
     "@notus/workspaces": "workspace:*",

@@ -150,6 +150,39 @@ export const wakes = sqliteTable("execution_wakes", {
   receipt: text({ mode: "json" }).$type<WakeReceipt>().notNull(),
 });
 
+/**
+ * Operator checkpoints: one model round per step, sequential within an invocation.
+ * parts holds the encoded response once the step is done; the prompt is rebuilt from
+ * the task record plus these parts, never from a live process.
+ */
+export const steps = sqliteTable(
+  "execution_steps",
+  {
+    id: text().primaryKey(),
+    invocationId: text()
+      .notNull()
+      .references(() => invocations.id),
+    index: integer().notNull(),
+    operationId: text().notNull().unique(),
+    status: text({ enum: ["pending", "running", "done", "failed"] }).notNull(),
+    attempts: integer().notNull().default(0),
+    dueAt: integer().notNull(),
+    recoverAt: integer(),
+    parts: text({ mode: "json" }).$type<Schema.Json>(),
+    text: text(),
+    final: integer({ mode: "boolean" }).notNull().default(false),
+    failure: text(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("execution_step_index").on(t.invocationId, t.index),
+    index("execution_step_due").on(t.status, t.dueAt),
+  ],
+);
+export const Step = createSelectSchema(steps, { parts: Schema.NullOr(Schema.Json) });
+export interface Step extends Schema.Schema.Type<typeof Step> {}
+
 /** Drizzle migration aggregate. Parent owns migration generation. */
 export const tables = {
   attempts,
@@ -159,4 +192,5 @@ export const tables = {
   enrollments,
   readiness,
   wakes,
+  steps,
 };

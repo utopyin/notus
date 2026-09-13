@@ -69,7 +69,7 @@ const schedule = Effect.fn("Control.schedule")(function* (now: number, simulatio
   const attempts = yield* Attempts.Service;
   const missing = yield* state.missingHandoffs(yield* attempts.scheduledInputIds, batchSize);
   for (const input of missing) {
-    const attempt = yield* attempts.ensure(input.taskId, now);
+    const attempt = yield* attempts.ensure(input.taskId, now, "simulation");
     yield* attempts.schedule(
       attempt,
       input.inputId,

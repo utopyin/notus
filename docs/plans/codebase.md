@@ -19,9 +19,9 @@ Introduce packages as needed, not empty scaffolding. `contracts` holds shared ID
 | Domain       | Owns                                                                                                                                                                                                                                                                                                                    |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspaces` | Membership, repository/access policy, source-installation associations, environment profiles, versioned process configuration                                                                                                                                                                                           |
-| `accounts`   | Canonical users, verified external identity links, saved model connections, renewal/revocation, authorized usage grants                                                                                                                                                                                                 |
+| `accounts`   | Canonical users, verified external identity links, saved model connections, renewal/revocation, authorized forwarding of model requests, authorized usage grants                                                                                                                                                        |
 | `tasks`      | Request/origin, source attachments and input/output configuration, inputs/reply targets/responses, selected process configuration, progress, questions/replies, plan revisions/approval capabilities, decisions/disclosure, findings/dispositions, artifact associations, acknowledgement/answer/update delivery intent |
-| `executions` | Attempt identity/generation, devbox assignment, provisioning intent, specialist sessions/rounds, invocation outcomes and evidence                                                                                                                                                                                       |
+| `executions` | Attempt identity/generation, devbox assignment, provisioning intent, operator steps, specialist sessions/rounds, invocation outcomes and evidence                                                                                                                                                                       |
 
 Executions has control-side `/attempts` and devbox-side `/agents` modules. Agents use neutral session/review capabilities; local execution observations do not decide task completion. Keep these in one domain but do not require both hosts' dependencies in one service.
 
@@ -39,12 +39,12 @@ Each capability exposes its default through the [canonical service namespace](..
 | `executions/sessions`     | `sessions/herdr`                  | `@notus/herdr`                  |
 | `executions/plan-review`  | `plan-review/plannotator`         | `@notus/plannotator`            |
 | `tasks/sources`           | `sources/slack`, `sources/github` | `@notus/slack`, `@notus/github` |
-| `accounts/connections`    | `connections/openai`              | `@notus/openai`                 |
+| `accounts/connections`    | `connections`                     | `@notus/openai`                 |
 | `workspaces/repositories` | `repositories/github`             | `@notus/github`                 |
 | `tasks/store`             | `store/cloudflare`                | `@notus/cloudflare`             |
 | `tasks/artifacts`         | `artifacts/r2`                    | `@notus/cloudflare`             |
 
-Reuse Effect's neutral `LanguageModel` for inference. `executions/model/openai` assembles the default using the OpenAI package and authorized runtime context; it does not own connection storage or refresh policy.
+Reuse Effect's neutral `LanguageModel` for inference. `@notus/openai` exposes the subscription-backend `LanguageModel` layer over a caller-supplied `HttpClient`; `apps/api` supplies the broker transport, so the model layer never sees a token. Connection storage and refresh policy stay in `accounts/connections`.
 
 ## Entrypoints
 
@@ -61,7 +61,7 @@ Owns HTTP/WebSocket routes, control protocol/client, and cross-domain use cases:
 
 ### `operator`
 
-Owns the model driver, tool assembly, and default Markdown prompts under `prompts/`. It is an entrypoint because it assembles domains into an AI tool interface. Tool implementations call domain services, not provider SDKs.
+Owns the model driver, tool assembly, and default prompts. It is an entrypoint because it assembles domains into an AI tool interface. Tool implementations call domain services, not provider SDKs. The loop runs inside the Task Durable Object: `control/operator` claims a persisted step under the host gate, the host runs one model round outside it, and the result is recorded as the next checkpoint. The [operator plan](operator.md) records the implemented increment.
 
 Workspace configuration selects/overrides prompts; record the resolved process and repository configuration when creating the task. Later configuration edits must not silently change active work. Waiting uses scoped observers or event-driven resume, depending on the validated model transport.
 
@@ -71,16 +71,16 @@ Reviewer instructions delegate technical decisions and escalate product question
 
 | Owner         | Responsibility                                                                                                                                                                                                                                      |
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`    | Separately bundled control and credential-broker Workers, Alchemy D1/DO declarations and bindings, listeners/scheduled intake recovery, and runtime composition; API code receives no connection-store binding or encryption key                    |
-| Task DO       | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator checkpoints, through domain-owned storage interfaces                                                                                            |
+| `apps/api`    | Control Worker, Alchemy D1/DO declarations and bindings, listeners/scheduled intake recovery, and runtime composition; the Worker itself only reaches the Connection object for status and revocation, never for forwarding                         |
+| Task DO       | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator steps, through domain-owned storage interfaces; hosts the operator loop and its broker transport                                                |
 | Shared D1     | Workspace configuration, membership, installation/verified identity lookup, durable pre-task inbox, and source-routing reservations through ordinary Worker-hosted services; workspace-owned rows are scoped, canonical user IDs remain independent |
-| Connection DO | One encrypted saved connection, serialized refresh/rotation state, and revocation, accessible only through the credential broker                                                                                                                    |
+| Connection DO | One saved connection per canonical user, serialized refresh/rotation, revocation, and idempotent forwarding of authorized model requests keyed by operation; it is the credential broker                                                            |
 | Private R2    | Immutable accepted artifacts and large checkpoint blobs; Task records own references, digests, acceptance, and cleanup eligibility                                                                                                                  |
-| `apps/devbox` | Supervisor, local operator/agent/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting                                                                                   |
+| `apps/devbox` | Supervisor, local specialist/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting                                                                                       |
 
 The devbox provides a remote **domain service**, not a second business implementation over remote CRUD storage. It may report work and request questions/reviews/handoff, but cannot grant approval, rewrite execution authority, or own refresh-token rotation. Local journals, native session histories, and files are checkpoints/evidence, not another authoritative task record.
 
-The proposed credential broker proxies authorized model requests rather than exporting provider tokens. A Connection DO serializes renewal, but cannot atomically commit a provider's rotation and local storage; reconcile uncertain refresh outcomes without blindly replaying an old token. Repository execution grants remain separate from model connections and deployment credentials.
+The Connection DO proxies authorized model requests rather than exporting provider tokens; the Task DO's model client has no transport other than that object. Renewal is serialized under the object's gate and persisted before use, but a provider's rotation and local storage cannot commit atomically; reconcile uncertain refresh outcomes without blindly replaying an old token. Repository execution grants remain separate from model connections and deployment credentials.
 
 Keep repository commands outside the trust boundary of the supervisor, model credentials, and review service. Validate enforced container/namespace isolation without privileged access, shared secret mounts, or host sockets. Separate processes, OS users, or `Redacted` alone do not prove isolation. Specialist support for the broker is a gate, not permission to copy native OAuth caches into the workspace.
 

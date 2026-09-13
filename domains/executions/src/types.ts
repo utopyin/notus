@@ -1,7 +1,7 @@
 import { Environment } from "@notus/workspaces/types";
 import * as Schema from "effect/Schema";
 
-export const Mode = Schema.Literals(["simulation", "readiness"]);
+export const Mode = Schema.Literals(["simulation", "readiness", "operator"]);
 export type Mode = typeof Mode.Type;
 export const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 export const Observation = Schema.Struct({

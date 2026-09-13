@@ -1,0 +1,201 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "653f69e0-6f2b-4d33-89df-c9278d42d90c",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "ddl": [
+    {
+      "name": "account_connections",
+      "entityType": "tables"
+    },
+    {
+      "name": "account_forwards",
+      "entityType": "tables"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "singleton",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "userId",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "provider",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "accountId",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "access",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "refresh",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "expiresAt",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "seedFingerprint",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'admin-fixture'",
+      "generated": null,
+      "name": "provenance",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "linkedAt",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "rotatedAt",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revokedAt",
+      "entityType": "columns",
+      "table": "account_connections"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operationId",
+      "entityType": "columns",
+      "table": "account_forwards"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "account_forwards"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "contentType",
+      "entityType": "columns",
+      "table": "account_forwards"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "body",
+      "entityType": "columns",
+      "table": "account_forwards"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "account_forwards"
+    },
+    {
+      "columns": ["singleton"],
+      "nameExplicit": false,
+      "name": "account_connections_pk",
+      "table": "account_connections",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["operationId"],
+      "nameExplicit": false,
+      "name": "account_forwards_pk",
+      "table": "account_forwards",
+      "entityType": "pks"
+    }
+  ],
+  "renames": []
+}

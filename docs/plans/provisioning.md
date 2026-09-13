@@ -39,7 +39,7 @@ Follow-ups must not create another box. The initiating actor may request wake-up
 
 Namespace control uses a dedicated, tenant-scoped, revocable automation token supplied through Alchemy's `Config.redacted` secret-binding mechanism. Its grants, expiry and rotation owner must be recorded privately without the bearer. Confirm the provider's permission mapping rather than guessing or granting unrestricted access. Callback signing uses a separate key. Neither enters reusable configuration, snapshots, images or logs.
 
-The current Namespace workspace has a one-devbox account limit. Respect it; do not change quotas. Existing unrelated resources remain untouched. No ongoing Slack-triggered spend is enabled merely by adding code or generating migrations.
+An early Create returned HTTP 429 and was recorded as a one-devbox account limit. The user later clarified that the account limit is an aggregate CPU budget and that multiple devboxes can exist; treat the earlier reading as unverified. Respect the budget; do not change quotas. Existing unrelated resources remain untouched. No ongoing Slack-triggered spend is enabled merely by adding code or generating migrations.
 
 ## Validation
 

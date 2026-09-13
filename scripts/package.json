@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@effect/platform-bun": "catalog:",
+    "@notus/openai": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

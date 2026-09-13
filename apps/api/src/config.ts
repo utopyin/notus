@@ -46,6 +46,27 @@ export const runtimeConfig = Effect.gen(function* () {
 });
 export type RuntimeConfig = NonNullable<Effect.Success<typeof runtimeConfig>>;
 
+/** Read by the Task host for operator turns. Contains no credentials. */
+export const operatorConfig = Effect.gen(function* () {
+  return {
+    model: yield* Config.schema(Schema.NonEmptyString, "NOTUS_MODEL").pipe(
+      Config.withDefault("gpt-5.4"),
+    ),
+    maxOutputTokens: 2_000,
+    reasoningEffort: "low" as const,
+  };
+});
+export type OperatorConfig = Effect.Success<typeof operatorConfig>;
+
+/**
+ * Read only by the Connection host. An explicit administrator-supplied login for the fixture
+ * user, linked once; rotation afterwards lives in the Connection object, never in this value.
+ */
+export const fixtureConnection = Effect.gen(function* () {
+  const login = yield* Config.option(Config.redacted("NOTUS_FIXTURE_CHATGPT_OAUTH"));
+  return Option.getOrNull(login);
+});
+
 /** Read only by the execution host, not the Slack ingress or the devbox. */
 export const providerConfig = Effect.gen(function* () {
   return {

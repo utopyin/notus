@@ -1,0 +1,15 @@
+{
+  "name": "@notus/openai",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/ai-openai": "catalog:",
+    "effect": "catalog:"
+  }
+}

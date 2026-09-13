@@ -3,6 +3,8 @@
  * `.auth/chatgpt.json` (gitignored). Same constants and shape as pi / opencode /
  * the Codex CLI ("Sign in with ChatGPT").
  */
+import { OAuth } from "@notus/openai/oauth";
+import { StoredLogin } from "@notus/openai/types";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -12,8 +14,9 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
-export const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-export const TOKEN_URL = "https://auth.openai.com/oauth/token";
+/** The provider package owns the client identity; this file only adds the development file. */
+export const CLIENT_ID = OAuth.clientId;
+export const TOKEN_URL = OAuth.tokenUrl;
 export const FILE = ".auth/chatgpt.json";
 
 /** What the worker needs at request time. Serialised into one secret binding. */
@@ -23,13 +26,8 @@ export const Credentials = Schema.Struct({
 });
 export type Credentials = typeof Credentials.Type;
 
-const Stored = Schema.Struct({
-  access: Schema.String,
-  refresh: Schema.String,
-  /** Epoch milliseconds. */
-  expires: Schema.Finite,
-  accountId: Schema.String,
-});
+/** Same shape the Worker's fixture seed decodes. `expires` is epoch milliseconds. */
+const Stored = StoredLogin;
 export type Stored = typeof Stored.Type;
 
 const TokenResponse = Schema.Struct({
@@ -42,25 +40,11 @@ export class TokenError extends Schema.TaggedError<TokenError>()("ChatGpt.TokenE
   message: Schema.String,
 }) {}
 
-const JWT_CLAIM = "https://api.openai.com/auth";
-
-const Claims = Schema.fromJsonString(
-  Schema.Struct({ [JWT_CLAIM]: Schema.Struct({ chatgpt_account_id: Schema.String }) }),
-);
-
 /** `chatgpt_account_id` from the access token's claims (no signature check; dev only). */
 export const accountIdFromJwt = (jwt: string): Effect.Effect<string, TokenError> =>
-  Effect.gen(function* () {
-    const payload = jwt.split(".")[1];
-    if (payload === undefined) return yield* new TokenError({ message: "not a JWT" });
-    const text = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
-    const claims = yield* Schema.decodeEffect(Claims)(text).pipe(
-      Effect.mapError(
-        (error) => new TokenError({ message: `cannot read account id: ${error.message}` }),
-      ),
-    );
-    return claims[JWT_CLAIM].chatgpt_account_id;
-  });
+  OAuth.accountIdFromJwt(jwt).pipe(
+    Effect.mapError(() => new TokenError({ message: "cannot read account id" })),
+  );
 
 const decodeToken = HttpClientResponse.schemaBodyJson(TokenResponse);
 
