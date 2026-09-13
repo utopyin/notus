@@ -54,7 +54,7 @@ export const context = Effect.fn("Runtime.Server.context")(function* (capability
   const snapshot = yield* state.snapshot;
   if (
     !snapshot.task ||
-    snapshot.task.mode !== "readiness" ||
+    (snapshot.task.mode !== "readiness" && snapshot.task.mode !== "operator") ||
     snapshot.task.closedAt !== null ||
     snapshot.task.id !== capability.bootstrap.taskId
   )

@@ -10,7 +10,16 @@ import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import * as Struct from "effect/Struct";
 import { ProvisioningFailure } from "./errors";
-import { attempts, enrollments, provisioning, ProvisioningState, readiness, wakes } from "./schema";
+import {
+  attempts,
+  enrollments,
+  environments,
+  provisioning,
+  ProvisioningState,
+  readiness,
+  wakes,
+} from "./schema";
+import { Environment } from "@notus/workspaces/types";
 import {
   Bootstrap,
   Claim,
@@ -93,7 +102,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const rows = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (rows.length > 1) return yield* fail("conflict");
     const row = rows[0];
-    if (!row || row.mode !== "readiness") return null;
+    if (!row || (row.mode !== "readiness" && row.mode !== "operator")) return null;
+    // An operator attempt owns provisioning only once the operator asked for a box.
+    const [bound] = yield* db
+      .select({ attemptId: provisioning.attemptId })
+      .from(provisioning)
+      .where(eq(provisioning.attemptId, row.id));
+    if (!bound) return null;
     const s = yield* load(row.id);
     if (s.bootstrap.generation !== row.generation || s.bootstrap.taskId !== row.taskId)
       return yield* fail("stale-binding");
@@ -121,8 +136,48 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   const get = Effect.fn("Provisioning.get")(function* (attemptId: string) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(attemptId);
     const [row] = yield* db.select().from(attempts).where(eq(attempts.id, attemptId));
-    if (!row || row.mode !== "readiness") return null;
+    if (!row || (row.mode !== "readiness" && row.mode !== "operator")) return null;
     return status(yield* load(attemptId), row.active);
+  });
+  const capture = Effect.fn("Provisioning.capture")(function* (
+    input: Environment | null,
+    now: number,
+  ) {
+    yield* Schema.decodeEffect(Millis)(now);
+    const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
+    if (existing) return yield* Schema.decodeEffect(Environment)(existing.environment);
+    if (input === null) return null;
+    const environment = yield* decodeInput(Environment, input);
+    yield* db.insert(environments).values({ singleton: 1, environment, capturedAt: now });
+    return environment;
+  });
+  const captured = Effect.gen(function* () {
+    const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
+    return existing ? yield* Schema.decodeEffect(Environment)(existing.environment) : null;
+  }).pipe(Effect.withSpan("Provisioning.captured"));
+  const fresh = (params: Initialize, bootstrap: Bootstrap, now: number): ProvisioningState => ({
+    bootstrap,
+    environment: params.environment,
+    providerName: `notus-${bootstrap.operationId}`,
+    launchVersion: 1,
+    phase: params.environment ? "pending-create" : "blocked",
+    blockedReason: params.environment ? null : "missing-environment",
+    resource: null,
+    claimGeneration: 0,
+    claim: null,
+    nextWork: params.environment ? "create" : null,
+    dueAt: params.environment ? now : null,
+    startupDeadline: params.environment ? now + startupDuration : null,
+    activationConfirmed: false,
+    activationUncertain: false,
+    enrollmentExpected: false,
+    recoveryRevision: 0,
+    runtimeEpoch: 0,
+    startupEpoch: 1,
+    enrollment: null,
+    grant: null,
+    ready: null,
+    updatedAt: now,
   });
   const initialize = Effect.fn("Provisioning.initialize")(function* (
     input: Initialize,
@@ -136,10 +191,41 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     if (history.some((a) => a.taskId !== params.taskId)) return yield* fail("conflict");
     const existing = history.find((a) => a.active);
     if (existing) {
-      if (existing.mode !== "readiness") return yield* fail("conflict");
-      const s = yield* load(existing.id);
-      if (s.bootstrap.workspaceId !== params.workspaceId) return yield* fail("conflict");
-      // Configuration selection belongs to the first committed initialization, not its retries.
+      if (existing.mode !== "readiness" && existing.mode !== "operator")
+        return yield* fail("conflict");
+      const [bound] = yield* db
+        .select({ attemptId: provisioning.attemptId })
+        .from(provisioning)
+        .where(eq(provisioning.attemptId, existing.id));
+      if (bound) {
+        const s = yield* load(existing.id);
+        if (s.bootstrap.workspaceId !== params.workspaceId) return yield* fail("conflict");
+        // Configuration selection belongs to the first committed initialization, not its retries.
+        return status(s, true);
+      }
+      if (existing.mode !== "operator") return yield* fail("conflict");
+      // The operator asked for a box: bind provisioning to its already active attempt.
+      const operationId = yield* crypto.randomUUIDv4;
+      const capabilityId = yield* crypto.randomUUIDv4;
+      const s = fresh(
+        params,
+        {
+          taskId: params.taskId,
+          workspaceId: params.workspaceId,
+          attemptId: existing.id,
+          generation: existing.generation,
+          operationId,
+          capabilityId,
+        },
+        now,
+      );
+      yield* db.insert(provisioning).values({
+        attemptId: existing.id,
+        operationId,
+        capabilityId,
+        providerName: s.providerName,
+        state: s,
+      });
       return status(s, true);
     }
     // No replacement API: historical attempts require explicit external intervention.
@@ -147,8 +233,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const id = yield* crypto.randomUUIDv4;
     const operationId = yield* crypto.randomUUIDv4;
     const capabilityId = yield* crypto.randomUUIDv4;
-    const s: ProvisioningState = {
-      bootstrap: {
+    const s = fresh(
+      params,
+      {
         taskId: params.taskId,
         workspaceId: params.workspaceId,
         attemptId: id,
@@ -156,28 +243,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         operationId,
         capabilityId,
       },
-      environment: params.environment,
-      providerName: `notus-${operationId}`,
-      launchVersion: 1,
-      phase: params.environment ? "pending-create" : "blocked",
-      blockedReason: params.environment ? null : "missing-environment",
-      resource: null,
-      claimGeneration: 0,
-      claim: null,
-      nextWork: params.environment ? "create" : null,
-      dueAt: params.environment ? now : null,
-      startupDeadline: params.environment ? now + startupDuration : null,
-      activationConfirmed: false,
-      activationUncertain: false,
-      enrollmentExpected: false,
-      recoveryRevision: 0,
-      runtimeEpoch: 0,
-      startupEpoch: 1,
-      enrollment: null,
-      grant: null,
-      ready: null,
-      updatedAt: now,
-    };
+      now,
+    );
     yield* db.insert(attempts).values({
       id,
       taskId: params.taskId,
@@ -612,6 +679,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   );
   return {
     initialize,
+    capture,
+    captured,
     get,
     current,
     claim,
@@ -643,6 +712,12 @@ export interface Interface {
     params: Initialize,
     now: number,
   ) => Effect.Effect<ProvisioningStatus, ProvisioningFailure>;
+  /** Records the environment snapshot once; later inputs never replace it. */
+  readonly capture: (
+    environment: Environment | null,
+    now: number,
+  ) => Effect.Effect<Environment | null, ProvisioningFailure>;
+  readonly captured: Effect.Effect<Environment | null, ProvisioningFailure>;
   readonly get: (
     attemptId: string,
   ) => Effect.Effect<ProvisioningStatus | null, ProvisioningFailure>;
@@ -693,6 +768,10 @@ export const layerNoDeps = Layer.effect(
       initialize: Effect.fn("Provisioning.initializeAtomic")((params, now) =>
         atomic((q) => q.initialize(params, now)),
       ),
+      capture: Effect.fn("Provisioning.captureAtomic")((environment, now) =>
+        atomic((q) => q.capture(environment, now)),
+      ),
+      captured: atomic((q) => q.captured),
       get: Effect.fn("Provisioning.getAtomic")((id) => atomic((q) => q.get(id))),
       current: atomic((q) => q.current),
       claim: Effect.fn("Provisioning.claimAtomic")((now) => atomic((q) => q.claim(now))),

@@ -25,12 +25,29 @@ export const StepClaim = Schema.Struct({
   priorParts: Schema.Array(Schema.Json),
 });
 export interface StepClaim extends Schema.Schema.Type<typeof StepClaim> {}
+export const PendingCall = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.NonEmptyString,
+  params: Schema.Json,
+});
+export interface PendingCall extends Schema.Schema.Type<typeof PendingCall> {}
 export const StepOutcome = Schema.TaggedUnion({
-  Completed: { parts: Schema.Json, text: Schema.String, final: Schema.Boolean },
+  Completed: {
+    parts: Schema.Json,
+    text: Schema.String,
+    calls: Schema.Array(PendingCall),
+    final: Schema.Boolean,
+  },
   Retry: { retryAt: Millis, failure: Schema.NonEmptyString },
   Failed: { failure: Schema.NonEmptyString },
 });
 export type StepOutcome = typeof StepOutcome.Type;
+export const Waiting = Schema.Struct({
+  id: Schema.NonEmptyString,
+  invocationId: Schema.NonEmptyString,
+  calls: Schema.Array(PendingCall),
+});
+export interface Waiting extends Schema.Schema.Type<typeof Waiting> {}
 export const Settled = Schema.Struct({
   invocationId: Schema.NonEmptyString,
   result: Schema.TaggedUnion({
@@ -59,6 +76,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       recoverAt: null,
       parts: null,
       text: null,
+      calls: null,
       final: false,
       failure,
       createdAt: now,
@@ -141,6 +159,22 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       return yield* new Conflict({ message: "Stale step claim" });
     switch (outcome._tag) {
       case "Completed": {
+        if (outcome.calls.length > 0) {
+          // The owner executes these durably and resolves the step; no next step yet.
+          yield* db
+            .update(steps)
+            .set({
+              status: "waiting",
+              parts: outcome.parts,
+              text: outcome.text,
+              calls: outcome.calls,
+              final: false,
+              recoverAt: null,
+              updatedAt: now,
+            })
+            .where(eq(steps.id, step.id));
+          return;
+        }
         yield* db
           .update(steps)
           .set({
@@ -188,6 +222,42 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       }
     }
   });
+  const waiting = Effect.fn("Steps.waiting")(function* (limit: number) {
+    const rows = yield* db
+      .select()
+      .from(steps)
+      .where(eq(steps.status, "waiting"))
+      .orderBy(asc(steps.updatedAt), asc(steps.id))
+      .limit(limit);
+    const result: Array<Waiting> = [];
+    for (const row of rows) {
+      const step = yield* Schema.decodeEffect(Step)(row);
+      const calls = yield* Schema.decodeUnknownEffect(Schema.Array(PendingCall))(step.calls ?? []);
+      result.push({ id: step.id, invocationId: step.invocationId, calls });
+    }
+    return result;
+  });
+  /** Appends tool results to a waiting step and opens the next round. */
+  const resolve = Effect.fn("Steps.resolve")(function* (
+    id: string,
+    results: ReadonlyArray<Schema.Json>,
+    now: number,
+  ) {
+    yield* Schema.decodeEffect(Schema.NonEmptyString)(id);
+    yield* Schema.decodeEffect(Millis)(now);
+    const [row] = yield* db.select().from(steps).where(eq(steps.id, id));
+    if (!row) return yield* new Conflict({ message: "Unknown step" });
+    const step = yield* Schema.decodeEffect(Step)(row);
+    if (step.status !== "waiting") return yield* new Conflict({ message: "Step is not waiting" });
+    const prior = Array.isArray(step.parts) ? step.parts : [];
+    yield* db
+      .update(steps)
+      .set({ status: "done", parts: [...prior, ...results], calls: null, updatedAt: now })
+      .where(eq(steps.id, id));
+    if (step.index + 1 >= maxSteps)
+      yield* insert(step.invocationId, step.index + 1, now, "failed", "step-limit");
+    else yield* insert(step.invocationId, step.index + 1, now, "pending", null);
+  });
   /** Invocations whose latest step is a final answer or a failure. */
   const settled = Effect.fn("Steps.settled")(function* (limit: number) {
     const rows = yield* db
@@ -232,7 +302,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* db.select().from(steps).orderBy(asc(steps.createdAt), asc(steps.index)),
     );
   }).pipe(Effect.withSpan("Steps.snapshot"));
-  return { ensure, claim, record, settled, nextWake, snapshot };
+  return { ensure, claim, record, waiting, resolve, settled, nextWake, snapshot };
 };
 
 /** Steps are sequential per invocation; a lease expiring re-offers the same step. */
@@ -242,6 +312,12 @@ export interface Interface {
   readonly record: (
     claim: StepClaim,
     outcome: StepOutcome,
+    now: number,
+  ) => Effect.Effect<void, ExecutionError>;
+  readonly waiting: (limit: number) => Effect.Effect<ReadonlyArray<Waiting>, ExecutionError>;
+  readonly resolve: (
+    id: string,
+    results: ReadonlyArray<Schema.Json>,
     now: number,
   ) => Effect.Effect<void, ExecutionError>;
   readonly settled: (limit: number) => Effect.Effect<ReadonlyArray<Settled>, ExecutionError>;
@@ -279,6 +355,18 @@ export const layerNoDeps = Layer.effect(
         wrap(
           "record",
           db.transaction((tx) => queries(tx).record(claim, outcome, now)),
+        ),
+      ),
+      waiting: Effect.fn("Steps.waitingAtomic")((limit) =>
+        wrap(
+          "waiting",
+          db.transaction((tx) => queries(tx).waiting(limit)),
+        ),
+      ),
+      resolve: Effect.fn("Steps.resolveAtomic")((id, results, now) =>
+        wrap(
+          "resolve",
+          db.transaction((tx) => queries(tx).resolve(id, results, now)),
         ),
       ),
       settled: Effect.fn("Steps.settledAtomic")((limit) =>

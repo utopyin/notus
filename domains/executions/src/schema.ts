@@ -164,12 +164,14 @@ export const steps = sqliteTable(
       .references(() => invocations.id),
     index: integer().notNull(),
     operationId: text().notNull().unique(),
-    status: text({ enum: ["pending", "running", "done", "failed"] }).notNull(),
+    status: text({ enum: ["pending", "running", "waiting", "done", "failed"] }).notNull(),
     attempts: integer().notNull().default(0),
     dueAt: integer().notNull(),
     recoverAt: integer(),
     parts: text({ mode: "json" }).$type<Schema.Json>(),
     text: text(),
+    /** Unresolved tool calls while status is waiting. */
+    calls: text({ mode: "json" }).$type<Schema.Json>(),
     final: integer({ mode: "boolean" }).notNull().default(false),
     failure: text(),
     createdAt: integer().notNull(),
@@ -180,8 +182,18 @@ export const steps = sqliteTable(
     index("execution_step_due").on(t.status, t.dueAt),
   ],
 );
-export const Step = createSelectSchema(steps, { parts: Schema.NullOr(Schema.Json) });
+export const Step = createSelectSchema(steps, {
+  parts: Schema.NullOr(Schema.Json),
+  calls: Schema.NullOr(Schema.Json),
+});
 export interface Step extends Schema.Schema.Type<typeof Step> {}
+
+/** The workspace environment captured for this task before any provisioning decision. */
+export const environments = sqliteTable("execution_environment", {
+  singleton: integer().primaryKey().$type<1>(),
+  environment: text({ mode: "json" }).$type<Environment>().notNull(),
+  capturedAt: integer().notNull(),
+});
 
 /** Drizzle migration aggregate. Parent owns migration generation. */
 export const tables = {
@@ -193,4 +205,5 @@ export const tables = {
   readiness,
   wakes,
   steps,
+  environments,
 };

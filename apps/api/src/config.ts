@@ -60,7 +60,10 @@ export const operatorConfig = Effect.gen(function* () {
       Config.withDefault("gpt-5.4"),
     ),
     maxOutputTokens: 2_000,
-    reasoningEffort: "low" as const,
+    reasoningEffort: yield* Config.schema(
+      Schema.Literals(["minimal", "low", "medium", "high"]),
+      "NOTUS_REASONING_EFFORT",
+    ).pipe(Config.withDefault("low")),
   };
 });
 export type OperatorConfig = Effect.Success<typeof operatorConfig>;

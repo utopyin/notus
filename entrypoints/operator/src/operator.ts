@@ -5,13 +5,11 @@ import * as AiError from "effect/unstable/ai/AiError";
 import * as LanguageModel from "effect/unstable/ai/LanguageModel";
 import * as Prompt from "effect/unstable/ai/Prompt";
 import * as Response from "effect/unstable/ai/Response";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
 import { build } from "./prompt";
-import { Briefing, Disposition, type StepResult } from "./types";
+import * as Tools from "./tools";
+import { Briefing, Disposition, type StepResult, type ToolCall } from "./types";
 
-/** No tools yet. The loop, persistence and prompt shape already accommodate them. */
-const toolkit = Toolkit.empty;
-const Parts = Schema.Array(Response.Part(toolkit));
+const Parts = Schema.Array(Response.Part(Tools.encoded));
 
 /**
  * One model round for the current turn. Idempotency, leases and persistence belong to the
@@ -43,7 +41,12 @@ export const run = Effect.fn("Operator.run")(function* (
     );
     prompt = Prompt.concat(prompt, Prompt.fromResponseParts(parts));
   }
-  const response = yield* LanguageModel.generateText({ prompt, toolkit });
+  // Tool calls come back unresolved; the durable owner executes them and appends results.
+  const response = yield* LanguageModel.generateText({
+    prompt,
+    toolkit: Tools.ready,
+    disableToolCallResolution: true,
+  });
   const invalidOutput = (description: string) =>
     AiError.make({
       module: "Operator",
@@ -58,8 +61,33 @@ export const run = Effect.fn("Operator.run")(function* (
     Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Json))),
     Effect.mapError(() => invalidOutput("response parts are not JSON")),
   );
-  const result: StepResult = { parts, text: response.text, final: response.toolCalls.length === 0 };
+  const calls: Array<ToolCall> = [];
+  for (const part of response.content) {
+    if (part.type !== "tool-call") continue;
+    const params = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
+      part.params,
+    ).pipe(
+      Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Json))),
+      Effect.mapError(() => invalidOutput("tool parameters are not JSON")),
+    );
+    calls.push({ id: part.id, name: part.name, params });
+  }
+  const result: StepResult = { parts, text: response.text, calls, final: calls.length === 0 };
   return result;
+});
+
+/** Encoded tool-result part the next prompt replays as a tool message. */
+export const toolResult = (
+  call: ToolCall,
+  result: Schema.Json,
+  isFailure: boolean,
+): Schema.Json => ({
+  type: "tool-result",
+  id: call.id,
+  name: call.name,
+  result,
+  isFailure,
+  providerExecuted: false,
 });
 
 const backoff = (attempt: number) => Math.min(300_000, 5_000 * 2 ** Math.min(attempt, 6));

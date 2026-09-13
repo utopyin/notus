@@ -2,12 +2,15 @@ import type { Admission } from "@notus/contracts/source";
 import { Attempts } from "@notus/executions/attempts";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
-import { digest } from "@notus/executions/types";
+import { digest, type ProvisioningStatus } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
+import { DevboxResult } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
+import type { Environment } from "@notus/workspaces/types";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { acceptOutcome } from "./task";
 
 const batchSize = 16;
@@ -81,6 +84,82 @@ const settle = Effect.fn("OperatorControl.settle")(function* (now: number) {
   return count;
 });
 
+/** Capture the workspace environment once, before the operator decides anything about a box. */
+export const prepare = Effect.fn("OperatorControl.prepare")(function* (
+  environment: Environment | null,
+  now: number,
+) {
+  const provisioning = yield* Provisioning.Service;
+  yield* provisioning.capture(environment, now);
+});
+
+const describe = (status: ProvisioningStatus): DevboxResult => {
+  const ready = status.phase === "ready";
+  return {
+    phase: status.phase,
+    ready,
+    resourceId: status.resourceId,
+    blockedReason: status.blockedReason,
+    message: ready
+      ? "The dev box is provisioned and its runtime reported ready. No repository, shell or command access exists yet."
+      : `Provisioning stopped in phase ${status.phase}${status.blockedReason ? ` (${status.blockedReason})` : ""}. No dev box is usable.`,
+  };
+};
+const encodeResult = Schema.encodeEffect(DevboxResult);
+
+/** Start durable work for unresolved tool calls. Idempotent: provisioning binds once per attempt. */
+const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
+  const steps = yield* Steps.Service;
+  const provisioning = yield* Provisioning.Service;
+  const state = yield* State.Service;
+  const waiting = yield* steps.waiting(batchSize);
+  if (waiting.length === 0) return;
+  const task = (yield* state.snapshot).task;
+  if (!task) return;
+  for (const step of waiting)
+    for (const call of step.calls) {
+      if (call.name !== "create_devbox") continue;
+      if ((yield* provisioning.current) !== null) continue;
+      const environment = yield* provisioning.captured;
+      yield* provisioning.initialize(
+        { taskId: task.id, workspaceId: task.reservation.workspaceId, environment },
+        now,
+      );
+    }
+});
+
+/** Resolve waiting steps whose provider work has settled; unknown tools fail immediately. */
+const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: number) {
+  const steps = yield* Steps.Service;
+  const provisioning = yield* Provisioning.Service;
+  let count = 0;
+  for (const step of yield* steps.waiting(batchSize)) {
+    const results: Array<Schema.Json> = [];
+    let pending = false;
+    for (const call of step.calls) {
+      if (call.name !== "create_devbox") {
+        results.push(Operator.toolResult(call, { error: `unknown tool ${call.name}` }, true));
+        continue;
+      }
+      const status = yield* provisioning.current;
+      const settled =
+        status !== null &&
+        status.pendingWork === null &&
+        (status.phase === "ready" || status.phase === "blocked");
+      if (!settled) {
+        pending = true;
+        continue;
+      }
+      const encoded = yield* encodeResult(describe(status));
+      results.push(Operator.toolResult(call, encoded, status.phase !== "ready"));
+    }
+    if (pending) continue;
+    yield* steps.resolve(step.id, results, now);
+    count++;
+  }
+  return count;
+});
+
 export const admit = Effect.fn("OperatorControl.admit")(function* (command: Admission) {
   const state = yield* State.Service;
   const receipt = yield* state.admit(command);
@@ -90,7 +169,10 @@ export const admit = Effect.fn("OperatorControl.admit")(function* (command: Admi
 
 /** Local-only repair. Model calls happen outside the host gate through claim/record. */
 export const advance = Effect.fn("OperatorControl.advance")(function* (now: number) {
-  return (yield* schedule(now)) + (yield* settle(now));
+  const scheduled = yield* schedule(now);
+  yield* dispatch(now);
+  const resolved = yield* resolveWaits(now);
+  return scheduled + resolved + (yield* settle(now));
 });
 
 export interface Claimed {
@@ -171,6 +253,17 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
   const state = yield* State.Service;
   const attempts = yield* Attempts.Service;
   const steps = yield* Steps.Service;
+  const provisioning = yield* Provisioning.Service;
+  const waiting = yield* steps.waiting(batchSize);
+  if (waiting.length > 0) {
+    const status = yield* provisioning.current;
+    if (
+      waiting.some((step) => step.calls.some((call) => call.name !== "create_devbox")) ||
+      status === null ||
+      (status.pendingWork === null && (status.phase === "ready" || status.phase === "blocked"))
+    )
+      return now;
+  }
   if ((yield* state.missingHandoffs(yield* attempts.scheduledInputIds, 1)).length > 0) return now;
   const execution = yield* attempts.snapshot;
   const accepted = new Set(execution.outcomes.map((row) => row.invocationId));
@@ -182,8 +275,10 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
     )).length > 0
   )
     return now;
-  const times = [yield* state.nextWake(now), yield* steps.nextWake].filter(
-    (at): at is number => at !== null,
-  );
+  const times = [
+    yield* state.nextWake(now),
+    yield* steps.nextWake,
+    waiting.length > 0 ? yield* provisioning.nextWake : null,
+  ].filter((at): at is number => at !== null);
   return times.length === 0 ? null : Math.max(now, Math.min(...times));
 });

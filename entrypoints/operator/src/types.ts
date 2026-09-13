@@ -27,10 +27,19 @@ export const Briefing = Schema.Struct({
 });
 export interface Briefing extends Schema.Schema.Type<typeof Briefing> {}
 
+/** An unresolved tool call the durable owner must execute and answer. */
+export const ToolCall = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.NonEmptyString,
+  params: Schema.Json,
+});
+export interface ToolCall extends Schema.Schema.Type<typeof ToolCall> {}
+
 export const StepResult = Schema.Struct({
   /** Encoded response parts, replayable into the next prompt. */
   parts: Schema.Json,
   text: Schema.String,
+  calls: Schema.Array(ToolCall),
   final: Schema.Boolean,
 });
 export interface StepResult extends Schema.Schema.Type<typeof StepResult> {}

@@ -126,7 +126,8 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               yield* advance(now);
             }),
           );
-          if ((yield* mode) === "readiness") {
+          // Readiness tasks always provision; operator tasks provision once the operator asked.
+          if ((yield* mode) !== "simulation") {
             for (let index = 0; index < 2; index++) {
               const claim = yield* gate(
                 Effect.gen(function* () {
@@ -172,6 +173,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   _tag: "Completed",
                   parts: result.parts,
                   text: result.text,
+                  calls: result.calls,
                   final: result.final,
                 })),
                 Effect.catch((error) =>
@@ -281,7 +283,11 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 return {
                   receipt,
                   needsEnvironment:
-                    selected === "readiness" && (yield* provisioning.current) === null,
+                    selected === "readiness"
+                      ? (yield* provisioning.current) === null
+                      : selected === "operator"
+                        ? (yield* provisioning.captured) === null
+                        : false,
                 };
               }),
             ).pipe(
@@ -297,16 +303,22 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 const now = yield* Clock.currentTimeMillis;
                 yield* arm(now + 1);
                 const task = (yield* state.snapshot).task;
-                if (!task || task.mode !== "readiness" || task.closedAt !== null)
+                if (!task || task.closedAt !== null)
                   return yield* new RuntimeFailure({ reason: "unauthorized" });
-                yield* provisioning.initialize(
-                  {
-                    taskId: task.id,
-                    workspaceId: task.reservation.workspaceId,
-                    environment,
-                  },
-                  now,
-                );
+                if (task.mode === "operator") {
+                  yield* OperatorControl.prepare(environment, now).pipe(
+                    Effect.provideContext(services),
+                  );
+                } else if (task.mode === "readiness") {
+                  yield* provisioning.initialize(
+                    {
+                      taskId: task.id,
+                      workspaceId: task.reservation.workspaceId,
+                      environment,
+                    },
+                    now,
+                  );
+                } else return yield* new RuntimeFailure({ reason: "unauthorized" });
                 yield* advance(now);
                 yield* recompute;
                 return { ok: true as const };
@@ -408,7 +420,11 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 return selected === "readiness"
                   ? { ...snapshot, provisioning: yield* provisioning.current }
                   : selected === "operator"
-                    ? { ...snapshot, steps: yield* steps.snapshot }
+                    ? {
+                        ...snapshot,
+                        steps: yield* steps.snapshot,
+                        provisioning: yield* provisioning.current,
+                      }
                     : snapshot;
               }),
             ),

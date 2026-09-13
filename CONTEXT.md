@@ -60,7 +60,7 @@ Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT
 - Initially impose no Notus-specific execution-time, specialist-count, workspace-capacity, or spend caps; respect provider/runtime limits. Keep one authoritative active attempt per task as a consistency invariant, not a usage limit.
 - Rely on Namespace auto-sleep during human waits, without a Notus-imposed response deadline. Sleeping must not cancel the task or discard pending questions/plans. Approval-link expiry is independent of the time allowed to respond.
 - One Cloudflare Durable Object per task holds authoritative progress, routes structured input/output, and runs the operator loop: each model round and tool result is a persisted step, so waiting costs no model calls and survives restarts. The dev box runs specialists and repository work only through operator tools; it never hosts the operator or its credentials.
-- The operator's system prompt carries the task's current state, including whether a dev box exists. Any tool that touches the dev box ensures it exists and is awake; the operator does not manage sleep.
+- The operator's system prompt carries the task's current state, including whether a dev box exists, and the operator decides whether its task needs one. Readiness, wake-up and sleep are provider implementation details behind the tools, never part of the operator's contract; some providers keep boxes always on.
 
 ### Decisions and human review
 
