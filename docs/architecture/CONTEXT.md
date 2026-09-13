@@ -4,15 +4,15 @@ Agreed code conventions. [Product context](../../CONTEXT.md) defines behavior; t
 
 ## Tiers and dependencies
 
-| Tier | Directory | Responsibility |
-| --- | --- | --- |
-| 1 | `packages/` | Provider communication, reusable mechanisms, genuinely shared values |
-| 2 | `domains/` | Provider-neutral services, domain behavior, implementation Layers |
-| 3 | `entrypoints/` | Assemble domains into application protocols and interfaces |
-| 4 | `apps/` | Runtime startup, bindings, and final configuration |
+| Tier | Directory      | Responsibility                                                       |
+| ---- | -------------- | -------------------------------------------------------------------- |
+| 1    | `packages/`    | Provider communication, reusable mechanisms, genuinely shared values |
+| 2    | `domains/`     | Provider-neutral services, domain behavior, implementation Layers    |
+| 3    | `entrypoints/` | Assemble domains into application protocols and interfaces           |
+| 4    | `apps/`        | Runtime startup, bindings, and final configuration                   |
 
 - Import downward or sideways, never upward; no cycles, including within a tier. Use the term **tier**, not layer, for these directories.
-- Packages are named `@bridle/<directory>`, so names must be unique across tiers.
+- Packages are named `@notus/<directory>`, so names must be unique across tiers.
 - A domain owns a concept end to end. Cross-domain application assembly belongs in entrypoints, not an all-knowing domain service.
 - Keep domain contracts/types/errors with their owner. Extract shared values into tier 1 only when independent owners need them; an entrypoint importing a domain type is already legal.
 - Apps are not imported by other packages. The root `alchemy.run.ts` may import app resource declarations; nothing imports the root stack, even for types. Binding types remain app-local.
@@ -29,27 +29,29 @@ domain service module
 
 Provider packages own communication, wire decoding, protocol authentication, and provider-specific failures. They never import domain tags, including type-only imports.
 
-Domains own service interfaces and implementation Layers that translate provider requests, IDs, results, lifecycle observations, and errors. Public methods do not expose SDK types or require vendor configuration. Business logic calls neutral capabilities, not provider clients. Define the behavior Bridle needs; do not silently weaken it to accommodate a provider.
+Domains own service interfaces and implementation Layers that translate provider requests, IDs, results, lifecycle observations, and errors. Public methods do not expose SDK types or require callers to understand vendor configuration. Business logic calls neutral capabilities, not provider clients. Define the behavior Notus needs; do not silently weaken it to accommodate a provider.
+
+Provider configuration crosses those boundaries as a provider key and opaque JSON. Only the provider package decodes, encodes, or validates its native settings. Domain storage may validate and serialize JSON, but must not extract a blueprint reference, translate machine settings, or discard unfamiliar fields. Keep credentials and execution authority separate from reusable configuration.
 
 ## Services and Layers
 
 Use Effect v4 `Context.Service` and one canonical namespace per focused service module:
 
 ```ts
-import { Devbox } from "@bridle/executions/devbox"
+import { Devbox } from "@notus/executions/devbox";
 
-Devbox.Service
-Devbox.layer
-Devbox.layerNoDeps
+Devbox.Service;
+Devbox.layer;
+Devbox.layerNoDeps;
 ```
 
 Use file-local names such as `Interface`, `Service`, and `layer`, projecting the namespace with `export * as Devbox from "./service"`. No separate `/layer` import is required. Keep provider-specific imports for explicit alternatives.
 
-| Export | Meaning |
-| --- | --- |
-| `layer` | Chosen implementation with sensible default dependencies supplied recursively |
+| Export        | Meaning                                                                        |
+| ------------- | ------------------------------------------------------------------------------ |
+| `layer`       | Chosen implementation with sensible default dependencies supplied recursively  |
 | `layerNoDeps` | Same implementation with dependencies unprovided, for substitution/composition |
-| `layerTest` | Optional reusable test composition, added when needed |
+| `layerTest`   | Optional reusable test composition, added when needed                          |
 
 The default should be self-contained where reasonable. Leave genuine runtime bindings, authorized credentials, and configuration explicit; never invent authority or fall back to another billing mode to close a dependency type. Cross-domain defaults belong in entrypoints. Apps close remaining host requirements once, not at each service call.
 

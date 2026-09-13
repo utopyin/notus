@@ -6,14 +6,14 @@ Implementation guidance: [Effect skill](../../.agents/skills/effect/SKILL.md), [
 
 Paths are relative to `repos/effect/`.
 
-| Concern | Reference |
-| --- | --- |
-| Services, errors, causes | `migration/{services,error-handling,cause}.md`; `packages/effect/src/{Context,Layer,ManagedRuntime}.ts` |
-| Model/tools/chat | `ai-docs/src/71_ai/{10_language-model,20_tools,30_chat}.ts`; `packages/effect/src/unstable/ai/{LanguageModel,Toolkit,Tool,Chat,Prompt}.ts` |
-| OpenAI transport/schema | `packages/ai/openai/src/{OpenAiClient,OpenAiLanguageModel,OpenAiStructuredOutput}.ts` |
-| Child processes | `ai-docs/src/60_child-process/10_working-with-child-processes.ts` |
-| Durable Object SQL | `packages/sql/sqlite-do/src/SqliteClient.ts`; tests use fake DO storage |
-| Chat backing store | `packages/effect/src/unstable/persistence/Persistence.ts` |
+| Concern                  | Reference                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Services, errors, causes | `migration/{services,error-handling,cause}.md`; `packages/effect/src/{Context,Layer,ManagedRuntime}.ts`                                    |
+| Model/tools/chat         | `ai-docs/src/71_ai/{10_language-model,20_tools,30_chat}.ts`; `packages/effect/src/unstable/ai/{LanguageModel,Toolkit,Tool,Chat,Prompt}.ts` |
+| OpenAI transport/schema  | `packages/ai/openai/src/{OpenAiClient,OpenAiLanguageModel,OpenAiStructuredOutput}.ts`                                                      |
+| Child processes          | `ai-docs/src/60_child-process/10_working-with-child-processes.ts`                                                                          |
+| Durable Object SQL       | `packages/sql/sqlite-do/src/SqliteClient.ts`; tests use fake DO storage                                                                    |
+| Chat backing store       | `packages/effect/src/unstable/persistence/Persistence.ts`                                                                                  |
 
 Core AI is `effect/unstable/ai`; providers are separate packages such as `@effect/ai-openai`. There is no standalone core `@effect/ai` at this pin. Use source exports over stale guide snippets such as `effect/schema` or APIs from other prereleases. Node transitive engine requirements and Herdr's incompatible direct Effect pin need a tested dependency set, not forced overrides.
 

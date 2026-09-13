@@ -58,6 +58,7 @@ Pass: anonymous valid-link review works, failures never approve, one accepted re
 References: [Cloudflare](cloudflare.md), [Slack](slack.md). Begin with fake delivery, then deploy one task DO and an inbound hibernatable devbox socket through Alchemy.
 
 - Verify signatures, timestamp/identity mapping, filtering, scopes, thread replies, and prompt acknowledgement after durable admission. Replay events before/after task creation and retain the same task/operation.
+- Verify shared D1 admission batches, concurrent routing claims, and scheduled recovery with immediate forwarding disabled. Do not rely on interactive D1 transactions. Keep task authority in the Task DO.
 - Hibernate/reconstruct/redeploy and reconnect with cursors. Preserve replies, findings, decisions, and pending delivery; reject stale/wrong-workspace credentials. Exercise actual SQLite transactions and concurrency.
 - Lose an outbound acknowledgement after send. Record delivery ambiguity rather than claiming exactly-once external effects. Check bounded messages, streaming/abort behavior, and no long-lived model wait in the DO.
 

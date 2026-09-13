@@ -1,0 +1,1305 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "031b055d-aae7-4e74-8492-3260f83efd3d",
+  "prevIds": ["7a721d40-169d-4b3d-89b5-216d135134a4"],
+  "ddl": [
+    {
+      "name": "task_deliveries",
+      "entityType": "tables"
+    },
+    {
+      "name": "task_events",
+      "entityType": "tables"
+    },
+    {
+      "name": "task_inputs",
+      "entityType": "tables"
+    },
+    {
+      "name": "task_responses",
+      "entityType": "tables"
+    },
+    {
+      "name": "task_sources",
+      "entityType": "tables"
+    },
+    {
+      "name": "tasks",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_attempts",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_enrollments",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_invocations",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_outcomes",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_provisioning",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_readiness",
+      "entityType": "tables"
+    },
+    {
+      "name": "execution_wakes",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputId",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "responseId",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "kind",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "text",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "digest",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "retryAt",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "claimId",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "0",
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "recoverAt",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "receipt",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "failure",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "outcome",
+      "entityType": "columns",
+      "table": "task_deliveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "task_events"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputId",
+      "entityType": "columns",
+      "table": "task_events"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "messageKey",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sourceId",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "input",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "obligation",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "fulfilledAt",
+      "entityType": "columns",
+      "table": "task_inputs"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputId",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resultId",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "text",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "final",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "task_responses"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "task_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "taskId",
+      "entityType": "columns",
+      "table": "task_sources"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attachment",
+      "entityType": "columns",
+      "table": "task_sources"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "singleton",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "reservation",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "mode",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "originSourceId",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "closedAt",
+      "entityType": "columns",
+      "table": "tasks"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "taskId",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "mode",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "active",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "createdAt",
+      "entityType": "columns",
+      "table": "execution_attempts"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attemptId",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "requestId",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "request",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "grant",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "acceptedAt",
+      "entityType": "columns",
+      "table": "execution_enrollments"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attemptId",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "generation",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputId",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operationId",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "dueAt",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "resultId",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "content",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "digest",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "status",
+      "entityType": "columns",
+      "table": "execution_invocations"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "execution_outcomes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "invocationId",
+      "entityType": "columns",
+      "table": "execution_outcomes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "observation",
+      "entityType": "columns",
+      "table": "execution_outcomes"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "acceptedAt",
+      "entityType": "columns",
+      "table": "execution_outcomes"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attemptId",
+      "entityType": "columns",
+      "table": "execution_provisioning"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "operationId",
+      "entityType": "columns",
+      "table": "execution_provisioning"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "providerName",
+      "entityType": "columns",
+      "table": "execution_provisioning"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "capabilityId",
+      "entityType": "columns",
+      "table": "execution_provisioning"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state",
+      "entityType": "columns",
+      "table": "execution_provisioning"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attemptId",
+      "entityType": "columns",
+      "table": "execution_readiness"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "epoch",
+      "entityType": "columns",
+      "table": "execution_readiness"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "observationId",
+      "entityType": "columns",
+      "table": "execution_readiness"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "receipt",
+      "entityType": "columns",
+      "table": "execution_readiness"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputId",
+      "entityType": "columns",
+      "table": "execution_wakes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "attemptId",
+      "entityType": "columns",
+      "table": "execution_wakes"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "receipt",
+      "entityType": "columns",
+      "table": "execution_wakes"
+    },
+    {
+      "columns": ["inputId"],
+      "tableTo": "task_inputs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_deliveries_inputId_task_inputs_id_fk",
+      "entityType": "fks",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": ["responseId"],
+      "tableTo": "task_responses",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_deliveries_responseId_task_responses_id_fk",
+      "entityType": "fks",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": ["inputId"],
+      "tableTo": "task_inputs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_events_inputId_task_inputs_id_fk",
+      "entityType": "fks",
+      "table": "task_events"
+    },
+    {
+      "columns": ["sourceId"],
+      "tableTo": "task_sources",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_inputs_sourceId_task_sources_id_fk",
+      "entityType": "fks",
+      "table": "task_inputs"
+    },
+    {
+      "columns": ["inputId"],
+      "tableTo": "task_inputs",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_responses_inputId_task_inputs_id_fk",
+      "entityType": "fks",
+      "table": "task_responses"
+    },
+    {
+      "columns": ["taskId"],
+      "tableTo": "tasks",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_task_sources_taskId_tasks_id_fk",
+      "entityType": "fks",
+      "table": "task_sources"
+    },
+    {
+      "columns": ["attemptId"],
+      "tableTo": "execution_attempts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_enrollments_attemptId_execution_attempts_id_fk",
+      "entityType": "fks",
+      "table": "execution_enrollments"
+    },
+    {
+      "columns": ["attemptId"],
+      "tableTo": "execution_attempts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_invocations_attemptId_execution_attempts_id_fk",
+      "entityType": "fks",
+      "table": "execution_invocations"
+    },
+    {
+      "columns": ["invocationId"],
+      "tableTo": "execution_invocations",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_outcomes_invocationId_execution_invocations_id_fk",
+      "entityType": "fks",
+      "table": "execution_outcomes"
+    },
+    {
+      "columns": ["attemptId"],
+      "tableTo": "execution_attempts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_provisioning_attemptId_execution_attempts_id_fk",
+      "entityType": "fks",
+      "table": "execution_provisioning"
+    },
+    {
+      "columns": ["attemptId"],
+      "tableTo": "execution_attempts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_readiness_attemptId_execution_attempts_id_fk",
+      "entityType": "fks",
+      "table": "execution_readiness"
+    },
+    {
+      "columns": ["attemptId"],
+      "tableTo": "execution_attempts",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "nameExplicit": false,
+      "name": "fk_execution_wakes_attemptId_execution_attempts_id_fk",
+      "entityType": "fks",
+      "table": "execution_wakes"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "task_deliveries_pk",
+      "table": "task_deliveries",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "task_events_pk",
+      "table": "task_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "task_inputs_pk",
+      "table": "task_inputs",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "task_responses_pk",
+      "table": "task_responses",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "task_sources_pk",
+      "table": "task_sources",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["singleton"],
+      "nameExplicit": false,
+      "name": "tasks_pk",
+      "table": "tasks",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "execution_attempts_pk",
+      "table": "execution_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "execution_invocations_pk",
+      "table": "execution_invocations",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "execution_outcomes_pk",
+      "table": "execution_outcomes",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["attemptId"],
+      "nameExplicit": false,
+      "name": "execution_provisioning_pk",
+      "table": "execution_provisioning",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["inputId"],
+      "nameExplicit": false,
+      "name": "execution_wakes_pk",
+      "table": "execution_wakes",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "status",
+          "isExpression": false
+        },
+        {
+          "value": "retryAt",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "task_delivery_due",
+      "entityType": "indexes",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": [
+        {
+          "value": "status",
+          "isExpression": false
+        },
+        {
+          "value": "recoverAt",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "task_delivery_recovery",
+      "entityType": "indexes",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": [
+        {
+          "value": "inputId",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "task_delivery_input",
+      "entityType": "indexes",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": [
+        {
+          "value": "taskId",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "\"execution_attempts\".\"active\" = 1",
+      "origin": "manual",
+      "name": "execution_active_task",
+      "entityType": "indexes",
+      "table": "execution_attempts"
+    },
+    {
+      "columns": [
+        {
+          "value": "taskId",
+          "isExpression": false
+        },
+        {
+          "value": "generation",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_task_generation",
+      "entityType": "indexes",
+      "table": "execution_attempts"
+    },
+    {
+      "columns": [
+        {
+          "value": "attemptId",
+          "isExpression": false
+        },
+        {
+          "value": "revision",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_enrollment_revision",
+      "entityType": "indexes",
+      "table": "execution_enrollments"
+    },
+    {
+      "columns": [
+        {
+          "value": "attemptId",
+          "isExpression": false
+        },
+        {
+          "value": "requestId",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_enrollment_request",
+      "entityType": "indexes",
+      "table": "execution_enrollments"
+    },
+    {
+      "columns": [
+        {
+          "value": "status",
+          "isExpression": false
+        },
+        {
+          "value": "dueAt",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_invocation_due",
+      "entityType": "indexes",
+      "table": "execution_invocations"
+    },
+    {
+      "columns": [
+        {
+          "value": "attemptId",
+          "isExpression": false
+        },
+        {
+          "value": "epoch",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_readiness_epoch",
+      "entityType": "indexes",
+      "table": "execution_readiness"
+    },
+    {
+      "columns": [
+        {
+          "value": "attemptId",
+          "isExpression": false
+        },
+        {
+          "value": "observationId",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "execution_readiness_observation",
+      "entityType": "indexes",
+      "table": "execution_readiness"
+    },
+    {
+      "columns": ["responseId"],
+      "nameExplicit": false,
+      "name": "task_deliveries_responseId_unique",
+      "entityType": "uniques",
+      "table": "task_deliveries"
+    },
+    {
+      "columns": ["messageKey"],
+      "nameExplicit": false,
+      "name": "task_inputs_messageKey_unique",
+      "entityType": "uniques",
+      "table": "task_inputs"
+    },
+    {
+      "columns": ["resultId"],
+      "nameExplicit": false,
+      "name": "task_responses_resultId_unique",
+      "entityType": "uniques",
+      "table": "task_responses"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "tasks_id_unique",
+      "entityType": "uniques",
+      "table": "tasks"
+    },
+    {
+      "columns": ["inputId"],
+      "nameExplicit": false,
+      "name": "execution_invocations_inputId_unique",
+      "entityType": "uniques",
+      "table": "execution_invocations"
+    },
+    {
+      "columns": ["operationId"],
+      "nameExplicit": false,
+      "name": "execution_invocations_operationId_unique",
+      "entityType": "uniques",
+      "table": "execution_invocations"
+    },
+    {
+      "columns": ["resultId"],
+      "nameExplicit": false,
+      "name": "execution_invocations_resultId_unique",
+      "entityType": "uniques",
+      "table": "execution_invocations"
+    },
+    {
+      "columns": ["invocationId"],
+      "nameExplicit": false,
+      "name": "execution_outcomes_invocationId_unique",
+      "entityType": "uniques",
+      "table": "execution_outcomes"
+    },
+    {
+      "columns": ["operationId"],
+      "nameExplicit": false,
+      "name": "execution_provisioning_operationId_unique",
+      "entityType": "uniques",
+      "table": "execution_provisioning"
+    },
+    {
+      "columns": ["providerName"],
+      "nameExplicit": false,
+      "name": "execution_provisioning_providerName_unique",
+      "entityType": "uniques",
+      "table": "execution_provisioning"
+    },
+    {
+      "columns": ["capabilityId"],
+      "nameExplicit": false,
+      "name": "execution_provisioning_capabilityId_unique",
+      "entityType": "uniques",
+      "table": "execution_provisioning"
+    },
+    {
+      "value": "\"singleton\" = 1",
+      "name": "tasks_singleton",
+      "entityType": "checks",
+      "table": "tasks"
+    }
+  ],
+  "renames": []
+}

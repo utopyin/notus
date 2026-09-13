@@ -1,0 +1,19 @@
+{
+  "name": "@notus/executions",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@notus/cloudflare": "workspace:*",
+    "@notus/contracts": "workspace:*",
+    "@notus/namespace": "workspace:*",
+    "@notus/workspaces": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:"
+  }
+}

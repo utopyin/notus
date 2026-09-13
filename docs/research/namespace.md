@@ -4,7 +4,7 @@ Source paths are relative to `repos/namespace-sdk/`; pins and distribution gaps 
 
 ## Control transport
 
-The [rechecked npm archive](sources.md#compatibility-inventory) exposes `@namespacelabs/sdk/proto/namespace/private/devbox/devbox_pb`, including `DevBoxService`, without the newer high-level devbox wrapper. Its inspected local descriptor imports depend only on protobuf codegen/WKT externally. This gives the direct Worker experiment a published descriptor path, without importing the SDK's Node transport or vendored source. A fetch-based Connect client and live API access remain untested.
+The [rechecked npm archive](sources.md#compatibility-inventory) exposes `@namespacelabs/sdk/proto/namespace/private/devbox/devbox_pb`, including `DevBoxService`, without the newer high-level devbox wrapper. Its inspected local descriptor imports depend only on protobuf codegen/WKT externally. This gives the direct Worker experiment a published descriptor path, without importing the SDK's Node transport or vendored source. The later [devbox slice](devbox-results.md) implemented a fetch-based client with provider-owned wire schemas and exercised Create, Fetch and Expire in local workerd. Its initial container startup failed. A controlled image-user fix later enabled Herdr readiness through a private native probe, not a completed production launch path; the linked results separate those claims.
 
 - `src/devbox/index.ts` exposes `createDevboxClient`. The Devbox endpoint defaults to `https://private-api.iad.namespaceapis.com`, overridable by `NSC_DEVBOX_ENDPOINT`. Endpoint selection does not select machine location; request `site` does. `client.close()` closes cached connections, not resources.
 - Lifecycle RPCs use Connect JSON over HTTP/1.1 through connect-node. The inspected dependency's `dist/esm/node-universal-client.js`, `h1Request`, waits for Node's `socket` event before writing. Workers [does not support that event](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/#other-differences-between-node-js-and-workers-implementation-of-node-http).
@@ -17,18 +17,18 @@ The [rechecked npm archive](sources.md#compatibility-inventory) exposes `@namesp
 
 Evidence: `src/devbox/{resources,models,conversion}.ts`; generated `src/proto/namespace/private/devbox/devbox_pb.ts`; [client](https://namespace.so/docs/reference/typescript-sdk/client), [management](https://namespace.so/docs/devbox/managing), [images](https://namespace.so/docs/devbox/images).
 
-| Operation | Source constraint |
-| --- | --- |
-| `devboxes.create` | Activates by default; `start: false` creates stopped. Returned state is not completed checkout/bootstrap. |
-| `get` / `refresh` | Fetch current state without explicitly activating. List results have unknown runtime state and no instance ID. |
-| `start` | Calls `Activate` with readiness requested, invalidates connections. No separate high-level resume method. |
-| `stop` / `delete` | Call `Stop` / `Expire`; delete removes persistent volume too. |
-| Blueprint create | Resolves a template, then `CreateFromTemplate`. Cannot combine with direct image/repository/env/size/volume configuration. |
-| Image selection | Use `imageName` for registered names such as `builtin:agents`; legacy `image` heuristics interpret punctuation as a reference. |
-| Update | Volume cannot shrink; volume, privilege, and network-policy changes apply after restart. `busyTimeoutMs` is not a command deadline. |
+| Operation         | Source constraint                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `devboxes.create` | Activates by default; `start: false` creates stopped. Returned state is not completed checkout/bootstrap.                           |
+| `get` / `refresh` | Fetch current state without explicitly activating. List results have unknown runtime state and no instance ID.                      |
+| `start`           | Calls `Activate` with readiness requested, invalidates connections. No separate high-level resume method.                           |
+| `stop` / `delete` | Call `Stop` / `Expire`; delete removes persistent volume too.                                                                       |
+| Blueprint create  | Resolves a template, then `CreateFromTemplate`. Cannot combine with direct image/repository/env/size/volume configuration.          |
+| Image selection   | Use `imageName` for registered names such as `builtin:agents`; legacy `image` heuristics interpret punctuation as a reference.      |
+| Update            | Volume cannot shrink; volume, privilege, and network-policy changes apply after restart. `busyTimeoutMs` is not a command deadline. |
 
 - Connection readiness does not prove the repository directory exists. Wire `AgentService.WatchBoot` exists, but no high-level bootstrap wait does. Require an explicit supervisor-ready observation before work.
-- Image registration metadata supports `onCreate`, `onStart`, `sessions`, workspace directory, user, and environment. `onStart` maps to wire `onStartup`. Indefinite foreground hook behavior is unverified; a named startup session or idempotent supervisor hook is only a candidate.
+- Image registration metadata supports `onCreate`, `onStart`, `sessions`, workspace directory, user, and environment. `onStart` maps to wire `onStartup`. Indefinite foreground hook behavior is unverified. The live [startup investigation](devbox-results.md#startup-metadata-and-authority) found image registration dropping sessions while Create's top-level sessions successfully started Herdr. Source-level metadata support alone is insufficient.
 - High-level blueprint definitions omit repository, hooks, sessions, and secret references supported elsewhere. Updates replace the whole definition with last-write-wins semantics. Read conversion filters secret-backed environment entries, so read/modify/write can silently delete dashboard settings. Preserve the full wire definition or treat such blueprints as immutable inputs.
 - Image optimization streams setup progress and requires final `DONE`; it is not a task-start prerequisite to repeat. A changed image name affects new boxes, not existing ones.
 
@@ -54,6 +54,22 @@ Evidence: `src/auth/{token,caching,claims}.ts`, `src/api/interceptors.ts`; [SDK 
 - Wire `IssueIdToken({ audience })` can issue a callback identity from `https://federation.namespaceapis.com`. Signature, issuer, audience, expiry, actual instance claims, and assignment binding need validation. A workspace claim alone cannot authorize arbitrary tasks.
 - Workspace GitHub integration and CLI `setup-github` differ. The latter forwards a local user's `gh` token and configures Git. High-level repository input is only a string; lower-level configuration includes ref/disabled. Omission may inherit a workspace repository. Clone success proves neither push/PR permissions nor restricted repository access. [GitHub setup](https://namespace.so/docs/devbox/managing#setting-up-github-cli).
 - High-level literal environment maps cannot express `fromSecretId`. A secret ID string is not secret resolution. Avoid plaintext vault dumps as a workaround. [Secret injection](https://namespace.so/docs/architecture/storage/secrets) exposes values to workload processes; [egress header injection](https://namespace.so/docs/security/egress-policy) is a different, DPI-based facility requiring compatibility checks. Domain allowlists cannot isolate repositories on the same GitHub host.
+
+### Readiness automation probe, 2026-09-13
+
+A dedicated 30-day tenant-scoped token was created with `devbox` actions `create`, `fetch`, `activate`, `expire` and `instance:get`, each using resource ID `*`. Its returned and listed metadata matched those grants. The public permissions reference documents these action names. A read-only call with this token validated a historical instance's exact `DESTROYED` receipt. This does not validate cold enrollment or every lifecycle permission.
+
+The first bound-runtime Create was rejected, leaving the durable attempt blocked without an assignment. A separately authorized, single inactive diagnostic Create returned HTTP 400, Connect `invalid_argument`, with `could not pull base image`. Request ID: `d53frmrb979tdkvtup8678hvio`. No activation followed either rejection. Read-only Fetch by the intended name returned 404.
+
+A read-only request for the approved image manifest at `nscr.io`, using the documented `Basic base64(token:access_token)` authentication, returned 401 `UNAUTHORIZED` with that token. The original token has no registry pull grant. The user authorized replacing it with the same expiry and lifecycle grants plus `containerregistry/repository:pull` for only `notus/base-herdr-0.9.0-biv7fr`. Do not broaden to registry-wide access or change `USER_PRIVATE` to work around a rejection. The replacement's exact grants and unchanged expiry were verified. Its manifest GET returned 200 with the approved digest, and HEAD requests for every config/layer blob returned 200 with matching sizes. The old token was revoked and its revocation confirmed. No registry wildcard was added.
+
+The application deliberately discards provider error bodies. Temporary diagnostic transport retained the rejection privately without request bodies or authorization headers. Safe evidence is under `/tmp/notus-provisioning-biV7FR/`.
+
+With the replacement token, inactive Create succeeded for `qdbrgu26b70jc`. The first Activate created VM `hf7c4q9t0u2qe` but failed before readiness; Namespace reported that VM destroyed with `exit status 1`. Authorized read-only host log queries returned no retained records. The cause remains unproven. One explicit wake of the same assignment succeeded, committing Herdr 0.9.0/protocol 22 readiness at epoch 1 on VM `lulhgv68opv4m`.
+
+A warm wake retained the resource, VM, epoch and historical readiness timestamp. A host Stop attempt did not produce a usable acknowledgment, so it was not repeated. Read-only reconciliation confirmed the resource stopped and the exact old VM destroyed at `2026-09-13T20:36:32.866139841Z`. Cold wake retained the devbox ID, started VM `g6c6e9tcb0602`, and committed epoch-2 readiness with a different kernel boot ID and the persisted destruction receipt. Exact enrollment replays for both epochs recovered their original grants without provider calls. Old epoch-1 readiness returned 403 before provider I/O. No models or checkout ran.
+
+These live checks used the actual runtime image and authenticated Control callbacks with an isolated Bun SQLite host, not Cloudflare. Separate native-workerd tests executed the actual Api/Task host in 41 checks with mocked external responses. Cleanup expired the isolated devbox and reconciled Fetch 404. No Worker deployment or Slack readiness enablement is implied by these probes.
 
 ## Lifetime and persistence
 

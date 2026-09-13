@@ -1,0 +1,162 @@
+import { Environment } from "@notus/workspaces/types";
+import { sql } from "drizzle-orm";
+import { createSelectSchema } from "drizzle-orm/effect-schema";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import * as Schema from "effect/Schema";
+import {
+  BlockReason,
+  Bootstrap,
+  Claim,
+  Enrollment,
+  EpochGrant,
+  Millis,
+  Mode,
+  Observation,
+  Phase,
+  ReadinessReceipt,
+  Resource,
+  WakeReceipt,
+  Work,
+} from "./types";
+
+export const attempts = sqliteTable(
+  "execution_attempts",
+  {
+    id: text().primaryKey(),
+    taskId: text().notNull(),
+    generation: integer().notNull(),
+    mode: text({ enum: Mode.literals }).notNull(),
+    active: integer({ mode: "boolean" }).notNull(),
+    createdAt: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("execution_active_task")
+      .on(t.taskId)
+      .where(sql`${t.active} = 1`),
+    uniqueIndex("execution_task_generation").on(t.taskId, t.generation),
+  ],
+);
+
+export const invocations = sqliteTable(
+  "execution_invocations",
+  {
+    id: text().primaryKey(),
+    attemptId: text()
+      .notNull()
+      .references(() => attempts.id),
+    generation: integer().notNull(),
+    inputId: text().notNull().unique(),
+    operationId: text().notNull().unique(),
+    dueAt: integer().notNull(),
+    version: integer().notNull(),
+    resultId: text().notNull().unique(),
+    content: text().notNull(),
+    digest: text().notNull(),
+    status: text({ enum: ["pending", "accepted"] }).notNull(),
+  },
+  (t) => [index("execution_invocation_due").on(t.status, t.dueAt)],
+);
+
+export const outcomes = sqliteTable("execution_outcomes", {
+  id: text().primaryKey(),
+  invocationId: text()
+    .notNull()
+    .unique()
+    .references(() => invocations.id),
+  observation: text({ mode: "json" }).$type<Observation>().notNull(),
+  acceptedAt: integer().notNull(),
+});
+
+export const Attempt = createSelectSchema(attempts);
+export interface Attempt extends Schema.Schema.Type<typeof Attempt> {}
+export const Invocation = createSelectSchema(invocations);
+export interface Invocation extends Schema.Schema.Type<typeof Invocation> {}
+export const Outcome = createSelectSchema(outcomes, { observation: Observation });
+export interface Outcome extends Schema.Schema.Type<typeof Outcome> {}
+
+/** Private durable state. Public reads project ProvisioningStatus instead. */
+export const ProvisioningState = Schema.Struct({
+  bootstrap: Bootstrap,
+  environment: Schema.NullOr(Environment),
+  providerName: Schema.NonEmptyString,
+  launchVersion: Schema.Literal(1),
+  phase: Phase,
+  blockedReason: Schema.NullOr(BlockReason),
+  resource: Schema.NullOr(Resource),
+  claimGeneration: Millis,
+  claim: Schema.NullOr(Claim),
+  nextWork: Schema.NullOr(Work),
+  dueAt: Schema.NullOr(Millis),
+  startupDeadline: Schema.NullOr(Millis),
+  activationConfirmed: Schema.Boolean,
+  /** An uncertain Activate must be reconciled, never issued again. */
+  activationUncertain: Schema.Boolean,
+  enrollmentExpected: Schema.Boolean,
+  recoveryRevision: Millis,
+  runtimeEpoch: Millis,
+  startupEpoch: Schema.Int.check(Schema.isGreaterThan(0)),
+  enrollment: Schema.NullOr(Enrollment),
+  grant: Schema.NullOr(EpochGrant),
+  ready: Schema.NullOr(ReadinessReceipt),
+  updatedAt: Millis,
+});
+export interface ProvisioningState extends Schema.Schema.Type<typeof ProvisioningState> {}
+export const provisioning = sqliteTable("execution_provisioning", {
+  attemptId: text()
+    .primaryKey()
+    .references(() => attempts.id),
+  operationId: text().notNull().unique(),
+  providerName: text().notNull().unique(),
+  capabilityId: text().notNull().unique(),
+  state: text({ mode: "json" }).$type<ProvisioningState>().notNull(),
+});
+export const enrollments = sqliteTable(
+  "execution_enrollments",
+  {
+    attemptId: text()
+      .notNull()
+      .references(() => attempts.id),
+    revision: integer().notNull(),
+    requestId: text().notNull(),
+    request: text({ mode: "json" }).$type<Enrollment>().notNull(),
+    grant: text({ mode: "json" }).$type<EpochGrant>().notNull(),
+    acceptedAt: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("execution_enrollment_revision").on(t.attemptId, t.revision),
+    uniqueIndex("execution_enrollment_request").on(t.attemptId, t.requestId),
+  ],
+);
+export const readiness = sqliteTable(
+  "execution_readiness",
+  {
+    attemptId: text()
+      .notNull()
+      .references(() => attempts.id),
+    epoch: integer().notNull(),
+    observationId: text().notNull(),
+    receipt: text({ mode: "json" }).$type<ReadinessReceipt>().notNull(),
+  },
+  (t) => [
+    uniqueIndex("execution_readiness_epoch").on(t.attemptId, t.epoch),
+    uniqueIndex("execution_readiness_observation").on(t.attemptId, t.observationId),
+  ],
+);
+export const wakes = sqliteTable("execution_wakes", {
+  inputId: text().primaryKey(),
+  attemptId: text()
+    .notNull()
+    .references(() => attempts.id),
+  receipt: text({ mode: "json" }).$type<WakeReceipt>().notNull(),
+});
+
+/** Drizzle migration aggregate. Parent owns migration generation. */
+export const tables = {
+  attempts,
+  invocations,
+  outcomes,
+  provisioning,
+  enrollments,
+  readiness,
+  wakes,
+};

@@ -1,0 +1,7 @@
+**
+!Dockerfile
+!.dockerignore
+!dist/
+!dist/main.js
+!notus-devbox
+!capabilities.json

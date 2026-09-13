@@ -9,9 +9,9 @@ Erudane's inspected source provides a concrete configuration pattern:
 - `scripts/chatgpt/login.ts` implements authorization-code OAuth with PKCE, state validation, and a loopback callback. It uses the Codex public-client identifier, not an independently registered application client.
 - `scripts/chatgpt/token.ts` persists access/refresh tokens, expiry, and account ID. `fresh` renews within five minutes of expiry and saves the rotated pair.
 - `apps/api/src/model.ts` provides `OpenAiLanguageModel.layer` with `OpenAiClient.layer`, setting `apiUrl: "https://chatgpt.com/backend-api/codex"` and `transformClient` for bearer/account/backend headers. It uses `store: false`, encrypted reasoning continuity, and instructions. No Codex process or custom `LanguageModel.make` is required by this code.
-- `alchemy.run.ts` invokes `fresh` during development configuration and injects `CHATGPT_OAUTH`. The model itself does not renew an expired token during a long-running session. Without that binding, Erudane selects its API-key path; that fallback must not be copied into Bridle.
+- `alchemy.run.ts` invokes `fresh` during development configuration and injects `CHATGPT_OAUTH`. The model itself does not renew an expired token during a long-running session. Without that binding, Erudane selects its API-key path; that fallback must not be copied into Notus.
 
-Bridle currently has [login](../../scripts/chatgpt/login.ts) and [token](../../scripts/chatgpt/token.ts) scripts, not the model runtime. Their plaintext development storage requests `0600` on creation but has no distributed lock or atomic rotation. Account-ID extraction decodes an unverified JWT claim; it cannot authenticate incoming callers.
+Notus currently has [login](../../scripts/chatgpt/login.ts) and [token](../../scripts/chatgpt/token.ts) scripts, not the model runtime. Their plaintext development storage requests `0600` on creation but has no distributed lock or atomic rotation. Account-ID extraction decodes an unverified JWT claim; it cannot authenticate incoming callers.
 
 ## Effect compatibility
 
@@ -32,5 +32,5 @@ Evidence: `repos/effect/packages/ai/openai/src/{OpenAiClient,OpenAiLanguageModel
 ## Codex-managed alternative
 
 - The [TypeScript SDK](https://learn.chatgpt.com/docs/codex-sdk) wraps CLI execution and saved native threads. Inherited environment or SDK `apiKey` configuration can select API billing despite a saved subscription login; explicitly check the selected mode. See [auth](https://learn.chatgpt.com/docs/auth).
-- Codex acts as an MCP client calling Bridle tools. [MCP](https://learn.chatgpt.com/docs/extend/mcp) documents tool allowlists and configurable `tool_timeout_sec`, defaulting to 60 seconds. Hours-long waits remain untested. A prompt saying "operator only" does not restrict built-in shell/filesystem tools.
+- Codex acts as an MCP client calling Notus tools. [MCP](https://learn.chatgpt.com/docs/extend/mcp) documents tool allowlists and configurable `tool_timeout_sec`, defaulting to 60 seconds. Hours-long waits remain untested. A prompt saying "operator only" does not restrict built-in shell/filesystem tools.
 - [App-server](https://learn.chatgpt.com/docs/app-server) offers thread/turn control and experimental dynamic tools/external-token refresh. It still owns model/conversation semantics, and its production-support wording is qualified. Evaluate only if needed; an open tool callback is not documented durable state. Native session continuity constraints are in [Herdr](herdr.md#session-continuity-and-result-evidence).

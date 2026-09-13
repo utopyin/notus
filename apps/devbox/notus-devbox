@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+# Do not let inherited Bun/Node options preload code before the supervisor runs.
+set -- /usr/local/bin/bun /usr/local/lib/notus-devbox/main.js "$@"
+# Preserve absence versus an explicitly empty value so partial binding fails closed.
+if [ "${NOTUS_CONTROL_URL+x}" = x ]; then
+  set -- "NOTUS_CONTROL_URL=$NOTUS_CONTROL_URL" "$@"
+fi
+if [ "${NOTUS_BOOTSTRAP_TOKEN+x}" = x ]; then
+  set -- "NOTUS_BOOTSTRAP_TOKEN=$NOTUS_BOOTSTRAP_TOKEN" "$@"
+fi
+exec /usr/bin/env -i HOME=/home/devbox PATH=/usr/local/bin:/usr/bin:/bin \
+  NOTUS_STATE_DIR="${NOTUS_STATE_DIR:-/home/devbox/.local/state/notus}" "$@"

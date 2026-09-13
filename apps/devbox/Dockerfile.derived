@@ -1,0 +1,11 @@
+# Supply the actual published base reference, preferably repository@sha256:digest.
+ARG NOTUS_BASE_IMAGE
+FROM ${NOTUS_BASE_IMAGE}
+USER root
+# Example project tool. Replace with your own dependencies; never bake in credentials.
+RUN apt-get update && apt-get install -y --no-install-recommends jq \
+    && rm -rf /var/lib/apt/lists/*
+USER devbox
+WORKDIR /workspaces
+# Publishing this derived image MUST reapply the canonical capabilities.json
+# as native BlueprintSpec metadata. Image inheritance is not registration.

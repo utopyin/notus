@@ -20,14 +20,14 @@ Evidence: `docs/next/website/src/content/docs/agent-automation.mdx`, `src/app/{a
 
 Useful SDK entrypoints, not a complete API tutorial:
 
-| Need | Source API |
-| --- | --- |
-| Create layout | `workspaces.createInDirectory`, `tabs.create`, `panes.split` |
-| Launch/inspect | `agents.start`, `agents.get` |
-| Submit/wait | `agents.prompt`, `agents.wait` return `Agent`, not answer Markdown |
-| Read output | `agents.read` / `panes.read`; SDK source spelling `recent_unwrapped`, CLI `recent-unwrapped` |
-| Reconcile | `session.snapshot`; `events.subscribe` / `events.wait` for live observations |
-| Native session metadata | `panes.reportAgentSession`, not a general resume command |
+| Need                    | Source API                                                                                   |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| Create layout           | `workspaces.createInDirectory`, `tabs.create`, `panes.split`                                 |
+| Launch/inspect          | `agents.start`, `agents.get`                                                                 |
+| Submit/wait             | `agents.prompt`, `agents.wait` return `Agent`, not answer Markdown                           |
+| Read output             | `agents.read` / `panes.read`; SDK source spelling `recent_unwrapped`, CLI `recent-unwrapped` |
+| Reconcile               | `session.snapshot`; `events.subscribe` / `events.wait` for live observations                 |
+| Native session metadata | `panes.reportAgentSession`, not a general resume command                                     |
 
 ## Waits do not prove a completed invocation
 
@@ -35,7 +35,7 @@ Evidence: `src/api/wait.rs`, `src/app/api/agents.rs`, `src/terminal/state.rs`; S
 
 - Standalone waits can return immediately from existing state. Default settled states include `idle`, `done`, and `blocked`. None means successful implementation or an empty review.
 - Prompting a blocked agent fails before writing. Otherwise text and delayed Enter are queued. A prompt with wait expects working/blocked activity within five seconds when starting outside working; a stalled/timeout result does not prove non-delivery. Prompting while already working may wait for that existing turn instead.
-- Server waits pin terminal identity and detect lifecycle replacement/move/exit, but carry no Bridle invocation ID or result hash. Only one outstanding invocation per specialist session avoids cross-turn confusion.
+- Server waits pin terminal identity and detect lifecycle replacement/move/exit, but carry no Notus invocation ID or result hash. Only one outstanding invocation per specialist session avoids cross-turn confusion.
 - Lifecycle hooks are authoritative where available; other integrations use screen/process heuristics. Output waits search existing snapshots, so echoed prompts and old text can match immediately. Reads are bounded, may truncate, and can scroll an idle alternate screen. They are not a durable transcript API.
 - SDK request timeout defaults to five seconds, independently of server `timeoutMs`. Server waits may be indefinite when omitted. Budget SDK and outer tool deadlines beyond server wait/submission overhead.
 - Waits use socket I/O without model calls. Events are live-only, cold streams subscribe when consumed, and interruption closes the socket. Reconnect needs snapshots and result reconciliation, not assumed event replay or automatic resubmission.

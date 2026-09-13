@@ -16,12 +16,12 @@ Introduce packages as needed, not empty scaffolding. `contracts` holds shared ID
 
 ## Domain ownership
 
-| Domain | Owns |
-| --- | --- |
-| `workspaces` | Membership, repository/access policy, source-installation associations, environment profiles, versioned process configuration |
-| `accounts` | Canonical users, verified external identity links, saved model connections, renewal/revocation, authorized usage grants |
-| `tasks` | Request/origin, source attachments and input/output configuration, inputs/reply targets/responses, selected process configuration, progress, questions/replies, plan revisions/approval capabilities, decisions/disclosure, findings/dispositions, artifact associations, acknowledgement/answer/update delivery intent |
-| `executions` | Attempt identity/generation, devbox assignment, provisioning intent, specialist sessions/rounds, invocation outcomes and evidence |
+| Domain       | Owns                                                                                                                                                                                                                                                                                                                    |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces` | Membership, repository/access policy, source-installation associations, environment profiles, versioned process configuration                                                                                                                                                                                           |
+| `accounts`   | Canonical users, verified external identity links, saved model connections, renewal/revocation, authorized usage grants                                                                                                                                                                                                 |
+| `tasks`      | Request/origin, source attachments and input/output configuration, inputs/reply targets/responses, selected process configuration, progress, questions/replies, plan revisions/approval capabilities, decisions/disclosure, findings/dispositions, artifact associations, acknowledgement/answer/update delivery intent |
+| `executions` | Attempt identity/generation, devbox assignment, provisioning intent, specialist sessions/rounds, invocation outcomes and evidence                                                                                                                                                                                       |
 
 Executions has control-side `/attempts` and devbox-side `/agents` modules. Agents use neutral session/review capabilities; local execution observations do not decide task completion. Keep these in one domain but do not require both hosts' dependencies in one service.
 
@@ -33,16 +33,16 @@ Start without domain-to-domain implementation imports. A justified one-way depen
 
 Each capability exposes its default through the [canonical service namespace](../architecture/CONTEXT.md#services-and-layers). The implementation module remains inside that domain and imports the provider package.
 
-| Capability | Default implementation | Provider package |
-| --- | --- | --- |
-| `executions/devbox` | `devbox/namespace` | `@bridle/namespace` |
-| `executions/sessions` | `sessions/herdr` | `@bridle/herdr` |
-| `executions/plan-review` | `plan-review/plannotator` | `@bridle/plannotator` |
-| `tasks/sources` | `sources/slack`, `sources/github` | `@bridle/slack`, `@bridle/github` |
-| `accounts/connections` | `connections/openai` | `@bridle/openai` |
-| `workspaces/repositories` | `repositories/github` | `@bridle/github` |
-| `tasks/store` | `store/cloudflare` | `@bridle/cloudflare` |
-| `tasks/artifacts` | `artifacts/r2` | `@bridle/cloudflare` |
+| Capability                | Default implementation            | Provider package                |
+| ------------------------- | --------------------------------- | ------------------------------- |
+| `executions/devbox`       | `devbox/namespace`                | `@notus/namespace`              |
+| `executions/sessions`     | `sessions/herdr`                  | `@notus/herdr`                  |
+| `executions/plan-review`  | `plan-review/plannotator`         | `@notus/plannotator`            |
+| `tasks/sources`           | `sources/slack`, `sources/github` | `@notus/slack`, `@notus/github` |
+| `accounts/connections`    | `connections/openai`              | `@notus/openai`                 |
+| `workspaces/repositories` | `repositories/github`             | `@notus/github`                 |
+| `tasks/store`             | `store/cloudflare`                | `@notus/cloudflare`             |
+| `tasks/artifacts`         | `artifacts/r2`                    | `@notus/cloudflare`             |
 
 Reuse Effect's neutral `LanguageModel` for inference. `executions/model/openai` assembles the default using the OpenAI package and authorized runtime context; it does not own connection storage or refresh policy.
 
@@ -69,14 +69,14 @@ Reviewer instructions delegate technical decisions and escalate product question
 
 ## Runtime and data ownership
 
-| Owner | Responsibility |
-| --- | --- |
-| `apps/api` | Separately bundled control and credential-broker Workers, their Alchemy declarations/DO bindings, listeners, and runtime composition; API code receives no connection-store binding or encryption key |
-| Task DO | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator checkpoints, through domain-owned storage interfaces |
-| Workspace DO | Initial workspace configuration, membership, installation/verified identity lookup, durable pre-task inbox, and source-routing reservations; canonical user IDs remain independent of workspace IDs |
-| Connection DO | One encrypted saved connection, serialized refresh/rotation state, and revocation, accessible only through the credential broker |
-| Private R2 | Immutable accepted artifacts and large checkpoint blobs; Task records own references, digests, acceptance, and cleanup eligibility |
-| `apps/devbox` | Supervisor, local operator/agent/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting |
+| Owner         | Responsibility                                                                                                                                                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`    | Separately bundled control and credential-broker Workers, Alchemy D1/DO declarations and bindings, listeners/scheduled intake recovery, and runtime composition; API code receives no connection-store binding or encryption key                    |
+| Task DO       | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator checkpoints, through domain-owned storage interfaces                                                                                            |
+| Shared D1     | Workspace configuration, membership, installation/verified identity lookup, durable pre-task inbox, and source-routing reservations through ordinary Worker-hosted services; workspace-owned rows are scoped, canonical user IDs remain independent |
+| Connection DO | One encrypted saved connection, serialized refresh/rotation state, and revocation, accessible only through the credential broker                                                                                                                    |
+| Private R2    | Immutable accepted artifacts and large checkpoint blobs; Task records own references, digests, acceptance, and cleanup eligibility                                                                                                                  |
+| `apps/devbox` | Supervisor, local operator/agent/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting                                                                                   |
 
 The devbox provides a remote **domain service**, not a second business implementation over remote CRUD storage. It may report work and request questions/reviews/handoff, but cannot grant approval, rewrite execution authority, or own refresh-token rotation. Local journals, native session histories, and files are checkpoints/evidence, not another authoritative task record.
 
@@ -84,13 +84,15 @@ The proposed credential broker proxies authorized model requests rather than exp
 
 Keep repository commands outside the trust boundary of the supervisor, model credentials, and review service. Validate enforced container/namespace isolation without privileged access, shared secret mounts, or host sockets. Separate processes, OS users, or `Redacted` alone do not prove isolation. Specialist support for the broker is a gate, not permission to copy native OAuth caches into the workspace.
 
-Workspace-to-Task routing and PR attachment are recorded cross-object operations, not distributed transactions. Task checkpoints retain model/tool continuity, pending waits, and invocation identities before releasing keepalives. R2 object age does not determine retention; active-task artifacts must not expire under a blanket bucket rule.
+D1-to-Task routing and PR attachment are recorded cross-store operations, not distributed transactions. D1 reservations and worker claims use unique constraints and conditional updates rather than DO serialization. A scheduled Worker sweeps durable pending intake; immediate post-response forwarding is only an optimization. D1 uses Drizzle's Effect D1 driver and fixed atomic batches; Task DOs use the Effect SQLite DO driver and local synchronous transactions. Task checkpoints retain model/tool continuity, pending waits, and invocation identities before releasing keepalives. R2 object age does not determine retention; active-task artifacts must not expire under a blanket bucket rule.
 
 Accept observations only for the current attempt/generation and invocation, deduplicating retries. Accepted code-related evidence must identify the inspected revision; preserve it during review and QA. Use meaningful commands with expected-revision checks rather than unrestricted state mutation. Record intent before external effects; never hold a database transaction across provisioning or model calls.
 
 The review gateway validates a capability against a frozen plan and records the accepted decision through Tasks. Executions' plan-review service supplies UI readiness and observed outcomes only. CLI exit or agent-authored files cannot establish approval. Protect UI assets and frozen content as well as decision secrets from repository-controlled processes. Prefer an authenticated outbound review relay, registered against attempt/review/process generation, over assuming private Namespace ingress works. The gateway authorizes access before requesting wake and waits for a newly registered review process. Backend reachability and isolation are [validation gates](../research/validation-plan.md).
 
-Alchemy deploys long-lived resources; starting a task does not redeploy the stack. Package a reproducible, commit-pinned build of the newer Namespace devbox SDK as a dependency behind `@bridle/namespace`, never importing from `repos/`. Call it directly from the Worker/DO with a fetch-compatible transport. Workerd compatibility is the working assumption, checked during the normal Worker build rather than a separate prerequisite. Bootstrap the supervisor in the Namespace box and use outbound control/review connections. No Node intermediary, Cloudflare Container, or separate Plannotator frontend is planned. Revisit transport only if actual build/runtime evidence requires it. Resource composition stays in app declarations/root stack, without app-to-app imports.
+Alchemy deploys long-lived resources; starting a task does not redeploy the stack. The [devbox slice](devbox.md) uses a fetch-based native JSON control client behind `@notus/namespace`. The published SDK omits current create fields, while the newer wrapper is unpublished and has Node-oriented transports. Maintain the inspected wire contract in the provider package rather than importing `repos/` or translating a shared configuration model. This replaces the earlier recommendation to distribute a separate SDK build. Workerd and live API checks establish compatibility only for the exercised methods.
+
+Bootstrap the supervisor in the Namespace box and use outbound control/review connections for later task execution. No Node intermediary, Cloudflare Container, or separate Plannotator frontend is planned. Resource composition stays in app declarations/root stack, without app-to-app imports.
 
 For Herdr, prefer a narrow local socket adapter for the required protocol operations rather than importing the SDK's incompatible Effect graph. Retain the upstream server and validate readiness, result identity, and native resume. This trades a small maintained client for avoiding a second Effect runtime; [source evidence](../research/herdr.md) does not establish protocol interoperability.
 

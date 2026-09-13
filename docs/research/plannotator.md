@@ -13,12 +13,12 @@ plannotator annotate "$PLAN_PATH" --gate --json \
 
 The plan and parent directory must exist; result destination must not exist. Strict flags require direct `annotate --gate --json`, not `--hook` or `annotate-last`. Evidence: `apps/hook/server/{annotate-output,annotate-command,strict-annotate-result}.ts`; `apps/marketing/src/content/docs/guides/annotate-gates-and-json-responses.md`.
 
-| Outcome | JSON decision | Strict exit |
-| --- | --- | --- |
-| Approve, optionally with notes | `approved`, optional `feedback` | 0 |
-| Request changes | `annotated`, with feedback | 1 |
-| Close | `dismissed` | 1 |
-| Invalid input, startup/publication failure | Decision may be absent | 2 |
+| Outcome                                    | JSON decision                   | Strict exit |
+| ------------------------------------------ | ------------------------------- | ----------- |
+| Approve, optionally with notes             | `approved`, optional `feedback` | 0           |
+| Request changes                            | `annotated`, with feedback      | 1           |
+| Close                                      | `dismissed`                     | 1           |
+| Invalid input, startup/publication failure | Decision may be absent          | 2           |
 
 - Without `--require-approval`, negative decisions also exit zero. Hook mode permits both approval and Close with empty stdout. Neither exit zero nor empty output proves human approval.
 - Strict output contains no Markdown, plan hash, or revision. `packages/server/annotate.ts` can reread source and exposes `/api/source/save`; approval does not require a content digest. Reading a mutable file after approval cannot establish what bytes were reviewed.

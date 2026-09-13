@@ -55,7 +55,7 @@ const program = Effect.gen(function* () {
     id_token_add_organizations: "true",
     codex_cli_simplified_flow: "true",
     state,
-    originator: "bridle",
+    originator: "notus",
   })) {
     url.searchParams.set(key, value);
   }

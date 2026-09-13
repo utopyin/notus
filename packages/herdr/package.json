@@ -1,0 +1,20 @@
+{
+  "name": "@notus/herdr",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./bun": "./src/bun.ts",
+    "./types": "./src/types.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2"
+  }
+}

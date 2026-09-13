@@ -1,0 +1,132 @@
+# Runnable source round trip
+
+Implementation plan for [tracer increment 1](tracer.md#build-in-runnable-increments), authorized by the user. [Product context](../../CONTEXT.md) owns behavior; [codebase](codebase.md) owns the wider architecture. This document owns this slice's interfaces, resources, and implementation order. Results and any implementation deviations will be recorded separately.
+
+## Scope and visible result
+
+In a dedicated Slack test channel, an authorized user mentions Notus. The bot attempts an `eyes` receipt reaction, then later posts a deterministic answer in that thread: `Simulation completed for input <id>. No coding agent was run.` A subsequent human message receives its own acknowledgement attempt and answer in the same task. Reaction ordering is best-effort; reaction failure must not block execution or a completed answer.
+
+Real: signature verification, Slack events/Web API, task/source persistence, answer routing, alarms, and retry handling. Simulated: execution and substantive answer generation. A final simulated answer does not close the task.
+
+Deploy only a simulation stage with an explicit configured workspace, channel, installation, bot identity, and administrator-provisioned fixture user mappings. Do not invent model connections or claim to test account onboarding. No provider-account grants are issued and no route can select real execution. Other installations/channels are rejected or ignored before task admission. Unlinked task starters require future onboarding; existing-task participants need not own a model connection to contribute.
+
+Excluded: Namespace, Herdr, model calls, OAuth onboarding, GitHub, Plannotator, R2, WebSockets, cancellation/closure UI, and destructive retention jobs. Keep creation/closure timestamps compatible with the agreed retention policy without enabling deletion in this slice.
+
+## Infrastructure
+
+```text
+Slack Events API
+  → public control Worker
+    → shared D1: workspace/identity data, inbox, source routing
+    → immediate forwarding, backed by a scheduled inbox sweep
+      → Task DO: inputs, source attachment, execution records, outbox
+          alarm → simulated outcome → durable response
+          alarm → source adapter → Slack reaction / threaded reply
+```
+
+One Alchemy stack in a simulation stage declares one Worker, one shared D1 database, one Task DO class, and a one-minute Cron Trigger for inbox recovery. Workspace-owned rows are scoped by workspace ID; canonical users remain independent of workspace IDs. There is no Workspace DO or database per workspace. Each admitted task gets its own SQLite-backed Task DO. Native D1/DO handles stay in `apps/api` and are supplied to neutral stores; domain ownership does not depend on physical database placement. Keep D1 read replication disabled initially.
+
+The only public application route is `POST /slack/events`. Invalid signatures return 401; malformed envelopes return 400. Valid unsupported/out-of-scope events can receive HTTP 200 without task admission. Eligible events receive 200 only after durable intake, otherwise a retryable failure. URL-verification challenges return the verified challenge. DO command/snapshot methods are internal bindings, not public administrative endpoints.
+
+Configuration: workspace/install/channel/bot IDs, fixture membership/identity mapping, and simulation delay. Secrets: Slack signing secret and installation bot token. Do not put secrets in SQLite rows, task records, logs, or client-visible configuration. No Namespace credentials, model credentials, bucket, queue service, container, or separate executor deployment is needed.
+
+Subscribe to `app_mention` and public-channel `message.channels` so ordinary replies reach attached tasks. Start with an invited bot and the scopes `app_mentions:read`, `channels:history`, `chat:write`, and `reactions:write`; verify those against the chosen Slack app setup. Private channels/DMs and historic-thread import are not part of this slice. Slack timestamp identifiers remain strings.
+
+Local verification uses signed event fixtures and a fake Slack transport. The user authorized account login/setup, dependency installation, simulation-stage deployment, and live smoke testing. Use a dedicated Notus test channel in Inbox's Slack workspace if permissions allow, otherwise a separate test workspace. Do not post in unrelated channels or broadcast notifications. Keep secrets in ignored private configuration and Cloudflare secret bindings, never in the report. Local provider fakes must never be selected by live request data.
+
+## End-to-end flow
+
+1. Worker verifies the untouched request bytes and timestamp before trusting the decoded envelope. Handle URL verification separately, without creating a task. Check the configured installation/channel and filter self/bot events.
+2. Normalize to a source event. Worker intake authorizes task starts and atomically commits event dedupe, inbox data, and pending routing intent in D1 before returning HTTP 200. This HTTP acknowledgement is not the visible reaction or final answer. Source reservation can happen during the drain; a crash before reservation must leave a discoverable pending inbox row.
+3. The Worker starts a best-effort immediate drain through `waitUntil`; an independently deployed scheduled sweep recovers pending work after crashes. Reserve the canonical task ID with a unique D1 conversation key, reloading the winner after conflicts. Claim admissions through conditional updates and forward them to the Task DO. Task admission is idempotent. Mark D1 routing complete only after confirmation; retry the same task/input IDs after a lost reply.
+4. The Task DO creates its immutable origin source attachment, input, reply target, answer obligation, and reaction intent. Its alarm schedules one simulated invocation per new input under the task's active simulation attempt.
+5. When the persisted due time arrives, compute the deterministic result and submit it through the same result-acceptance command that a future remote executor will use. Persist the accepted outcome, response, and answer delivery through replayable, idempotent transitions. No in-memory sleep or background fiber is the completion record.
+6. Drain delivery intents through Sources. React to the specific incoming message; post the answer with the source thread as destination and a short input reference for correlation. Only confirmed answer delivery discharges the obligation. General updates remain pinned to the origin attachment.
+
+`app_mention` and `message` may describe the same message with different event IDs. Deduplicate envelopes by installation/event ID and task inputs by installation/channel/message timestamp. Merge start intent monotonically across envelopes for the same message before treating a message duplicate as a no-op. An explicit bot mention in either event can establish start intent; the first observed event kind must not suppress it. Reserve by workspace/installation/channel/root-thread timestamp. Concurrent Worker requests use database uniqueness and conditional updates, not an in-memory lock. Reservation fixes the initiating actor; losing candidates must reload the canonical task ID and initiator rather than forward their proposed values. Later mentions in that thread do not create another task.
+
+Replies may arrive before the start event. Retain unrouted thread events within the dedicated fixture channel and reconcile them when the reservation appears, without creating tasks from ordinary replies. Messages before the task-start timestamp are context, not newly admitted answer obligations. Edits/deletes and provider lifecycle notifications are not fresh human-message inputs; record or ignore their event kind explicitly. Reservation creation must make retained matching events discoverable by scheduled scans, even if the immediate kick fails. Forward the initiating input and confirm Task initialization before forwarding follow-ups; a reply arriving first must not become the initiator. A late start-intent upgrade must also re-enter the pending scan. Production retention for unmatched ingress is outside this simulation-only slice.
+
+## Durable records
+
+| Owner / records     | Minimum contents and constraints                                                                                                                                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1: identity/access | Canonical fixture user IDs, verified-source identity references, workspace membership, configured installation/channel; Accounts owns identity mapping, Workspaces owns access policy                                |
+| D1: inbox           | Workspace/event key, normalized envelope, message/conversation keys, received time, routing disposition, canonical task/input IDs, claim token/generation, recovery deadline, retry time and error; unique event key |
+| D1: routes          | Workspace-scoped conversation key → task ID, originating actor, start timestamp, creation intent, initialization confirmation; unique conversation key; this is routing, not a second copy of task state             |
+| Task: task/source   | Task ID, initiator, simulation mode, immutable origin source ID; attached source address and enabled receive/reaction/reply/update capabilities                                                                      |
+| Task: input/target  | Input ID, message key, actor/context/content, source ID, durable reply target, answer obligation; unique message key; no executable handles                                                                          |
+| Task: execution     | One active attempt/generation; input-scoped invocation ID, dispatch operation ID, due time, immutable simulation payload/version, accepted result ID/content/digest; unique invocation per input                     |
+| Task: response      | Response ID, input ID, accepted result reference, text, final designation; stable result-to-response mapping prevents duplicate acceptance                                                                           |
+| Task: delivery      | Delivery ID, reaction/answer/update kind, target reference, payload digest, state, claim generation, recovery deadline, retry time, provider receipt or ambiguous failure; unique logical delivery                   |
+
+Use Drizzle's SQLite table definitions and Drizzle Kit migrations for indexed identity/state, with schema-encoded JSON for message payloads/provider addresses. Use first-party `drizzle-orm/effect-d1` over `@effect/sql-d1` for shared data and `drizzle-orm/effect-sqlite-do` over `@effect/sql-sqlite-do` for task data, not Promise wrappers around ordinary drivers. Derive matching row validators through `drizzle-orm/effect-schema`; retain explicit Effect schemas for commands, source messages, branded values, and domain invariants that are not database rows. No event-sourcing framework or second chat database. Task and execution domains own their respective tables, row schemas, and transitions. D1 and Task DO writes are never one transaction. Cross-domain transitions remain replayable; do not assume multiple separate writes are atomic merely because they share a database.
+
+Control reconstructs unfinished work through domain queries: admitted inputs missing invocations, and accepted outcomes missing responses/outbox entries. Identical outcome replays still repair missing downstream records. Persist the accepted content, not merely its digest, so reconstruction does not rerun an executor. Within Tasks, confirmed final delivery and discharge of the answer obligation commit together. Any incomplete local handoff contributes an immediate due time to alarm scheduling; no generic workflow journal is needed.
+
+## Interfaces
+
+These are proposed method shapes, not compiled declarations. Each service follows the [focused namespace/Layer convention](../architecture/CONTEXT.md#services-and-layers). Boundary data and persisted rows use Effect v4 schemas; expected failures use tagged errors. Methods return `Effect.Effect<Result, DomainError>` after layer construction captures dependencies. Export data shapes from the owning domain, not copied DTOs in each consumer.
+
+| Service / owner                         | Operations and contract                                                                                                                                                                                                                                                          |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Identities`, `accounts/identities`     | `resolve(actor: ActorRef): Effect<Option<UserId>, IdentityError>`; fixture mappings are explicitly seeded, not inferred from submitted user IDs                                                                                                                                  |
+| `Access`, `workspaces/access`           | `authorizeStart(userId, source): Effect<StartGrant, AccessError>`; checks configured workspace/channel membership. Existing-task input policy is distinct from permission to start work                                                                                          |
+| `Inbox`, `control/inbox`                | `admit(event): Effect<Admission, IntakeError>`; `drain(): Effect<DrainResult, IntakeError>`; owns D1 event dedupe, task reservation, routing claims and retries, not task state                                                                                                  |
+| `State`, `tasks/state`                  | `admitInput(command): Effect<AdmissionReceipt, TaskError>`; `recordResponse(command): Effect<ResponseReceipt, TaskError>`; `snapshot(): Effect<TaskSnapshot, TaskError>`; task-scoped, no arbitrary task-ID mutation or public CRUD                                              |
+| `Attempts`, `executions/attempts`       | `ensure(command): Effect<Attempt, ExecutionError>`; `schedule(command): Effect<Invocation, ExecutionError>`; `accept(observation): Effect<OutcomeReceipt, ExecutionError>`; validates operation IDs, active generation, invocation/input association, and conflicting duplicates |
+| `Sources`, `tasks/sources`              | Normalize verified provider events; `resolveReply(target): Effect<ReplyHandle, SourceError>`; `resolveUpdates(sourceId): Effect<UpdateHandle, SourceError>`; check enabled capabilities and origin designation before resolving delivery                                         |
+| `Delivery`, `tasks/delivery`            | `claimDue(now): Effect<DeliveryClaim[], TaskError>`; `recordOutcome(claim, outcome): Effect<void, TaskError>`; uses persisted claims and source handles, separates acknowledgement from answer delivery                                                                          |
+| Control commands, `entrypoints/control` | `admitTask(command)`, `acceptOutcome(observation)`, `drainTask()` compose domain services. DO RPC/alarms call these commands. Future authenticated execution transport can call `acceptOutcome` without changing task/source ownership                                           |
+
+A `ReplyHandle` supplies supported reaction/reply operations, taking a stable delivery ID and returning a receipt or classified failure. It captures a target, not permanent credentials. An `UpdateHandle` exists only for the origin attachment. Neither handle is persisted or accepted from callers. Slack wire objects are decoded/translated by the provider package and source adapter; downstream services use neutral shapes.
+
+Result observations include operation ID, attempt ID/generation, invocation ID, input ID, result ID, and content digest. They carry no source destination or approval authority. The task resolves the destination from its input. Reject a reused ID with different content, and acknowledge identical replays without new responses.
+
+Key failures: invalid signature/envelope, unauthorized start, unsupported source capability, conflicting duplicate, stale attempt, storage failure, rate limited, definitely rejected delivery, and ambiguous delivery. Do not collapse these into a generic successful acknowledgement.
+
+## Scheduling and external effects
+
+Use Worker scheduling for D1 inbox recovery and native Task DO alarms for local work. Neither is a workflow engine; the deterministic simulator is fixture code, not a production decision policy.
+
+D1 intake uses a fixed atomic statement batch, not an interactive `db.transaction` callback. The inspected Effect D1 driver supports `batch` but explicitly does not support interactive transactions, even though Drizzle exposes a transaction method. Keep parameterized batch handling inside the D1 store adapter. Commit inbox/pending intent together; unique reservations and compare-and-swap claims resolve concurrent drains. A conditional update affecting zero rows is not a rollback: dependent statements must repeat its guard or select from the successfully claimed row. No network side effect occurs inside the batch.
+
+`waitUntil` is only a low-latency kick. A one-minute Worker sweep queries due/unclaimed rows and expired forwarding claims with indexed predicates, fair pagination, and claim fencing. Include unmatched events whose route now exists and incomplete initialization/forwarding handoffs; no pending work may depend on receiving another event. It must run even when no new request arrives. A crash between D1 commit and the kick merely delays forwarding until a later sweep; this is not a one-minute delivery guarantee. A failed sweep leaves discoverable pending state for the next run. Validate the trigger as part of deployment and surface scan lag/errors. No queue publication is required to make intake durable.
+
+For Task DO admission only, use a short `blockConcurrencyWhile` section containing local storage operations: preserve/arm the earliest alarm first, then synchronously commit the task mutation. Duplicate admission also checks/repairs the wake. Only confirm after both succeed. A crash before commit leaves a harmless wake; a crash after commit already has a durable wake. Verify this ordering with workerd fault injection. Never hold that section across D1 or Slack requests.
+
+At alarm start, arm a recovery wake before claiming work. Persist each claim's recovery deadline. Perform provider calls outside transactions, then conditionally record outcomes against the claim generation. At the end, recompute the earliest due time from pending work, outstanding claim recovery deadlines, and incomplete local handoffs inside a short serialized section. Claiming the last item must not hide it from the scheduler; do not delete a newer wake scheduled by concurrent intake. Batch work to fit platform execution budgets without imposing product task/concurrency caps.
+
+Recover expired forwarding claims by replaying the same idempotent admission IDs. A reconstructed or expired `sending` answer is ambiguous, not automatically safe to resend; lease expiry does not prove an external request stopped. Known rate-limit rejection can be rescheduled using provider delay and Effect Schedule policy, with retry time stored durably. Do not keep an Effect retry sleep alive across events. Prioritize receipt reactions, but do not gate simulation or answers on their success. Suppress unstarted reaction retries after final answer delivery; an already in-flight reaction may still arrive late. A repeated same-bot reaction can treat confirmed `already_reacted` as success after checking the provider contract.
+
+A lost `chat.postMessage` response may follow a successful send. Persist ambiguity and expose it in the task snapshot/logs; do not blindly retry. A correlation field or observed bot event may help reconcile only after its behavior is validated. Do not assume a bot token can read every thread or that a client message ID provides exactly-once delivery. Failures requiring intervention remain visible with their answer obligation pending.
+
+## Concrete code placement and composition
+
+| Location              | Add only what this slice uses                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts`  | Shared branded IDs and actor/source references needed by independent domains                                                                    |
+| `packages/slack`      | Raw-body verification, provider schemas, Distilled-backed reactions/posting, truthful delivery-error classification                             |
+| `packages/cloudflare` | Effect-native D1/DO database and batch/alarm mechanisms; no task/domain imports or generic repository framework                                 |
+| `domains/accounts`    | Identity lookup and fixture-seeded storage implementation; no connection/refresh service yet                                                    |
+| `domains/workspaces`  | Workspace access policy and its store                                                                                                           |
+| `domains/tasks`       | State, sources/Slack adapter, delivery, types/errors, SQLite store                                                                              |
+| `domains/executions`  | Attempt/invocation/outcome rules and store; no Namespace or Herdr imports                                                                       |
+| `entrypoints/control` | Slack ingress, D1 inbox/routing and sweeper, task commands/alarm drains, deterministic `simulation.ts` helper                                   |
+| `apps/api`            | Worker fetch/scheduled handlers, shared D1 resource, Task DO class, native bindings, configuration, migration aggregates, and composed runtimes |
+| `alchemy.run.ts`      | Simulation-stage deployment and outputs; no runtime imports back into this file                                                                 |
+
+The simulator computes a pure outcome from a persisted invocation. It does not become the default implementation of a production executor service. The task alarm calls it only in a deployment whose immutable execution mode is simulation. A later real executor reports through the same outcome-acceptance command; it does not run model calls inside the DO.
+
+Compose canonical `Service`, `layer`, and `layerNoDeps` exports. Default layers include sensible store/provider dependencies; native database/alarm handles, configuration, and installation credentials remain explicit. Compose cross-domain use cases in Control and close runtime requirements in the app. Reuse one runtime per Task DO instance; reconstruction rebuilds it from storage. D1 clients follow the Worker execution scope, not a cross-request captured scope; [Alchemy's adapters](../research/alchemy.md) support this lifetime. Keep no authoritative state or durable work solely in fibers or runtime caches. Provider calls use the Worker HTTP client and per-installation credential resolution.
+
+## Implementation order and acceptance
+
+1. Use the selected npm Drizzle version in the catalog. Define owner-local tables and Effect service/command schemas. Generate and review separate shared-D1 and Task-DO migration artifacts with Drizzle Kit. Alchemy applies D1 migrations on deploy and owns that migration ledger; the Task DO applies its bundled migrations before handling requests. Do not also run another migration tool against the same D1 ledger. Alchemy's `Drizzle.Schema` integration exists, but automatic generation at deploy time is not required. Drizzle's Effect DO transaction uses native `transactionSync`; keep network/alarm awaits outside it. D1's fixed batches have a different contract. Read-only task snapshots stay on internal bindings.
+2. Implement verified Slack intake, fixture identity/access checks, canonical message dedupe, D1 reservations/claims, and recoverable scheduled forwarding. Demonstrate duplicate and out-of-order inputs before introducing outbound effects.
+3. Implement Task source/input admission, reaction delivery, persisted simulated invocations, outcome acceptance, and answer outbox. Wire Distilled without automatic mutation retries.
+4. Compose the Alchemy simulation Worker/D1/Task-DO resources and inbox Cron Trigger and run local signed-event/provider fixtures. Run one authorized live Slack round trip only after the local invariants hold.
+
+Required checks: duplicate delivery envelopes and both event-kind arrival orders, including a crash between them, produce one task/input/reaction intent/answer; early replies reach the reserved task; two inputs get separate answers; restart between each recorded transition repairs missing handoffs and preserves pending work; D1 commit-before-kick crashes recover through the scheduled sweep; concurrent Worker/cron drains preserve one reservation and fenced claims; Task DO claim recovery remains scheduled through concurrent intake; stale/conflicting outcomes are rejected; delayed/failed reactions do not block answers; 429 reschedules durably; lost send acknowledgement becomes ambiguous rather than duplicated; bot output never creates another invocation; the initiator update source never changes. Verify normal live intake meets Slack's acknowledgement deadline. Record build/runtime versions and results; mocks are not proof of live compatibility.
+
+Success is a durable Slack round trip and honest failure states. It is not agent orchestration, provider-account authorization, human plan approval, or a completed coding task.

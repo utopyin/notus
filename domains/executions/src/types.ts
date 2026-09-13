@@ -1,0 +1,208 @@
+import { Environment } from "@notus/workspaces/types";
+import * as Schema from "effect/Schema";
+
+export const Mode = Schema.Literals(["simulation", "readiness"]);
+export type Mode = typeof Mode.Type;
+export const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+export const Observation = Schema.Struct({
+  operationId: Schema.NonEmptyString,
+  attemptId: Schema.NonEmptyString,
+  generation: Schema.Int.check(Schema.isGreaterThan(0)),
+  invocationId: Schema.NonEmptyString,
+  inputId: Schema.NonEmptyString,
+  resultId: Schema.NonEmptyString,
+  content: Schema.String,
+  digest: Schema.NonEmptyString,
+});
+export interface Observation extends Schema.Schema.Type<typeof Observation> {}
+
+const Positive = Schema.Int.check(Schema.isGreaterThan(0));
+export const Phase = Schema.Literals([
+  "pending-create",
+  "creating",
+  "ambiguous-create",
+  "created",
+  "activating",
+  "awaiting-readiness",
+  "ready",
+  "blocked",
+]);
+export const BlockReason = Schema.Literals([
+  "missing-environment",
+  "create-unresolved",
+  "activation-unresolved",
+  "startup-timeout",
+  "provider-rejected",
+  "external-expired",
+  "recovery-unverified",
+]);
+export const Initialize = Schema.Struct({
+  taskId: Schema.NonEmptyString,
+  workspaceId: Schema.NonEmptyString,
+  environment: Schema.NullOr(Environment),
+});
+export interface Initialize extends Schema.Schema.Type<typeof Initialize> {}
+
+/** Identity, not a bearer credential. Control signs/authenticates this binding. */
+export const Bootstrap = Schema.Struct({
+  taskId: Schema.NonEmptyString,
+  workspaceId: Schema.NonEmptyString,
+  attemptId: Schema.NonEmptyString,
+  generation: Positive,
+  operationId: Schema.NonEmptyString,
+  capabilityId: Schema.NonEmptyString,
+});
+export interface Bootstrap extends Schema.Schema.Type<typeof Bootstrap> {}
+
+/** Provider-native image observations stay opaque and are never status payloads. */
+export const Resource = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.NonEmptyString,
+  instanceId: Schema.NullOr(Schema.NonEmptyString),
+  image: Schema.NullOr(Schema.Json),
+});
+export interface Resource extends Schema.Schema.Type<typeof Resource> {}
+export const Work = Schema.Literals([
+  "create",
+  "reconcile-create",
+  "activate",
+  "reconcile-activation",
+  "probe-wake",
+]);
+export const Claim = Schema.Struct({
+  bootstrap: Bootstrap,
+  claimGeneration: Positive,
+  work: Work,
+  recoverAt: Millis,
+  providerName: Schema.NonEmptyString,
+  launchVersion: Schema.Literal(1),
+  environment: Environment,
+  resource: Schema.NullOr(Resource),
+});
+export interface Claim extends Schema.Schema.Type<typeof Claim> {}
+
+/** Trusted adapter reports, not provider proof formats. Unknown responses must use Lost. */
+export const ProvisioningResult = Schema.TaggedUnion({
+  Assigned: {
+    operationId: Schema.NonEmptyString,
+    resource: Resource,
+    verified: Schema.Literal(true),
+  },
+  Lost: {},
+  NotFound: {},
+  Unproven: {},
+  Activated: { resourceId: Schema.NonEmptyString, instanceId: Schema.NonEmptyString },
+  Running: { resourceId: Schema.NonEmptyString, instanceId: Schema.NonEmptyString },
+  Stopped: { resourceId: Schema.NonEmptyString, verified: Schema.Literal(true) },
+  Rejected: {},
+  ExternalExpire: { resourceId: Schema.NonEmptyString },
+});
+export type ProvisioningResult = typeof ProvisioningResult.Type;
+
+export const EnrollmentIdentity = Schema.Struct({
+  bootstrap: Bootstrap,
+  resourceId: Schema.NonEmptyString,
+  instanceId: Schema.NonEmptyString,
+  expectedRecoveryRevision: Millis,
+  requestId: Schema.NonEmptyString,
+  runId: Schema.NonEmptyString,
+  kernelBootId: Schema.NonEmptyString,
+});
+export interface EnrollmentIdentity extends Schema.Schema.Type<typeof EnrollmentIdentity> {}
+export const Enrollment = Schema.Struct({
+  ...EnrollmentIdentity.fields,
+  /** Only Control may assert verified-new-boot after checking independent evidence. */
+  bootEvidence: Schema.Literals(["initial", "verified-new-boot"]),
+  /** Trusted provider-adapter receipt, never evidence supplied by the callback body. */
+  previousTermination: Schema.NullOr(
+    Schema.Struct({
+      instanceId: Schema.NonEmptyString,
+      endedAt: Schema.NonEmptyString.check(
+        Schema.isPattern(
+          /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?([Zz]|[+-]([01]\d|2[0-3]):[0-5]\d)$/,
+        ),
+        Schema.makeFilter((value) => {
+          const year = Number(value.slice(0, 4));
+          const month = Number(value.slice(5, 7));
+          const day = Number(value.slice(8, 10));
+          const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+          const days = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+          return day <= days;
+        }),
+      ),
+    }),
+  ),
+});
+export interface Enrollment extends Schema.Schema.Type<typeof Enrollment> {}
+/** Internal enrollment context. Never expose this as a task snapshot or callback response. */
+export const EnrollmentContext = Schema.Struct({
+  bootstrap: Bootstrap,
+  resource: Schema.NullOr(Resource),
+  previous: Schema.NullOr(Enrollment),
+  phase: Phase,
+  recoveryRevision: Millis,
+  enrollmentExpected: Schema.Boolean,
+  activationConfirmed: Schema.Boolean,
+});
+export interface EnrollmentContext extends Schema.Schema.Type<typeof EnrollmentContext> {}
+export const EpochGrant = Schema.Struct({
+  epoch: Positive,
+  challenge: Schema.NonEmptyString,
+  nextRecoveryRevision: Positive,
+});
+export interface EpochGrant extends Schema.Schema.Type<typeof EpochGrant> {}
+export const Readiness = Schema.Struct({
+  bootstrap: Bootstrap,
+  resourceId: Schema.NonEmptyString,
+  instanceId: Schema.NonEmptyString,
+  epoch: Positive,
+  runId: Schema.NonEmptyString,
+  challenge: Schema.NonEmptyString,
+  observationId: Schema.NonEmptyString,
+  protocol: Schema.Literal(22),
+  herdrVersion: Schema.Literal("0.9.0"),
+  taskAuthorized: Schema.Literal(false),
+});
+export interface Readiness extends Schema.Schema.Type<typeof Readiness> {}
+export const ReadinessReceipt = Schema.Struct({ observation: Readiness, acceptedAt: Millis });
+export interface ReadinessReceipt extends Schema.Schema.Type<typeof ReadinessReceipt> {}
+
+/** Last observed state, never continuous health. Control owns the per-input response handoff.
+ * No config, native image, capability ID, challenge or callback credential is exposed.
+ */
+export const ProvisioningStatus = Schema.Struct({
+  attemptId: Schema.NonEmptyString,
+  taskId: Schema.NonEmptyString,
+  workspaceId: Schema.NonEmptyString,
+  generation: Positive,
+  active: Schema.Boolean,
+  phase: Phase,
+  pendingWork: Schema.NullOr(Work),
+  providerName: Schema.NonEmptyString,
+  blockedReason: Schema.NullOr(BlockReason),
+  resourceId: Schema.NullOr(Schema.NonEmptyString),
+  instanceId: Schema.NullOr(Schema.NonEmptyString),
+  runtimeEpoch: Millis,
+  lastReadyAt: Schema.NullOr(Millis),
+  lastReadyEpoch: Schema.NullOr(Positive),
+  observedAt: Millis,
+  taskAuthorized: Schema.Literal(false),
+});
+export interface ProvisioningStatus extends Schema.Schema.Type<typeof ProvisioningStatus> {}
+export const WakeReceipt = Schema.Struct({
+  inputId: Schema.NonEmptyString,
+  requestedAt: Millis,
+  status: ProvisioningStatus,
+});
+export interface WakeReceipt extends Schema.Schema.Type<typeof WakeReceipt> {}
+
+/** Non-cryptographic content checksum. Acceptance also compares the complete content.
+ * This is never an authentication token, signature, or authority check.
+ */
+export const digest = (content: string): string => {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(content)) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
+};

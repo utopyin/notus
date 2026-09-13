@@ -2,10 +2,11 @@
 
 Source evidence for infrastructure and service planning. This folder does not define [product requirements](../../CONTEXT.md), [architecture conventions](../architecture/CONTEXT.md), or [package ownership](../plans/codebase.md).
 
-These notes come from source, test-body, documentation, and package-archive inspection. They do not establish runtime interoperability; no Bridle integration experiment has passed.
+These notes come from source, test-body, documentation, and package-archive inspection. Inspection alone does not establish runtime interoperability. [Intake validation results](intake-results.md) records the verified Slack simulation round trip and its limits; real coding-agent, model, and repository-execution integrations remain unverified.
 
 - [Sources](sources.md): revisions, versions, distribution evidence, and update commands.
 - [Validation plan](validation-plan.md): unresolved experiments, dependencies, and success criteria.
+- [Devbox results](devbox-results.md): opaque configuration, published images, Namespace startup validation, and remaining lifecycle limits.
 - [Alchemy](alchemy.md): deployment APIs and source map.
 - [Cloudflare](cloudflare.md): storage, hibernation, and runtime limits.
 - [Namespace](namespace.md): provisioning, bootstrap, credentials, lifetime, and ingress.

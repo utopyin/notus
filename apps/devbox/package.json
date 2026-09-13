@@ -1,0 +1,19 @@
+{
+  "name": "@notus/devbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check:types": "tsc --noEmit",
+    "build": "bun build ./src/main.ts --target=bun --outfile=./dist/main.js",
+    "build:image": "bun run build && docker build --platform=linux/amd64 -t notus-devbox:local ."
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@notus/control": "workspace:*",
+    "@notus/herdr": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2"
+  }
+}

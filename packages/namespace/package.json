@@ -1,0 +1,19 @@
+{
+  "name": "@notus/namespace",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./service": "./src/service.ts",
+    "./instances": "./src/instances.ts",
+    "./config": "./src/config.ts",
+    "./types": "./src/types.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@notus/contracts": "workspace:*",
+    "effect": "catalog:"
+  }
+}
