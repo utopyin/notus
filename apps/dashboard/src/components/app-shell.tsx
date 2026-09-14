@@ -43,10 +43,6 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
-/** A page link: slightly muted at rest, full contrast when hovered, focused or current. */
-const navItem =
-  "font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground";
-
 type Active = "overview" | "members" | "channels" | "invites" | "settings" | "account";
 
 /** What a page under the workspace layout tells the shell about itself. */
@@ -93,7 +89,7 @@ export function AppShell(props: {
   const isAdmin = current?.role === "admin";
   return (
     <SidebarProvider>
-      <Sidebar collapsible="icon">
+      <Sidebar collapsible="icon" className="text-sm">
         <SidebarHeader>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -153,7 +149,7 @@ export function AppShell(props: {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      className={navItem}
+                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                       tooltip="Overview"
                       isActive={active === "overview"}
                       render={<Link to="/$slug" params={{ slug }} />}
@@ -164,7 +160,7 @@ export function AppShell(props: {
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      className={navItem}
+                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                       tooltip="Members"
                       isActive={active === "members"}
                       render={<Link to="/$slug/members" params={{ slug }} />}
@@ -175,7 +171,7 @@ export function AppShell(props: {
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
-                      className={navItem}
+                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                       tooltip="Channels"
                       isActive={active === "channels"}
                       render={<Link to="/$slug/channels" params={{ slug }} />}
@@ -188,7 +184,7 @@ export function AppShell(props: {
                     <>
                       <SidebarMenuItem>
                         <SidebarMenuButton
-                          className={navItem}
+                          className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                           tooltip="Invites"
                           isActive={active === "invites"}
                           render={<Link to="/$slug/invites" params={{ slug }} />}
@@ -199,7 +195,7 @@ export function AppShell(props: {
                       </SidebarMenuItem>
                       <SidebarMenuItem>
                         <SidebarMenuButton
-                          className={navItem}
+                          className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                           tooltip="Settings"
                           isActive={active === "settings"}
                           render={<Link to="/$slug/settings" params={{ slug }} />}
