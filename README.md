@@ -2,7 +2,7 @@
 
 A shared-team coding-agent orchestrator. An AI operator coordinates planning, implementation, reviews, and QA; humans approve plans and review and merge the finished code.
 
-Status: the dedicated Slack readiness slice is deployed and confirmed, including warm/cold wake on the retained devbox. The operator round trip is live on the test stage: a Slack input becomes a persisted operator turn in the Task object, the initiator's Connection object forwards one bounded model request per step, the operator can create the task's dev box and run bounded commands on it as durable tool calls, and the model's answer returns to the thread. The subscription login is implemented but blocked from Workers egress, so the test stage explicitly uses a Platform API key. Repository checkout and production deployment remain disabled. See [devbox results](docs/research/devbox-results.md) and [intake results](docs/research/intake-results.md). Dependency versions and commands live in [package.json](package.json).
+Status: the dedicated Slack readiness slice is deployed and confirmed, including warm/cold wake on the retained devbox. The operator round trip is live on the test stage: a Slack input becomes a persisted operator turn in the Task object, the initiator's Connection object forwards one bounded model request per step, the operator can create the task's dev box, check out the task's repository read-only with a GitHub App token, and run bounded commands on the box as durable tool calls, and the model's answer returns to the thread. The subscription login is implemented but blocked from Workers egress, so the test stage explicitly uses a Platform API key. Repository checkout and production deployment remain disabled. See [devbox results](docs/research/devbox-results.md) and [intake results](docs/research/intake-results.md). Dependency versions and commands live in [package.json](package.json).
 
 ## Documentation
 
@@ -18,10 +18,11 @@ Each topic has one canonical home:
 | [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order |
 | [Devbox slice](docs/plans/devbox.md)                | Opaque provider configuration, base image, and authorized startup validation    |
 | [Operator slice](docs/plans/operator.md)            | Control-plane operator loop, saved connections, broker transport, and its gates |
+| [Repository access](docs/plans/repository.md)       | GitHub App authority, read-only checkout on the dev box, and its limits         |
 | [Research](docs/research/README.md)                 | Provider evidence and constraints                                               |
 | [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                   |
 | [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                   |
 | [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup            |
 | [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates              |
 
-The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Next are devbox tools for the operator, then repository access. Each requires separate authorization and validation.
+The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Next are pull requests and PR feedback, then specialist rounds. Each requires separate authorization and validation.

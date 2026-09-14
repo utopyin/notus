@@ -40,7 +40,7 @@ Each capability exposes its default through the [canonical service namespace](..
 | `executions/plan-review`  | `plan-review/plannotator`         | `@notus/plannotator`            |
 | `tasks/sources`           | `sources/slack`, `sources/github` | `@notus/slack`, `@notus/github` |
 | `accounts/connections`    | `connections`                     | `@notus/openai`                 |
-| `workspaces/repositories` | `repositories/github`             | `@notus/github`                 |
+| `workspaces/repositories` | `repositories/github` (planned)   | `@notus/github`                 |
 | `tasks/store`             | `store/cloudflare`                | `@notus/cloudflare`             |
 | `tasks/artifacts`         | `artifacts/r2`                    | `@notus/cloudflare`             |
 

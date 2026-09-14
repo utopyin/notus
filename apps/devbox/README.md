@@ -1,6 +1,6 @@
 # Notus base image
 
-This runtime starts Herdr and observes native readiness, either locally or through authenticated Control callbacks. Once bound and ready it long-polls Control for durable operator commands under its epoch credential, runs each as the `devbox` user in `/workspaces` with a fixed environment that excludes callback credentials, and reports the bounded result. It runs no model, no specialist and no repository checkout. `runtime-ready` explicitly means `taskAuthorized: false`; it is not permission to execute a coding task.
+This runtime starts Herdr and observes native readiness, either locally or through authenticated Control callbacks. Once bound and ready it long-polls Control for durable operator commands under its epoch credential, runs each as the `devbox` user with a fixed environment that excludes callback credentials, and reports the bounded result. A checkout command clones the task's repository read-only with a token that exists only in that git process's environment. It runs no model, no specialist and no repository checkout. `runtime-ready` explicitly means `taskAuthorized: false`; it is not permission to execute a coding task.
 
 ## Startup contract
 

@@ -43,6 +43,6 @@ Offline validation: the harness drives the poll, claim, second-poll, wrong-crede
 
 ## Next increments
 
-1. Repository access as its own gate: the GitHub App, checkout on the box, and command authority separated from model connections.
+1. Pull requests and PR feedback: Contents and Pull requests write, branch protection so Notus cannot merge, and the PR source attachment; see the [repository plan](repository.md).
 2. Specialist rounds on the box as start plus report, reusing the command channel.
 3. User-driven account linking and application-level encryption of stored connections.

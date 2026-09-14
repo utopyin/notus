@@ -40,11 +40,12 @@ Native Stop and Activate succeeded on the diagnostic box, with a new backing ins
 
 These are private test artifacts in the approved workspace, not public releases. Explicit optimization was disabled; activation performed the necessary preparation.
 
-| Artifact        | Name / version / ID                                     | OCI digest                                                                |
-| --------------- | ------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Final base      | `notus/base-herdr-0.9.0-c7hy46`, v4, `dvmo12qd4hcai`    | `sha256:1e2466f7f033dda37f66c238cdaf468403f0b347c11b63948db42a40c71db173` |
-| Final derived   | `notus/derived-herdr-0.9.0-c7hy46`, v2, `34p86ifvt80gu` | `sha256:30ee237fb17282a20047a0f96f6bfad5197d720b06d46587af12c94b367a2d62` |
-| Command runtime | `notus/base-herdr-0.9.0-biv7fr`, v2, `39tnq5bmus4ti`    | `sha256:ea44b45df6be913b4812637b119e86ee2666efb5a3f427b6b18f28fe8fd70f6c` |
+| Artifact         | Name / version / ID                                     | OCI digest                                                                |
+| ---------------- | ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Final base       | `notus/base-herdr-0.9.0-c7hy46`, v4, `dvmo12qd4hcai`    | `sha256:1e2466f7f033dda37f66c238cdaf468403f0b347c11b63948db42a40c71db173` |
+| Final derived    | `notus/derived-herdr-0.9.0-c7hy46`, v2, `34p86ifvt80gu` | `sha256:30ee237fb17282a20047a0f96f6bfad5197d720b06d46587af12c94b367a2d62` |
+| Command runtime  | `notus/base-herdr-0.9.0-biv7fr`, v2, `39tnq5bmus4ti`    | `sha256:ea44b45df6be913b4812637b119e86ee2666efb5a3f427b6b18f28fe8fd70f6c` |
+| Checkout runtime | `notus/base-herdr-0.9.0-biv7fr`, v3, `s9fs9s20rv2sq`    | `sha256:a956fd5384ff47395358d4531c1bc7ecd127e73abfcd2add8182a226fb8deccf` |
 
 Full base reference:
 
