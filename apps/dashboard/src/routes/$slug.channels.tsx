@@ -6,6 +6,14 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { collectionsOf, type ChannelRow } from "../collections";
 import { slackChannels } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
@@ -20,28 +28,31 @@ export const Route = createFileRoute("/$slug/channels")({
   component: Channels,
 });
 
+type Available = {
+  teamId: string;
+  channels: ReadonlyArray<{ id: string; name: string; isMember: boolean; isPrivate: boolean }>;
+};
+
 function Channels() {
   const { me, view, current } = useWorkspace();
   const { channels } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
     query: (q) => q.from({ channel: channels }).orderBy(({ channel }) => channel.channelId, "asc"),
   });
-  const [available, setAvailable] = useState<{
-    teamId: string;
-    channels: ReadonlyArray<{ id: string; name: string; isMember: boolean; isPrivate: boolean }>;
-  } | null>(null);
+  // Slack's channel list: null while loading, or the failure reason when Slack refused.
+  const [available, setAvailable] = useState<Available | null>(null);
   const [listing, setListing] = useState<string | null>(null);
   const [manual, setManual] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const isAdmin = view.role === "admin";
   useEffect(() => {
-    if (!isAdmin) return;
     void slackChannels().then((result) => {
       if (result.ok) setAvailable(result.value);
       else setListing(result.reason);
     });
-  }, [isAdmin]);
+  }, []);
   if (!me) return null;
+  const loading = available === null && listing === null;
   const byId = new Map(available?.channels.map((c) => [c.id, c]) ?? []);
   const linked = new Set(data.map((row) => row.channelId));
   const report = (error: unknown) =>
@@ -58,6 +69,7 @@ function Channels() {
   const remove = (row: ChannelRow) => {
     channels.delete(`${row.teamId}:${row.channelId}`).isPersisted.promise.catch(report);
   };
+  const options = available?.channels.filter((c) => c.isMember && !linked.has(c.id)) ?? [];
   return (
     <AppShell
       me={me}
@@ -82,8 +94,14 @@ function Channels() {
                 ) : (
                   <IconHash className="text-muted-foreground size-4" />
                 )}
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{info?.name ?? row.channelId}</span>
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  {loading ? (
+                    <Skeleton className="h-4 w-32" />
+                  ) : (
+                    <span className="truncate leading-4 font-medium">
+                      {info?.name ?? row.channelId}
+                    </span>
+                  )}
                   <span className="text-muted-foreground font-mono text-xs">{row.channelId}</span>
                 </div>
                 {isAdmin ? (
@@ -97,33 +115,34 @@ function Channels() {
           })}
         </ul>
       )}
-      {isAdmin && available ? (
+      {isAdmin && listing === null ? (
         <div className="flex flex-col gap-2">
           <Label htmlFor="channel">Add a channel</Label>
-          <select
-            id="channel"
-            className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-            value=""
-            onChange={(event) => {
-              if (event.target.value) add(event.target.value);
+          <Select
+            value={null}
+            disabled={loading}
+            onValueChange={(value: string | null) => {
+              if (value) add(value);
             }}
           >
-            <option value="">Channels the Notus app is in…</option>
-            {available.channels
-              .filter((c) => c.isMember && !linked.has(c.id))
-              .map((c) => (
-                <option key={c.id} value={c.id}>
+            <SelectTrigger id="channel" className="w-full">
+              <SelectValue placeholder="Channels the Notus app is in…" />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
                   #{c.name}
                   {c.isPrivate ? " (private)" : ""}
-                </option>
+                </SelectItem>
               ))}
-          </select>
+            </SelectContent>
+          </Select>
           <p className="text-muted-foreground text-xs">
             Invite the app to a channel in Slack first if it is missing here.
           </p>
         </div>
       ) : null}
-      {isAdmin && !available ? (
+      {isAdmin && listing !== null ? (
         <form
           className="flex flex-col gap-2"
           onSubmit={(event) => {
@@ -134,12 +153,10 @@ function Channels() {
             }
           }}
         >
-          {listing ? (
-            <p className="text-muted-foreground text-sm">
-              Slack refused to list channels ({listing}). The app needs the channels:read and
-              groups:read scopes; until then, add a channel by its ID.
-            </p>
-          ) : null}
+          <p className="text-muted-foreground text-sm">
+            Slack refused to list channels ({listing}). The app needs the channels:read and
+            groups:read scopes; until then, add a channel by its ID.
+          </p>
           <Label htmlFor="manual">Channel ID</Label>
           <div className="flex gap-2">
             <Input
