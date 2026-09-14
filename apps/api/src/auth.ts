@@ -81,7 +81,13 @@ export const makeAuth = (dashboard: DashboardConfig) =>
       },
     },
     account: {
-      accountLinking: { enabled: true, trustedProviders: ["github", "slack"] },
+      // Linking is an explicit action from the account page by a signed-in user, so the second
+      // provider's email need not match: Slack and GitHub emails often differ for one person.
+      accountLinking: {
+        enabled: true,
+        allowDifferentEmails: true,
+        trustedProviders: ["github", "slack"],
+      },
     },
     socialProviders:
       dashboard.github === null
