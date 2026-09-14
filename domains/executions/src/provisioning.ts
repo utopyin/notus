@@ -473,10 +473,6 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           now,
         );
         break;
-      case "Throttled":
-        if (work !== "create" || s.resource) return yield* fail("conflict");
-        s = blocked(s, "provider-throttled", now);
-        break;
       case "ExternalExpire": {
         if (!s.resource || result.resourceId !== s.resource.id) return yield* fail("conflict");
         s = blocked(s, "external-expired", now);
@@ -505,8 +501,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       (s.startupDeadline === null || s.phase === "blocked") &&
       s.environment &&
       s.blockedReason !== "external-expired" &&
-      ((s.blockedReason !== "provider-rejected" && s.blockedReason !== "provider-throttled") ||
-        s.resource !== null)
+      (s.blockedReason !== "provider-rejected" || s.resource !== null)
     ) {
       s = {
         ...s,
@@ -691,31 +686,6 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* save(s);
     return receipt;
   });
-  /** Re-arms Create after a 429 refusal. Nothing was created, so no box can be duplicated. */
-  const retryThrottled = Effect.fn("Provisioning.retryThrottled")(function* (now: number) {
-    yield* Schema.decodeEffect(Millis)(now);
-    let s = yield* requireActive;
-    yield* checkTime(s, now);
-    if (
-      s.phase === "blocked" &&
-      s.blockedReason === "provider-throttled" &&
-      s.resource === null &&
-      s.claim === null &&
-      s.environment
-    ) {
-      s = {
-        ...s,
-        phase: "pending-create",
-        blockedReason: null,
-        nextWork: "create",
-        dueAt: now,
-        startupDeadline: now + startupDuration,
-        updatedAt: now,
-      };
-      yield* save(s);
-    }
-    return status(s, true);
-  });
   const nextWake = active.pipe(
     Effect.map((s) => {
       if (!s) return null;
@@ -736,7 +706,6 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     claim,
     record,
     requestWake,
-    retryThrottled,
     nextWake,
     context,
     replayEnrollment,
@@ -788,8 +757,6 @@ export interface Interface {
     inputId: string,
     now: number,
   ) => Effect.Effect<WakeReceipt, ProvisioningFailure>;
-  /** Only a throttled Create with no resource is re-armed; any other state is returned unchanged. */
-  readonly retryThrottled: (now: number) => Effect.Effect<ProvisioningStatus, ProvisioningFailure>;
   readonly nextWake: Effect.Effect<number | null, ProvisioningFailure>;
   readonly context: (bootstrap: Bootstrap) => Effect.Effect<EnrollmentContext, ProvisioningFailure>;
   readonly replayEnrollment: (
@@ -842,9 +809,6 @@ export const layerNoDeps = Layer.effect(
       ),
       requestWake: Effect.fn("Provisioning.requestWakeAtomic")((id, now) =>
         atomic((q) => q.requestWake(id, now)),
-      ),
-      retryThrottled: Effect.fn("Provisioning.retryThrottledAtomic")((now) =>
-        atomic((q) => q.retryThrottled(now)),
       ),
       nextWake: atomic((q) => q.nextWake),
       context: Effect.fn("Provisioning.contextAtomic")((input) => atomic((q) => q.context(input))),

@@ -48,8 +48,6 @@ export const Waiting = Schema.Struct({
   id: Schema.NonEmptyString,
   invocationId: Schema.NonEmptyString,
   calls: Schema.Array(PendingCall),
-  /** When the step began waiting: calls made after a throttled Create may retry it. */
-  updatedAt: Millis,
 });
 export interface Waiting extends Schema.Schema.Type<typeof Waiting> {}
 export const Settled = Schema.Struct({
@@ -237,12 +235,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     for (const row of rows) {
       const step = yield* Schema.decodeEffect(Step)(row);
       const calls = yield* Schema.decodeUnknownEffect(Schema.Array(PendingCall))(step.calls ?? []);
-      result.push({
-        id: step.id,
-        invocationId: step.invocationId,
-        calls,
-        updatedAt: step.updatedAt,
-      });
+      result.push({ id: step.id, invocationId: step.invocationId, calls });
     }
     return result;
   });
