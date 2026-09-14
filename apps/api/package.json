@@ -9,6 +9,7 @@
     "check:types": "tsc --noEmit"
   },
   "dependencies": {
+    "@alchemy.run/better-auth": "catalog:",
     "@effect/sql-d1": "catalog:",
     "@effect/sql-sqlite-do": "catalog:",
     "@notus/accounts": "workspace:*",
@@ -24,6 +25,7 @@
     "@notus/tasks": "workspace:*",
     "@notus/workspaces": "workspace:*",
     "alchemy": "catalog:",
+    "better-auth": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   }

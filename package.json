@@ -20,7 +20,9 @@
       "@effect/ai-openai": "4.0.0-rc.112",
       "drizzle-orm": "1.0.0-rc.5-5935859",
       "drizzle-kit": "1.0.0-rc.5-5935859",
-      "typescript": "7.0.2"
+      "typescript": "7.0.2",
+      "better-auth": "1.7.4",
+      "@alchemy.run/better-auth": "2.0.0-beta.77"
     }
   },
   "type": "module",

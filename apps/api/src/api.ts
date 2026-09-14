@@ -1,5 +1,6 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
+import { Access } from "@notus/workspaces/access";
 import { Environments } from "@notus/workspaces/environments";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
@@ -12,7 +13,9 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as Callback from "./callback";
 import { App as GithubApp } from "@notus/github/app";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { authDatabase, makeAuth } from "./auth";
 import {
+  dashboardConfig,
   deploymentConfig,
   githubConfig,
   repositoryConfig,
@@ -36,6 +39,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const repository = yield* repositoryConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
+    const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
+    // Sign-in for the dashboard. Sessions are validated here, never trusted from the dashboard.
+    const auth = yield* makeAuth(dashboard);
     const githubApp = github
       ? GithubApp.layer.pipe(
           Layer.provide([Layer.succeed(GithubApp.Configuration, github), FetchHttpClient.layer]),
@@ -52,6 +58,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
     const inboxLayer = Layer.merge(Inbox.layer, Environments.layer).pipe(
+      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
+    );
+    const accessLayer = Access.layer.pipe(
       Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
     );
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
@@ -162,10 +171,50 @@ export default class Api extends Cloudflare.Worker<Api>()(
         const path = new URL(request.url, "https://notus.invalid").pathname;
         if (path === "/github/events")
           return yield* githubHook ?? Effect.succeed(HttpServerResponse.empty({ status: 404 }));
+        if (path === "/auth" || path.startsWith("/auth/")) return yield* auth.fetch;
         return yield* path.startsWith("/runtime/") ? callback : slack;
       }),
       // Binding RPC only. No fetch route exposes task state or seed authority.
       snapshot: (taskId: string) => tasks.getByName(taskId).snapshot(),
+      /**
+       * The signed-in dashboard user, resolved from the cookie header the dashboard forwards.
+       * Anonymous requests get null. Nothing here is a secret: linked providers by name and
+       * account subject, sessions without tokens, and workspace membership.
+       */
+      dashboardMe: (cookie: string) =>
+        Effect.gen(function* () {
+          const headers = new Headers({ cookie });
+          const session = yield* auth.getSession(headers);
+          if (session === null) return null;
+          const accounts = yield* auth.api.listUserAccounts({ headers });
+          const memberships = yield* Effect.scoped(
+            Access.Service.pipe(
+              Effect.flatMap((access) => access.workspacesOf(session.user.id)),
+              Effect.provide(accessLayer),
+            ),
+          );
+          return {
+            user: {
+              id: session.user.id,
+              name: session.user.name,
+              email: session.user.email,
+              image: session.user.image ?? null,
+              slackTeamId: session.user.slackTeamId ?? null,
+            },
+            accounts: accounts.map((account) => ({
+              id: account.id,
+              provider: account.providerId,
+              accountId: account.accountId,
+              createdAt: account.createdAt.toISOString(),
+            })),
+            workspaces: memberships.map((row) => row.workspaceId),
+          };
+        }).pipe(
+          Effect.catchTag("BetterAuthApiError", (error) =>
+            Effect.logWarning(`dashboard.me_failed ${error.statusCode}`).pipe(Effect.as(null)),
+          ),
+          Effect.orElseSucceed(() => null),
+        ),
       // Status only: no method here returns or accepts provider tokens.
       connectionStatus: (userId: string) => connections.getByName(userId).status(userId),
       revokeConnection: (userId: string) => connections.getByName(userId).revoke(userId),
@@ -184,6 +233,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
         ),
     };
   }).pipe(
-    Effect.provide([Cloudflare.D1.QueryDatabaseBinding, Cloudflare.Workers.CronEventSourceLive]),
+    Effect.provide([
+      Cloudflare.D1.QueryDatabaseBinding,
+      Cloudflare.Workers.CronEventSourceLive,
+      authDatabase,
+    ]),
   ),
 ) {}

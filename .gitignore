@@ -46,3 +46,7 @@ worker-configuration.d.ts
 
 # local auth tokens
 .auth
+
+# build output
+apps/dashboard/dist
+apps/dashboard/.tanstack

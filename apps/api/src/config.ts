@@ -125,6 +125,30 @@ export const repositoryConfig = Effect.gen(function* () {
 });
 
 /** Signs GitHub webhook deliveries. Absent means the GitHub ingress route does not exist. */
+/**
+ * Dashboard sign-in: the Slack app's and the GitHub App's OAuth clients, and the dashboard's
+ * public origin once known. A provider without credentials is simply not offered.
+ */
+export const dashboardConfig = Effect.gen(function* () {
+  const slackId = yield* Config.option(Config.string("SLACK_CLIENT_ID"));
+  const slackSecret = yield* Config.option(Config.redacted("SLACK_CLIENT_SECRET"));
+  const githubId = yield* Config.option(Config.string("GITHUB_OAUTH_CLIENT_ID"));
+  const githubSecret = yield* Config.option(Config.redacted("GITHUB_OAUTH_CLIENT_SECRET"));
+  const origin = yield* Config.option(Config.string("NOTUS_DASHBOARD_URL"));
+  return {
+    slack:
+      Option.isSome(slackId) && Option.isSome(slackSecret)
+        ? { clientId: slackId.value, clientSecret: slackSecret.value }
+        : null,
+    github:
+      Option.isSome(githubId) && Option.isSome(githubSecret)
+        ? { clientId: githubId.value, clientSecret: githubSecret.value }
+        : null,
+    origin: Option.isSome(origin) ? origin.value.replace(/\/$/, "") : null,
+  };
+});
+export type DashboardConfig = Effect.Success<typeof dashboardConfig>;
+
 export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
 });

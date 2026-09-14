@@ -21,6 +21,10 @@ export interface Interface {
     source: Source,
   ) => Effect.Effect<StartGrant, AccessError | Denied>;
   readonly seedFixture: (fixture: Fixture) => Effect.Effect<void, AccessError>;
+  /** Workspaces the user belongs to, for the dashboard. Membership only; no secrets or policy. */
+  readonly workspacesOf: (
+    userId: string,
+  ) => Effect.Effect<ReadonlyArray<{ readonly workspaceId: string }>, AccessError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/access/Service",
@@ -102,7 +106,15 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new AccessError({ operation: "seedFixture", cause })),
     );
-    return Service.of({ authorizeSource, authorizeStart, seedFixture });
+    const workspacesOf = Effect.fn("Access.workspacesOf")(function* (userId: string) {
+      const rows = yield* store.db
+        .select({ workspaceId: memberships.workspaceId })
+        .from(memberships)
+        .where(eq(memberships.userId, userId))
+        .pipe(Effect.mapError((cause) => new AccessError({ operation: "workspacesOf", cause })));
+      return rows;
+    });
+    return Service.of({ authorizeSource, authorizeStart, seedFixture, workspacesOf });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
