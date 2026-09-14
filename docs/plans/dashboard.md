@@ -67,6 +67,12 @@ New tables in shared D1: `workspaces`, `workspace_invites`, `workspace_github_in
 5. **Instructions.** Roles, per-repository overrides, the `role` parameter on `run_specialist`, resolved instructions recorded per task and shown per task.
 6. **Environments.** The revisioned editor over the existing environment table.
 
+## Status
+
+- **Increment one shipped on 2026-09-14.** `apps/dashboard` on its own Worker at `<stage>.notus.run`; Better Auth on the API over `AuthDb`; Slack and GitHub sign-in verified live, including account linking with differing emails. GitHub Apps ignore the email scope, so users without an email permission get GitHub's no-reply address until the App's Email addresses permission is granted.
+- **Increment two shipped the same day.** Workspaces, admin and member roles, hashed week-long invites, and Slack channel selection from the installed team. Sign-ins adopt an existing canonical user through `account_logins` when one of their verified identities already belongs to it, which keeps the fixture user's connections and tasks; the fixture seed now also creates the workspace row and makes the fixture member an admin. Channels and invites on the workspace page are TanStack DB query collections with optimistic insert, delete and revoke; the page disables SSR as TanStack DB requires.
+- Not yet: the offline harness does not cover the dashboard Worker; per-workspace Slack installation; the remaining increments.
+
 ## Validation
 
 Each increment extends the offline harness: the dashboard Worker runs in the same Miniflare setup with a service binding to the API Worker, Better Auth on its `Memory` or `SQLite` layer, and fake Slack, GitHub and OpenAI endpoints; the checks cover sign-in callbacks, session validation on the API side, session revocation, invite acceptance and expiry, role authorization on every RPC, connection status without secrets, device-code completion and timeout, instruction snapshots surviving later edits, and zero unexpected outbound requests. Live verification happens on the developer stage before production exists. Repository tests stay out unless requested.
