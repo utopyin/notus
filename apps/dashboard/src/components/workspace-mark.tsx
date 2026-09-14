@@ -16,7 +16,6 @@ const unit = (seed: number, index: number) => {
   const mixed = Math.imul(seed ^ Math.imul(index + 1, 0x9e3779b1), 0x85ebca6b) >>> 0;
   return (mixed >>> 8) / 0x01000000;
 };
-const shapes = ["wave", "dots", "truchet", "corners", "ripple", "blob", "sphere"] as const;
 
 /**
  * OKLCH to sRGB hex. Working in OKLCH makes vibrancy and contrast controllable: chroma sets
@@ -87,21 +86,22 @@ export const markOf = (id: string) => {
     softness: 0.45 + unit(seed, 2) * 0.35,
     intensity: 0.5 + unit(seed, 3) * 0.3,
     noise: 0.03 + unit(seed, 4) * 0.07,
-    shape: shapes[Math.floor(unit(seed, 5) * shapes.length)] ?? "corners",
-    // The shader is always drawn at renderSize pixels, so this frames a few bands of the pattern.
-    scale: 0.55 + unit(seed, 6) * 0.35,
+    // The wave lives in a fixed world box that covers the mark, so a few bands always show.
+    scale: 0.9 + unit(seed, 6) * 0.5,
+    rotation: Math.floor(unit(seed, 5) * 360),
     frame: Math.floor(unit(seed, 7) * 100_000),
     speed: 0.3,
   };
 };
 
+/** The world box the wave is drawn in; "cover" scales it to the mark, so size never changes the look. */
+const world = 256;
+
 /**
- * A workspace's mark: a grain gradient whose colours, shape and texture come from its id, so it
- * looks the same everywhere and for everyone. Renders on the client only; the server sends the
+ * A workspace's mark: a grain gradient wave whose colours, angle and texture come from its id, so
+ * it looks the same everywhere and for everyone. Renders on the client only; the server sends the
  * background colour so nothing jumps on hydration.
  */
-/** The pattern is drawn at this size and scaled to the mark, so it looks the same at any size. */
-const renderSize = 128;
 export function WorkspaceMark(props: {
   id: string;
   name: string;
@@ -119,21 +119,17 @@ export function WorkspaceMark(props: {
     >
       <ClientOnly fallback={null}>
         <GrainGradient
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: renderSize,
-            height: renderSize,
-            transform: `scale(${size / renderSize})`,
-            transformOrigin: "top left",
-          }}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+          fit="cover"
+          worldWidth={world}
+          worldHeight={world}
+          rotation={params.rotation}
           colors={params.colors}
           colorBack={params.colorBack}
           softness={params.softness}
           intensity={params.intensity}
           noise={params.noise}
-          shape={params.shape}
+          shape="wave"
           scale={params.scale}
           frame={params.frame}
           speed={params.speed}
