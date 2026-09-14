@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +22,16 @@ function Settings() {
   const router = useRouter();
   const [name, setName] = useState(view.workspace.name);
   const [slug, setSlug] = useState(view.workspace.slug);
+  // What the form last saved. Comparing against this, not the page data that refreshes later,
+  // keeps the button from flickering between a save and the refresh.
+  const [saved, setSaved] = useState({ name: view.workspace.name, slug: view.workspace.slug });
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    setSaved({ name: view.workspace.name, slug: view.workspace.slug });
+  }, [view.workspace.name, view.workspace.slug]);
   if (!me) return null;
-  const dirty = name.trim() !== view.workspace.name || slug !== view.workspace.slug;
+  const dirty = name.trim() !== saved.name || slug !== saved.slug;
   const save = async () => {
     if (saving || !dirty || !name.trim() || !validSlug(slug)) return;
     setSaving(true);
@@ -45,13 +51,12 @@ function Settings() {
       return;
     }
     setMessage(null);
-    // Stay disabled until the page's own data reflects the save; otherwise the form looks dirty
-    // for an instant between the write and the refresh.
+    setSaved({ name: name.trim(), slug });
+    setSaving(false);
     await router.invalidate();
     // A new slug means a new address for every page of this workspace.
     if (slug !== view.workspace.slug)
       await router.navigate({ to: "/$slug/settings", params: { slug } });
-    setSaving(false);
   };
   return (
     <AppShell me={me} current={current} active="settings" title="Settings">

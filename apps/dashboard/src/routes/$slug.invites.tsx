@@ -1,5 +1,5 @@
 import { IconChevronDown, IconCopy, IconMailFilled, IconX } from "@tabler/icons-react";
-import { useLiveQuery } from "@tanstack/react-db";
+import { isNull, useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
@@ -30,7 +30,12 @@ function Invites() {
   const { me, view, current } = useWorkspace();
   const { invites } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
-    query: (q) => q.from({ invite: invites }).orderBy(({ invite }) => invite.createdAt, "desc"),
+    // Revoked invites leave the list; the optimistic update hides them at once.
+    query: (q) =>
+      q
+        .from({ invite: invites })
+        .where(({ invite }) => isNull(invite.revokedAt))
+        .orderBy(({ invite }) => invite.createdAt, "desc"),
   });
   const [fresh, setFresh] = useState<{ role: string; url: string } | null>(null);
   const [creating, setCreating] = useState(false);
