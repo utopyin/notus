@@ -20,6 +20,7 @@ Each topic has one canonical home:
 | [Devbox slice](docs/plans/devbox.md)                | Opaque provider configuration, base image, and authorized startup validation    |
 | [Operator slice](docs/plans/operator.md)            | Control-plane operator loop, saved connections, broker transport, and its gates |
 | [Repository access](docs/plans/repository.md)       | GitHub App authority, read-only checkout on the dev box, and its limits         |
+| [Dashboard](docs/plans/dashboard.md)                | Sign-in, workspaces and invites, model connections, repositories, instructions  |
 | [Research](docs/research/README.md)                 | Provider evidence and constraints                                               |
 | [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                   |
 | [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                   |
