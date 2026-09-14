@@ -196,14 +196,34 @@ export const WakeReceipt = Schema.Struct({
 });
 export interface WakeReceipt extends Schema.Schema.Type<typeof WakeReceipt> {}
 
-/** What a dev box runtime executes for the operator. Only a bounded shell script for now. */
-export const CommandSpec = Schema.Struct({
-  kind: Schema.Literal("shell"),
-  script: Schema.NonEmptyString.check(Schema.isMaxLength(8192)),
-  cwd: Schema.Literal("/workspaces"),
-  timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 })),
+/** Directories a command may use: the workspace root or one checkout directly under it. */
+export const WorkspacePath = Schema.String.check(
+  Schema.isPattern(/^\/workspaces(\/[A-Za-z0-9._-]{1,100})?$/),
+);
+const Timeout = Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 }));
+/** The repository a task targets, captured when the task is admitted. */
+export const RepositoryRef = Schema.Struct({
+  owner: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+  name: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+  defaultBranch: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._/-]{1,200}$/)),
 });
-export interface CommandSpec extends Schema.Schema.Type<typeof CommandSpec> {}
+export interface RepositoryRef extends Schema.Schema.Type<typeof RepositoryRef> {}
+/** What a dev box runtime executes for the operator: a bounded shell script or a read-only checkout. */
+export const CommandSpec = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("shell"),
+    script: Schema.NonEmptyString.check(Schema.isMaxLength(8192)),
+    cwd: WorkspacePath,
+    timeoutMs: Timeout,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("checkout"),
+    repository: RepositoryRef,
+    path: WorkspacePath,
+    timeoutMs: Timeout,
+  }),
+]);
+export type CommandSpec = typeof CommandSpec.Type;
 export const Command = Schema.Struct({ id: Schema.NonEmptyString, spec: CommandSpec });
 export interface Command extends Schema.Schema.Type<typeof Command> {}
 /** Bounded observation the runtime reports; output is truncated, never streamed. */
@@ -214,6 +234,14 @@ export const CommandResult = Schema.Struct({
   durationMs: Millis,
   timedOut: Schema.Boolean,
   truncated: Schema.Boolean,
+  /** Present for successful checkouts only. */
+  checkout: Schema.optionalKey(
+    Schema.Struct({
+      path: WorkspacePath,
+      branch: Schema.NonEmptyString,
+      headSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+    }),
+  ),
 });
 export interface CommandResult extends Schema.Schema.Type<typeof CommandResult> {}
 export const CommandObservation = Schema.Struct({

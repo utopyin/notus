@@ -78,6 +78,40 @@ export const fixtureConnection = Effect.gen(function* () {
   return { login: Option.getOrNull(login), apiKey: Option.getOrNull(apiKey) };
 });
 
+/**
+ * The dedicated GitHub App and the fixture repository. Read by the Task host only when the
+ * runtime claims a checkout; the key never reaches prompts, storage or the dev box.
+ */
+// Numeric identifiers may arrive as numbers or strings depending on how the value was packed.
+const Identifier = Schema.Union([Schema.String, Schema.Int]);
+export const githubConfig = Effect.gen(function* () {
+  const appId = yield* Config.option(Config.schema(Identifier, "GITHUB_APP_ID"));
+  if (Option.isNone(appId)) return null;
+  const installationId = yield* Config.schema(Identifier, "GITHUB_APP_INSTALLATION_ID");
+  return {
+    appId: String(appId.value),
+    installationId: String(installationId),
+    privateKey: yield* Config.redacted("GITHUB_APP_PRIVATE_KEY"),
+  };
+});
+export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
+const RepositoryName = Schema.String.check(
+  Schema.isPattern(/^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/),
+);
+export const repositoryConfig = Effect.gen(function* () {
+  const fullName = yield* Config.option(Config.schema(RepositoryName, "NOTUS_FIXTURE_REPOSITORY"));
+  if (Option.isNone(fullName)) return null;
+  const [owner, name] = fullName.value.split("/");
+  return {
+    owner: owner ?? "",
+    name: name ?? "",
+    defaultBranch: yield* Config.schema(
+      Schema.NonEmptyString,
+      "NOTUS_FIXTURE_REPOSITORY_BRANCH",
+    ).pipe(Config.withDefault("main")),
+  };
+});
+
 /** Read only by the execution host, not the Slack ingress or the devbox. */
 export const providerConfig = Effect.gen(function* () {
   return {

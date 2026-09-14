@@ -9,6 +9,7 @@ import {
   Claim,
   CommandResult,
   CommandSpec,
+  RepositoryRef,
   Enrollment,
   EpochGrant,
   Millis,
@@ -229,6 +230,13 @@ export const polls = sqliteTable("execution_polls", {
   polledAt: integer().notNull(),
 });
 
+/** The repository the task targets, captured once at admission from workspace configuration. */
+export const repositories = sqliteTable("execution_repository", {
+  singleton: integer().primaryKey().$type<1>(),
+  repository: text({ mode: "json" }).$type<RepositoryRef>().notNull(),
+  capturedAt: integer().notNull(),
+});
+
 /** The workspace environment captured for this task before any provisioning decision. */
 export const environments = sqliteTable("execution_environment", {
   singleton: integer().primaryKey().$type<1>(),
@@ -249,4 +257,5 @@ export const tables = {
   environments,
   commands,
   polls,
+  repositories,
 };

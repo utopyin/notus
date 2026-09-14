@@ -16,6 +16,7 @@
     "@notus/contracts": "workspace:*",
     "@notus/control": "workspace:*",
     "@notus/executions": "workspace:*",
+    "@notus/github": "workspace:*",
     "@notus/namespace": "workspace:*",
     "@notus/openai": "workspace:*",
     "@notus/operator": "workspace:*",

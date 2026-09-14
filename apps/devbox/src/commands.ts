@@ -1,4 +1,5 @@
-import type { Command, CommandResult } from "@notus/executions/types";
+import type { RuntimeCommand } from "@notus/control/runtime/protocol";
+import type { CommandResult } from "@notus/executions/types";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -39,12 +40,49 @@ const collect = (stream: Stream.Stream<Uint8Array, unknown>) =>
     return { text: new TextDecoder("utf-8", { fatal: false }).decode(bytes), truncated };
   });
 
+const baseEnv = {
+  HOME: "/home/devbox",
+  USER: "devbox",
+  LOGNAME: "devbox",
+  PATH: "/usr/local/bin:/usr/bin:/bin",
+  SHELL: "/bin/bash",
+  TERM: "dumb",
+  LANG: "C.UTF-8",
+};
+
+/** Git receives the read token through configuration variables for this process only. */
+const gitEnv = (credential: string | null) =>
+  credential === null
+    ? { ...baseEnv, GIT_TERMINAL_PROMPT: "0" }
+    : {
+        ...baseEnv,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${btoa(`x-access-token:${credential}`)}`,
+      };
+
+/** Clone at the default branch, or report an existing checkout, then read HEAD. */
+const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout" }>) => {
+  const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
+  const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  return [
+    "set -eu",
+    `path=${quote(spec.path)}`,
+    `if [ -d "$path/.git" ]; then echo "existing checkout" >&2; else`,
+    `  git clone --quiet --branch ${quote(spec.repository.defaultBranch)} --single-branch --depth 50 ${quote(url)} "$path"`,
+    "fi",
+    `git -C "$path" rev-parse HEAD`,
+  ].join("\n");
+};
+
 /**
  * One bash command as the devbox user with a fixed environment. The supervisor's own
- * environment, including callback credentials, is never inherited.
+ * environment, including callback credentials, is never inherited. A checkout's read token
+ * exists only in that git process's environment.
  */
 export const run = Effect.fn("Devbox.Commands.run")(function* (
-  command: Command,
+  command: RuntimeCommand,
 ): Effect.fn.Return<CommandResult, never, ChildProcessSpawner.ChildProcessSpawner> {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const startedAt = yield* Clock.currentTimeMillis;
@@ -56,26 +94,22 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
     timedOut: false,
     truncated: false,
   });
+  const spec = command.spec;
+  const script = spec.kind === "shell" ? spec.script : checkoutScript(spec);
+  const cwd = spec.kind === "shell" ? spec.cwd : "/workspaces";
+  const env = spec.kind === "shell" ? baseEnv : gitEnv(command.credential);
   return yield* Effect.scoped(
     Effect.gen(function* () {
       const child = yield* spawner.spawn(
-        ChildProcess.make("/bin/bash", ["-c", command.spec.script], {
-          cwd: command.spec.cwd,
+        ChildProcess.make("/bin/bash", ["-c", script], {
+          cwd,
           detached: true,
           stdin: "ignore",
           stdout: "pipe",
           stderr: "pipe",
           forceKillAfter: "5 seconds",
           extendEnv: false,
-          env: {
-            HOME: "/home/devbox",
-            USER: "devbox",
-            LOGNAME: "devbox",
-            PATH: "/usr/local/bin:/usr/bin:/bin",
-            SHELL: "/bin/bash",
-            TERM: "dumb",
-            LANG: "C.UTF-8",
-          },
+          env,
         }),
       );
       yield* Effect.addFinalizer(() =>
@@ -112,13 +146,25 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         { concurrency: "unbounded" },
       );
       const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
-      return {
+      const result: CommandResult = {
         exitCode: exit,
         stdout: stdout.text,
         stderr: stderr.text,
         durationMs,
         timedOut,
         truncated: stdout.truncated || stderr.truncated,
+      };
+      if (spec.kind !== "checkout" || exit !== 0) return result;
+      const headSha = stdout.text.trim().split("\n").at(-1) ?? "";
+      if (!/^[0-9a-f]{40}$/.test(headSha)) return result;
+      return {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs,
+        timedOut: result.timedOut,
+        truncated: result.truncated,
+        checkout: { path: spec.path, branch: spec.repository.defaultBranch, headSha },
       };
     }),
   ).pipe(

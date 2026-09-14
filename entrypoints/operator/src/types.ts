@@ -22,6 +22,14 @@ export const Briefing = Schema.Struct({
       lastReadyAt: Schema.NullOr(Millis),
     }),
   ),
+  /** The task's target repository as owner/name, or null when the workspace configured none. */
+  repository: Schema.NullOr(
+    Schema.Struct({
+      fullName: Schema.NonEmptyString,
+      defaultBranch: Schema.NonEmptyString,
+      checkoutPath: Schema.NullOr(Schema.NonEmptyString),
+    }),
+  ),
   history: Schema.Array(Message),
   current: Message,
 });

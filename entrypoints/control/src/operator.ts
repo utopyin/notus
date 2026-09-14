@@ -3,9 +3,15 @@ import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
-import { digest, type ProvisioningStatus } from "@notus/executions/types";
+import {
+  digest,
+  WorkspacePath,
+  type CommandSpec,
+  type ProvisioningStatus,
+  type RepositoryRef,
+} from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
-import { CommandOutcome, DevboxResult } from "@notus/operator/tools";
+import { CheckoutOutcome, CommandOutcome, DevboxResult } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
@@ -88,10 +94,12 @@ const settle = Effect.fn("OperatorControl.settle")(function* (now: number) {
 /** Capture the workspace environment once, before the operator decides anything about a box. */
 export const prepare = Effect.fn("OperatorControl.prepare")(function* (
   environment: Environment | null,
+  repository: RepositoryRef | null,
   now: number,
 ) {
   const provisioning = yield* Provisioning.Service;
   yield* provisioning.capture(environment, now);
+  yield* provisioning.captureRepository(repository, now);
 });
 
 const describe = (status: ProvisioningStatus): DevboxResult => {
@@ -108,10 +116,14 @@ const describe = (status: ProvisioningStatus): DevboxResult => {
 };
 const encodeResult = Schema.encodeEffect(DevboxResult);
 const encodeOutcome = Schema.encodeEffect(CommandOutcome);
+const encodeCheckout = Schema.encodeEffect(CheckoutOutcome);
 const RunParams = Schema.Struct({
   command: Schema.NonEmptyString.check(Schema.isMaxLength(8192)),
+  cwd: Schema.optionalKey(WorkspacePath),
   purpose: Schema.String,
 });
+const checkoutPath = (repository: RepositoryRef) => `/workspaces/${repository.name}`;
+const checkoutTimeoutMs = 300_000;
 // Operational bounds: one command's runtime, the grace before a silent runtime fails it, and
 // how long a box may go without polling before a wake is requested on its behalf.
 const commandTimeoutMs = 120_000;
@@ -151,22 +163,46 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     }
     return { _tag: "Pending", deadline: null };
   }
-  if (call.name !== "run_command")
+  if (call.name !== "run_command" && call.name !== "checkout_repository")
     return { _tag: "Resolved", result: { error: `unknown tool ${call.name}` }, isFailure: true };
-  const failed = (error: string) =>
-    encodeOutcome(commandFailure(error)).pipe(
+  const checkout = call.name === "checkout_repository";
+  const failed = (error: string): Effect.Effect<Evaluation> => {
+    const encoded: Effect.Effect<Schema.Json, Schema.SchemaError> = checkout
+      ? encodeCheckout({ path: null, branch: null, headSha: null, error })
+      : encodeOutcome(commandFailure(error));
+    return encoded.pipe(
       Effect.orDie,
       Effect.map((result): Evaluation => ({ _tag: "Resolved", result, isFailure: true })),
     );
+  };
   if (status === null || status.resourceId === null)
     return yield* failed("no dev box exists for this task; create one first");
   if (status.phase === "blocked")
     return yield* failed(`the dev box is blocked (${status.blockedReason ?? "unknown"})`);
+  if (checkout && (yield* provisioning.repository.pipe(Effect.orDie)) === null)
+    return yield* failed("no repository is configured for this task");
   const rows = yield* commands.ofStep(stepId).pipe(Effect.orDie);
   const command = rows.find((row) => row.callId === call.id);
   if (!command) return yield* failed("the command was rejected before it was queued");
   if (command.status === "done" && command.result) {
-    const encoded = yield* encodeOutcome({ ...command.result, error: null }).pipe(Effect.orDie);
+    if (checkout) {
+      const done = command.result.checkout;
+      if (!done)
+        return yield* failed(
+          `checkout failed${command.result.stderr ? `: ${command.result.stderr.slice(0, 500)}` : ""}`,
+        );
+      const encoded = yield* encodeCheckout({ ...done, error: null }).pipe(Effect.orDie);
+      return { _tag: "Resolved", result: encoded, isFailure: false };
+    }
+    const encoded = yield* encodeOutcome({
+      exitCode: command.result.exitCode,
+      stdout: command.result.stdout,
+      stderr: command.result.stderr,
+      durationMs: command.result.durationMs,
+      timedOut: command.result.timedOut,
+      truncated: command.result.truncated,
+      error: null,
+    }).pipe(Effect.orDie);
     return { _tag: "Resolved", result: encoded, isFailure: command.result.exitCode !== 0 };
   }
   if (command.status === "failed") return yield* failed(command.failure ?? "command failed");
@@ -196,22 +232,32 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         );
         continue;
       }
-      if (call.name !== "run_command") continue;
+      if (call.name !== "run_command" && call.name !== "checkout_repository") continue;
       const status = yield* provisioning.current;
       if (status === null || status.resourceId === null || status.phase === "blocked") continue;
-      const params = yield* Schema.decodeUnknownEffect(RunParams)(call.params).pipe(Effect.option);
-      if (params._tag === "None") continue;
-      const row = yield* commands.enqueue(
-        step.id,
-        call.id,
-        {
+      let spec: CommandSpec;
+      if (call.name === "checkout_repository") {
+        const repository = yield* provisioning.repository;
+        if (repository === null) continue;
+        spec = {
+          kind: "checkout",
+          repository,
+          path: checkoutPath(repository),
+          timeoutMs: checkoutTimeoutMs,
+        };
+      } else {
+        const params = yield* Schema.decodeUnknownEffect(RunParams)(call.params).pipe(
+          Effect.option,
+        );
+        if (params._tag === "None") continue;
+        spec = {
           kind: "shell",
           script: params.value.command,
-          cwd: "/workspaces",
+          cwd: params.value.cwd ?? "/workspaces",
           timeoutMs: commandTimeoutMs,
-        },
-        now,
-      );
+        };
+      }
+      const row = yield* commands.enqueue(step.id, call.id, spec, now);
       if (row.status !== "pending") continue;
       // A box that has not polled recently may be asleep; the provider path handles the rest.
       const poll = yield* commands.lastPoll;
@@ -299,11 +345,23 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
   }
   history.sort((left, right) => left.at - right.at);
   const devbox = yield* provisioning.current;
+  const repository = yield* provisioning.repository;
+  const commands = yield* Commands.Service;
+  const checkedOut = (yield* commands.snapshot).find(
+    (row) => row.status === "done" && row.result?.checkout !== undefined,
+  );
   return Briefing.make({
     taskId: task.id,
     initiatorId: task.reservation.initiatorId,
     devbox: devbox
       ? { phase: devbox.phase, resourceId: devbox.resourceId, lastReadyAt: devbox.lastReadyAt }
+      : null,
+    repository: repository
+      ? {
+          fullName: `${repository.owner}/${repository.name}`,
+          defaultBranch: repository.defaultBranch,
+          checkoutPath: checkedOut?.result?.checkout?.path ?? null,
+        }
       : null,
     history,
     current: {

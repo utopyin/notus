@@ -10,7 +10,7 @@ import type * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as Callback from "./callback";
-import { deploymentConfig, runtimeConfig } from "./config";
+import { deploymentConfig, repositoryConfig, runtimeConfig } from "./config";
 import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
@@ -24,6 +24,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
   Effect.gen(function* () {
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
+    const repository = yield* repositoryConfig.pipe(Effect.orDie);
     const tasks = yield* Task;
     const connections = yield* Connection;
     const database = yield* SharedDatabase;
@@ -55,7 +56,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
             if (!result.ok) return yield* Effect.fail("task_admission_rejected");
             if (result.needsEnvironment) {
               const environment = yield* environments.get(command.reservation.workspaceId);
-              const prepared = yield* task.prepareEnvironment(Option.getOrNull(environment));
+              const prepared = yield* task.prepareEnvironment(
+                Option.getOrNull(environment),
+                repository,
+              );
               if (!prepared.ok) return yield* Effect.fail("task_configuration_rejected");
             }
           }).pipe(Effect.provideService(RuntimeContext, runtime)),

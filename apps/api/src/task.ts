@@ -9,10 +9,11 @@ import * as Protocol from "@notus/control/runtime/protocol";
 import * as Runtime from "@notus/control/runtime/server";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
+import { App as GithubApp } from "@notus/github/app";
 import { Devbox } from "@notus/executions/devbox";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepOutcome } from "@notus/executions/steps";
-import type { Observation } from "@notus/executions/types";
+import type { Observation, RepositoryRef } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
 import { Slack } from "@notus/slack/service";
 import { Sources } from "@notus/tasks/sources";
@@ -26,8 +27,16 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as Redacted from "effect/Redacted";
 import * as Broker from "./broker";
-import { deploymentConfig, operatorConfig, providerConfig, runtimeConfig } from "./config";
+import {
+  deploymentConfig,
+  githubConfig,
+  operatorConfig,
+  providerConfig,
+  runtimeConfig,
+} from "./config";
 import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
@@ -43,14 +52,15 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     if (config.mode === "readiness" && !runtime)
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
     const operator = yield* operatorConfig.pipe(Effect.orDie);
+    const github = yield* githubConfig.pipe(Effect.orDie);
     // Model requests leave this object only through the initiator's Connection object.
     const connections = yield* Connection;
     const context = yield* CurrentRuntimeContext;
     if (!context) return yield* Effect.die("Task initialization requires Alchemy RuntimeContext");
-    return { host, config, runtime, provider, operator, connections, context };
+    return { host, config, runtime, provider, operator, github, connections, context };
   }).pipe(
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, config, runtime, provider, operator, connections, context }) =>
+    Effect.map(({ host, config, runtime, provider, operator, github, connections, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         const database = Sqlite.layer(db);
@@ -85,6 +95,24 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const devbox = yield* Devbox.Service.pipe(Effect.provideContext(services));
         const steps = yield* Steps.Service.pipe(Effect.provideContext(services));
         const commands = yield* Commands.Service.pipe(Effect.provideContext(services));
+        // Built lazily per claim; absent configuration fails the checkout, never the object.
+        const githubLayer = github
+          ? GithubApp.layer.pipe(
+              Layer.provide([
+                Layer.succeed(GithubApp.Configuration, github),
+                FetchHttpClient.layer,
+              ]),
+            )
+          : null;
+        const readToken = (repository: RepositoryRef) =>
+          githubLayer
+            ? GithubApp.Service.pipe(
+                Effect.flatMap((app) => app.readToken(repository)),
+                Effect.provide(githubLayer),
+                Effect.map((token) => Redacted.value(token.token)),
+                Effect.option,
+              )
+            : Effect.succeedNone;
         // Built once per object lifetime; each model request selects its operation at call time.
         const model = yield* Layer.build(Broker.languageModel(connections, context, operator)).pipe(
           Effect.orDie,
@@ -304,7 +332,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 error: "admission_rejected" as const,
               })),
             ),
-          prepareEnvironment: (environment: Environment | null) =>
+          prepareEnvironment: (environment: Environment | null, repository: RepositoryRef | null) =>
             gate(
               Effect.gen(function* () {
                 const now = yield* Clock.currentTimeMillis;
@@ -313,7 +341,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 if (!task || task.closedAt !== null)
                   return yield* new RuntimeFailure({ reason: "unauthorized" });
                 if (task.mode === "operator") {
-                  yield* OperatorControl.prepare(environment, now).pipe(
+                  yield* OperatorControl.prepare(environment, repository, now).pipe(
                     Effect.provideContext(services),
                   );
                 } else if (task.mode === "readiness") {
@@ -435,8 +463,31 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                       );
                     }),
                   );
-                  if (reply.command !== null || (yield* Clock.currentTimeMillis) >= deadline)
-                    return yield* Schema.encodeEffect(Protocol.PollReply)(reply);
+                  if (reply.command !== null) {
+                    const command = reply.command;
+                    let credential: string | null = null;
+                    if (command.spec.kind === "checkout") {
+                      // Minted outside the gate, returned once, never persisted.
+                      const token = yield* readToken(command.spec.repository);
+                      if (token._tag === "None") {
+                        yield* gate(
+                          Effect.gen(function* () {
+                            const now = yield* Clock.currentTimeMillis;
+                            yield* commands.fail(command.id, "github-credential-unavailable", now);
+                            yield* advance(now);
+                            yield* recompute;
+                          }),
+                        );
+                        return yield* Schema.encodeEffect(Protocol.PollReply)({ command: null });
+                      }
+                      credential = token.value;
+                    }
+                    return yield* Schema.encodeEffect(Protocol.PollReply)({
+                      command: { id: command.id, spec: command.spec, credential },
+                    });
+                  }
+                  if ((yield* Clock.currentTimeMillis) >= deadline)
+                    return yield* Schema.encodeEffect(Protocol.PollReply)({ command: null });
                   yield* Effect.sleep("1 second");
                 }
               }),

@@ -32,6 +32,7 @@
         "@notus/contracts": "workspace:*",
         "@notus/control": "workspace:*",
         "@notus/executions": "workspace:*",
+        "@notus/github": "workspace:*",
         "@notus/namespace": "workspace:*",
         "@notus/openai": "workspace:*",
         "@notus/operator": "workspace:*",
@@ -130,6 +131,12 @@
     },
     "packages/contracts": {
       "name": "@notus/contracts",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+    },
+    "packages/github": {
+      "name": "@notus/github",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -502,6 +509,8 @@
     "@notus/devbox": ["@notus/devbox@workspace:apps/devbox"],
 
     "@notus/executions": ["@notus/executions@workspace:domains/executions"],
+
+    "@notus/github": ["@notus/github@workspace:packages/github"],
 
     "@notus/herdr": ["@notus/herdr@workspace:packages/herdr"],
 

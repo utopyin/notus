@@ -17,6 +17,7 @@ import {
   provisioning,
   ProvisioningState,
   readiness,
+  repositories,
   wakes,
 } from "./schema";
 import { Environment } from "@notus/workspaces/types";
@@ -33,6 +34,7 @@ import {
   ProvisioningStatus,
   Readiness,
   ReadinessReceipt,
+  RepositoryRef,
   WakeReceipt,
 } from "./types";
 
@@ -155,6 +157,22 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
     return existing ? yield* Schema.decodeEffect(Environment)(existing.environment) : null;
   }).pipe(Effect.withSpan("Provisioning.captured"));
+  const captureRepository = Effect.fn("Provisioning.captureRepository")(function* (
+    input: RepositoryRef | null,
+    now: number,
+  ) {
+    yield* Schema.decodeEffect(Millis)(now);
+    const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
+    if (existing) return yield* Schema.decodeEffect(RepositoryRef)(existing.repository);
+    if (input === null) return null;
+    const repository = yield* decodeInput(RepositoryRef, input);
+    yield* db.insert(repositories).values({ singleton: 1, repository, capturedAt: now });
+    return repository;
+  });
+  const repository = Effect.gen(function* () {
+    const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
+    return existing ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository) : null;
+  }).pipe(Effect.withSpan("Provisioning.repository"));
   const fresh = (params: Initialize, bootstrap: Bootstrap, now: number): ProvisioningState => ({
     bootstrap,
     environment: params.environment,
@@ -681,6 +699,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     initialize,
     capture,
     captured,
+    captureRepository,
+    repository,
     get,
     current,
     claim,
@@ -718,6 +738,11 @@ export interface Interface {
     now: number,
   ) => Effect.Effect<Environment | null, ProvisioningFailure>;
   readonly captured: Effect.Effect<Environment | null, ProvisioningFailure>;
+  readonly captureRepository: (
+    repository: RepositoryRef | null,
+    now: number,
+  ) => Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
+  readonly repository: Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
   readonly get: (
     attemptId: string,
   ) => Effect.Effect<ProvisioningStatus | null, ProvisioningFailure>;
@@ -772,6 +797,10 @@ export const layerNoDeps = Layer.effect(
         atomic((q) => q.capture(environment, now)),
       ),
       captured: atomic((q) => q.captured),
+      captureRepository: Effect.fn("Provisioning.captureRepositoryAtomic")((repository, now) =>
+        atomic((q) => q.captureRepository(repository, now)),
+      ),
+      repository: atomic((q) => q.repository),
       get: Effect.fn("Provisioning.getAtomic")((id) => atomic((q) => q.get(id))),
       current: atomic((q) => q.current),
       claim: Effect.fn("Provisioning.claimAtomic")((now) => atomic((q) => q.claim(now))),

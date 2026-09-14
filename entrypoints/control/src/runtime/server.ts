@@ -201,7 +201,7 @@ export const poll = Effect.fn("Runtime.Server.poll")(function* (
   const command = yield* commands
     .claim(capability.epoch, now)
     .pipe(Effect.mapError(() => fail("unavailable")));
-  return Protocol.PollReply.make({ command });
+  return { command };
 });
 
 export const observe = Effect.fn("Runtime.Server.observe")(function* (

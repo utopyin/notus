@@ -1,6 +1,6 @@
 import { RuntimeClient } from "@notus/control/runtime/client";
 import * as Protocol from "@notus/control/runtime/protocol";
-import type { Command, CommandResult } from "@notus/executions/types";
+import type { CommandResult } from "@notus/executions/types";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -24,7 +24,7 @@ export interface Interface {
   ) => Effect.Effect<void, Failure | E, R>;
   /** Pull commands until the credential can no longer be refreshed or the host rejects it. */
   readonly commands: <R>(
-    execute: (command: Command) => Effect.Effect<CommandResult, never, R>,
+    execute: (command: Protocol.RuntimeCommand) => Effect.Effect<CommandResult, never, R>,
   ) => Effect.Effect<never, Failure, R>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/devbox/Callback") {}
@@ -209,7 +209,7 @@ export const layerNoDeps = Layer.effect(
       });
     });
     const commands = Effect.fn("Devbox.Callback.commands")(function* <R>(
-      execute: (command: Command) => Effect.Effect<CommandResult, never, R>,
+      execute: (command: Protocol.RuntimeCommand) => Effect.Effect<CommandResult, never, R>,
     ) {
       const { store, journal } = yield* read();
       if (
