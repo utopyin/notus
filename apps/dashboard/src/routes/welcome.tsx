@@ -54,7 +54,7 @@ function Welcome() {
         }}
       >
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">
+          <h1 className="text-xl font-medium tracking-tight">
             {first ? `Welcome, ${me.user.name}` : "New workspace"}
           </h1>
           <p className="text-muted-foreground text-sm">

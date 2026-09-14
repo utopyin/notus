@@ -237,7 +237,7 @@ export function AppShell(props: {
         </div>
         <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10">
           <header className="flex flex-col gap-1">
-            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            <h1 className="text-xl font-medium tracking-tight">{title}</h1>
             {description ? <p className="text-muted-foreground text-sm">{description}</p> : null}
           </header>
           {children}

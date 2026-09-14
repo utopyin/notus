@@ -58,7 +58,7 @@ function Overview() {
               <item.icon className="size-4" />
               {item.label}
             </dt>
-            <dd className="text-2xl font-semibold tabular-nums">{item.value}</dd>
+            <dd className="text-2xl font-medium tabular-nums">{item.value}</dd>
             <dd className="text-muted-foreground text-xs">{item.hint}</dd>
           </Link>
         ))}

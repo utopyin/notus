@@ -27,7 +27,7 @@ function SignIn() {
     <main className="flex min-h-svh items-center justify-center p-6">
       <div className="flex w-full max-w-sm flex-col gap-6">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">Sign in to Notus</h1>
+          <h1 className="text-xl font-medium tracking-tight">Sign in to Notus</h1>
           <p className="text-muted-foreground text-sm">
             Use the Slack account you mention Notus from, or your GitHub account. You can link the
             other one later.

@@ -1,10 +1,16 @@
-import { IconCopy, IconMailFilled, IconX } from "@tabler/icons-react";
+import { IconChevronDown, IconCopy, IconMailFilled, IconX } from "@tabler/icons-react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { collectionsOf, type InviteRow } from "../collections";
 import { createInvite } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
@@ -83,14 +89,27 @@ function Invites() {
       title="Invites"
       description="Invite links are valid for a week and can be used once."
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button disabled={creating} onClick={() => create("member")}>
+      <div className="flex items-center">
+        <Button className="rounded-r-none" disabled={creating} onClick={() => create("member")}>
           <IconMailFilled className="size-4" />
           Invite a member
         </Button>
-        <Button variant="outline" disabled={creating} onClick={() => create("admin")}>
-          Invite an admin
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                className="rounded-l-none border-l border-l-primary-foreground/20 px-2"
+                disabled={creating}
+                aria-label="More invite options"
+              >
+                <IconChevronDown className="size-4" />
+              </Button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={() => create("admin")}>Invite an admin</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {fresh ? (
         <div className="bg-muted/40 flex flex-col gap-2 rounded-lg border p-4 text-sm">
