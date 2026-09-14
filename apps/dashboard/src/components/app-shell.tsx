@@ -89,7 +89,7 @@ export function AppShell(props: {
                       )}
                       <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
                         <span className="truncate font-medium">{current?.name ?? "Notus"}</span>
-                        <span className="text-muted-foreground truncate text-xs">
+                        <span className="text-muted-foreground truncate text-xs capitalize">
                           {current ? current.role : "No workspace"}
                         </span>
                       </span>

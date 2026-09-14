@@ -17,6 +17,31 @@ const unit = (seed: number, index: number) => {
   return (mixed >>> 8) / 0x01000000;
 };
 const shapes = ["wave", "dots", "truchet", "corners", "ripple", "blob", "sphere"] as const;
+/** Hex output: the shader's colour parser does not read space-separated HSL. */
+const hex = (h: number, s: number, l: number) => {
+  const sat = s / 100;
+  const light = l / 100;
+  const chroma = (1 - Math.abs(2 * light - 1)) * sat;
+  const x = chroma * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = light - chroma / 2;
+  const [r, g, b] =
+    h < 60
+      ? [chroma, x, 0]
+      : h < 120
+        ? [x, chroma, 0]
+        : h < 180
+          ? [0, chroma, x]
+          : h < 240
+            ? [0, x, chroma]
+            : h < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  const channel = (value: number) =>
+    Math.round((value + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(r)}${channel(g)}${channel(b)}`;
+};
 
 /** The shader parameters a workspace always gets: fixed by its id, animated slowly. */
 export const markOf = (id: string) => {
@@ -27,11 +52,11 @@ export const markOf = (id: string) => {
     const h = (hue + step * spread) % 360;
     const s = 62 + Math.floor(unit(seed, 10 + step) * 26);
     const l = 48 + Math.floor(unit(seed, 20 + step) * 18);
-    return `hsl(${h} ${s}% ${l}%)`;
+    return hex(h, s, l);
   });
   return {
     colors,
-    colorBack: `hsl(${(hue + 180) % 360} 45% 14%)`,
+    colorBack: hex((hue + 180) % 360, 45, 14),
     softness: 0.35 + unit(seed, 2) * 0.5,
     intensity: 0.3 + unit(seed, 3) * 0.5,
     noise: 0.15 + unit(seed, 4) * 0.35,
