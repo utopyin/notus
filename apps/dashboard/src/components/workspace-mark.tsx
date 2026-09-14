@@ -82,14 +82,14 @@ export const markOf = (id: string) => {
   });
   return {
     colors,
-    // A deep, tinted background gives the bands something to contrast against.
-    colorBack: oklch(0.24, 0.06, (hue + 200) % 360),
+    // The background is itself a saturated, darker band so no flat area dominates.
+    colorBack: oklch(0.4, 0.17, (hue + 200) % 360),
     softness: 0.45 + unit(seed, 2) * 0.35,
-    intensity: 0.45 + unit(seed, 3) * 0.3,
-    noise: 0.04 + unit(seed, 4) * 0.1,
+    intensity: 0.5 + unit(seed, 3) * 0.3,
+    noise: 0.03 + unit(seed, 4) * 0.07,
     shape: shapes[Math.floor(unit(seed, 5) * shapes.length)] ?? "corners",
-    // Coarse enough that the shape reads at 32 pixels.
-    scale: 1.6 + unit(seed, 6) * 1.2,
+    // The shader is always drawn at renderSize pixels, so this frames a few bands of the pattern.
+    scale: 0.55 + unit(seed, 6) * 0.35,
     frame: Math.floor(unit(seed, 7) * 100_000),
     speed: 0.3,
   };
@@ -100,18 +100,34 @@ export const markOf = (id: string) => {
  * looks the same everywhere and for everyone. Renders on the client only; the server sends the
  * background colour so nothing jumps on hydration.
  */
-export function WorkspaceMark(props: { id: string; name: string; className?: string }) {
+/** The pattern is drawn at this size and scaled to the mark, so it looks the same at any size. */
+const renderSize = 128;
+export function WorkspaceMark(props: {
+  id: string;
+  name: string;
+  size?: number;
+  className?: string;
+}) {
   const params = markOf(props.id);
+  const size = props.size ?? 32;
   return (
     <span
       role="img"
       aria-label={props.name}
       className={cn("relative block shrink-0 overflow-hidden rounded-md", props.className)}
-      style={{ backgroundColor: params.colorBack }}
+      style={{ backgroundColor: params.colorBack, width: size, height: size }}
     >
       <ClientOnly fallback={null}>
         <GrainGradient
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: renderSize,
+            height: renderSize,
+            transform: `scale(${size / renderSize})`,
+            transformOrigin: "top left",
+          }}
           colors={params.colors}
           colorBack={params.colorBack}
           softness={params.softness}

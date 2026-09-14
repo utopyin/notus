@@ -81,7 +81,7 @@ export function AppShell(props: {
                   render={
                     <SidebarMenuButton size="lg" tooltip="Switch workspace">
                       {current ? (
-                        <WorkspaceMark id={current.id} name={current.name} className="size-8" />
+                        <WorkspaceMark id={current.id} name={current.name} size={32} />
                       ) : (
                         <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md text-sm font-semibold">
                           N
@@ -106,7 +106,7 @@ export function AppShell(props: {
                         key={workspace.id}
                         render={<Link to="/$slug" params={{ slug: workspace.slug }} />}
                       >
-                        <WorkspaceMark id={workspace.id} name={workspace.name} className="size-5" />
+                        <WorkspaceMark id={workspace.id} name={workspace.name} size={20} />
                         <span className="truncate">{workspace.name}</span>
                         {workspace.id === current?.id ? (
                           <IconCheck className="ml-auto size-4" />
