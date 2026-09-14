@@ -111,6 +111,23 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   kind === "checkout" ? app.readToken(repository) : app.pushToken(repository),
                 ),
                 Effect.provide(githubLayer),
+                // Non-secret: what GitHub granted for this one operation.
+                Effect.tap((token) =>
+                  Effect.logInfo(
+                    `task.github_token ${kind} permissions=${Object.entries(
+                      token.granted.permissions,
+                    )
+                      .map(([key, value]) => `${key}:${value}`)
+                      .join(
+                        ",",
+                      )} repositories=${token.granted.repositories.join(",")} length=${Redacted.value(token.token).length}`,
+                  ),
+                ),
+                Effect.tapError((error) =>
+                  Effect.logWarning(
+                    `task.github_token_failed ${kind} ${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
+                  ),
+                ),
                 Effect.map((token) => Redacted.value(token.token)),
                 Effect.option,
               )

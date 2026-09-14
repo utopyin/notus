@@ -37,5 +37,10 @@ export const InstallationToken = Schema.Struct({
   token: Schema.RedactedFromValue(Schema.NonEmptyString),
   /** Epoch milliseconds. */
   expiresAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  /** What GitHub actually granted: non-secret, safe to log. */
+  granted: Schema.Struct({
+    permissions: Schema.Record(Schema.String, Schema.String),
+    repositories: Schema.Array(Schema.String),
+  }),
 });
 export interface InstallationToken extends Schema.Schema.Type<typeof InstallationToken> {}

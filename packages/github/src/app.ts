@@ -42,6 +42,8 @@ export class Service extends Context.Service<Service, Interface>()("@notus/githu
 const TokenResponse = Schema.Struct({
   token: Schema.NonEmptyString,
   expires_at: Schema.NonEmptyString,
+  permissions: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  repositories: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String }))),
 });
 const PullResponse = Schema.Struct({
   number: Schema.Int,
@@ -159,7 +161,14 @@ export const layerNoDeps = Layer.effect(
         );
         const expiresAt = Date.parse(decoded.expires_at);
         if (!Number.isFinite(expiresAt)) return yield* fail("token", "invalid-response");
-        return InstallationToken.make({ token: Redacted.make(decoded.token), expiresAt });
+        return InstallationToken.make({
+          token: Redacted.make(decoded.token),
+          expiresAt,
+          granted: {
+            permissions: decoded.permissions ?? {},
+            repositories: (decoded.repositories ?? []).map((entry) => entry.name),
+          },
+        });
       },
       Effect.scoped,
       Effect.timeoutOrElse({

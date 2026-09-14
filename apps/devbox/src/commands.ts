@@ -87,8 +87,11 @@ const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => 
     `cd "$path"`,
     `git checkout --quiet -B ${quote(spec.branch)}`,
     "git add -A",
-    `if git diff --cached --quiet; then echo "nothing to commit" >&2; exit 4; fi`,
-    `git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}`,
+    // Commit only new changes. A commit left by an earlier failed push is still published, so a
+    // retry after a transient failure works instead of stopping at "nothing to commit".
+    `if ! git diff --cached --quiet; then git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}; fi`,
+    `base=$(git rev-parse --verify --quiet ${quote(`refs/remotes/origin/${spec.repository.defaultBranch}`)} || true)`,
+    `if [ -n "$base" ] && [ "$(git rev-parse HEAD)" = "$base" ]; then echo "nothing to publish" >&2; exit 4; fi`,
     `git push --quiet ${quote(url)} ${quote(`HEAD:refs/heads/${spec.branch}`)}`,
     "git rev-parse HEAD",
   ].join("\n");
