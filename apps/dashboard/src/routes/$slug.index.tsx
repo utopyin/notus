@@ -1,13 +1,14 @@
 import { IconMailFilled, IconMessageCircleFilled, IconUserFilled } from "@tabler/icons-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { AppShell } from "@/components/app-shell";
 import { useWorkspace } from "./$slug";
 
-export const Route = createFileRoute("/$slug/")({ component: Overview });
+export const Route = createFileRoute("/$slug/")({
+  staticData: { shell: { active: "overview" } },
+  component: Overview,
+});
 
 function Overview() {
-  const { me, view, current } = useWorkspace();
-  if (!me) return null;
+  const { view, current } = useWorkspace();
   const open = view.invites.filter(
     (i) => i.revokedAt === null && i.acceptedAt === null && i.expiresAt > Date.now(),
   ).length;
@@ -39,13 +40,7 @@ function Overview() {
       : []),
   ];
   return (
-    <AppShell
-      me={me}
-      current={current}
-      active="overview"
-      title={view.workspace.name}
-      description={`notus.run/${view.workspace.slug}`}
-    >
+    <>
       <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
         {items.map((item) => (
           <Link
@@ -67,6 +62,6 @@ function Overview() {
         Mention Notus in a linked channel to start a task. Tasks, their pull requests and their
         devboxes will appear here in a later increment.
       </section>
-    </AppShell>
+    </>
   );
 }

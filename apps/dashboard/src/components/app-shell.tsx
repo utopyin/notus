@@ -43,6 +43,17 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
+type Active = "overview" | "members" | "channels" | "invites" | "settings" | "account";
+
+/** What a page under the workspace layout tells the shell about itself. */
+export type ShellPage = { active: Active; title?: string; description?: string };
+
+declare module "@tanstack/react-router" {
+  interface StaticDataRouteOption {
+    shell?: ShellPage;
+  }
+}
+
 /**
  * The signed-in layout: a sidebar with the workspace switcher, the current workspace's pages and
  * the account menu, beside the page. Workspace-less pages pass the user's first workspace so the
@@ -51,7 +62,7 @@ type Current = Me["workspaces"][number];
 export function AppShell(props: {
   me: Me;
   current: Current | null;
-  active?: "overview" | "members" | "channels" | "invites" | "settings" | "account";
+  active?: Active;
   title: string;
   description?: string;
   children: ReactNode;

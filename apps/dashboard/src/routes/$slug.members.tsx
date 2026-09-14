@@ -1,7 +1,6 @@
 import { IconDotsVertical, IconShieldCheckFilled, IconUserMinus } from "@tabler/icons-react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { AppShell } from "@/components/app-shell";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +13,16 @@ import {
 import { removeMember, setRole } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
 
-export const Route = createFileRoute("/$slug/members")({ component: Members });
+export const Route = createFileRoute("/$slug/members")({
+  staticData: {
+    shell: {
+      active: "members",
+      title: "Members",
+      description: "Who can start tasks from this workspace's channels.",
+    },
+  },
+  component: Members,
+});
 
 const initialsOf = (name: string) =>
   name
@@ -25,7 +33,7 @@ const initialsOf = (name: string) =>
     .toUpperCase();
 
 function Members() {
-  const { me, view, current } = useWorkspace();
+  const { me, view } = useWorkspace();
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   if (!me) return null;
@@ -47,13 +55,7 @@ function Members() {
     await router.invalidate();
   };
   return (
-    <AppShell
-      me={me}
-      current={current}
-      active="members"
-      title="Members"
-      description="Who can start tasks from this workspace's channels."
-    >
+    <>
       <ul className="divide-y rounded-lg border">
         {view.members.map((member) => {
           const name = member.name ?? "Not signed in yet";
@@ -112,6 +114,6 @@ function Members() {
         })}
       </ul>
       {message ? <p className="text-destructive text-sm">{message}</p> : null}
-    </AppShell>
+    </>
   );
 }

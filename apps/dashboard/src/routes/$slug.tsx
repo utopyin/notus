@@ -1,4 +1,12 @@
-import { Outlet, createFileRoute, getRouteApi, notFound, redirect } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  getRouteApi,
+  notFound,
+  redirect,
+  useMatches,
+} from "@tanstack/react-router";
+import { AppShell } from "@/components/app-shell";
 import { getWorkspaceBySlug } from "../server/workspaces";
 
 const root = getRouteApi("__root__");
@@ -15,8 +23,32 @@ export const Route = createFileRoute("/$slug")({
     if (!result.ok) throw notFound();
     return result.value;
   },
-  component: () => <Outlet />,
+  component: Layout,
 });
+
+/**
+ * The shell is mounted once here and the pages render into it, so navigating between them keeps
+ * the sidebar (and its live pieces, like the workspace mark) in place. Each page declares its
+ * header through `staticData.shell`; the overview leaves the title to the workspace itself.
+ */
+function Layout() {
+  const { me, view, current } = useWorkspace();
+  const shell = useMatches({
+    select: (matches) => matches.findLast((match) => match.staticData.shell)?.staticData.shell,
+  });
+  if (!me) return null;
+  return (
+    <AppShell
+      me={me}
+      current={current}
+      active={shell?.active}
+      title={shell?.title ?? view.workspace.name}
+      description={shell?.title ? shell.description : `notus.run/${view.workspace.slug}`}
+    >
+      <Outlet />
+    </AppShell>
+  );
+}
 
 /** The current workspace, for pages under the slug. */
 export const useWorkspace = () => {

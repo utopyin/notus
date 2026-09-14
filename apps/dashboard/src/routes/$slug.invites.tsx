@@ -2,7 +2,6 @@ import { IconChevronDown, IconCopy, IconMailFilled, IconX } from "@tabler/icons-
 import { isNull, useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
-import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +15,13 @@ import { createInvite } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/invites")({
+  staticData: {
+    shell: {
+      active: "invites",
+      title: "Invites",
+      description: "Invite links are valid for a week and can be used once.",
+    },
+  },
   ssr: false,
   loader: async ({ params, parentMatchPromise }) => {
     const parent = await parentMatchPromise;
@@ -27,7 +33,7 @@ export const Route = createFileRoute("/$slug/invites")({
 });
 
 function Invites() {
-  const { me, view, current } = useWorkspace();
+  const { view } = useWorkspace();
   const { invites } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
     // Revoked invites leave the list; the optimistic update hides them at once.
@@ -41,7 +47,6 @@ function Invites() {
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  if (!me) return null;
   const create = async (role: "admin" | "member") => {
     if (creating) return;
     setCreating(true);
@@ -86,13 +91,7 @@ function Invites() {
   // Show who accepted by name when they are a member we know.
   const nameOf = (userId: string) => view.members.find((m) => m.userId === userId)?.name ?? userId;
   return (
-    <AppShell
-      me={me}
-      current={current}
-      active="invites"
-      title="Invites"
-      description="Invite links are valid for a week and can be used once."
-    >
+    <>
       <div className="flex items-center">
         <Button
           variant="outline"
@@ -163,6 +162,6 @@ function Invites() {
         </ul>
       )}
       {message ? <p className="text-destructive text-sm">{message}</p> : null}
-    </AppShell>
+    </>
   );
 }

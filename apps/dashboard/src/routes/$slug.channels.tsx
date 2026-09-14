@@ -7,7 +7,6 @@ import {
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +23,13 @@ import { slackChannels } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/channels")({
+  staticData: {
+    shell: {
+      active: "channels",
+      title: "Slack channels",
+      description: "Mentioning Notus in one of these channels starts a task in this workspace.",
+    },
+  },
   // TanStack DB collections are client-side only.
   ssr: false,
   loader: async ({ parentMatchPromise }) => {
@@ -39,7 +45,7 @@ type Available = {
 };
 
 function Channels() {
-  const { me, view, current } = useWorkspace();
+  const { view } = useWorkspace();
   const { channels } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
     query: (q) => q.from({ channel: channels }).orderBy(({ channel }) => channel.channelId, "asc"),
@@ -56,7 +62,6 @@ function Channels() {
       else setListing(result.reason);
     });
   }, []);
-  if (!me) return null;
   const loading = available === null && listing === null;
   const byId = new Map(available?.channels.map((c) => [c.id, c]) ?? []);
   const linked = new Set(data.map((row) => row.channelId));
@@ -76,13 +81,7 @@ function Channels() {
   };
   const options = available?.channels.filter((c) => c.isMember && !linked.has(c.id)) ?? [];
   return (
-    <AppShell
-      me={me}
-      current={current}
-      active="channels"
-      title="Slack channels"
-      description="Mentioning Notus in one of these channels starts a task in this workspace."
-    >
+    <>
       {data.length === 0 ? (
         <p className="text-muted-foreground text-sm">No channels linked yet.</p>
       ) : (
@@ -185,6 +184,6 @@ function Channels() {
         </form>
       ) : null}
       {message ? <p className="text-destructive text-sm">{message}</p> : null}
-    </AppShell>
+    </>
   );
 }

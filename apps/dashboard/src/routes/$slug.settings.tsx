@@ -1,6 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +8,7 @@ import { workspacesCollection } from "../workspaces-collection";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/settings")({
+  staticData: { shell: { active: "settings", title: "Settings" } },
   loader: async ({ params, parentMatchPromise }) => {
     const parent = await parentMatchPromise;
     if (parent.loaderData && parent.loaderData.role !== "admin")
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/$slug/settings")({
 });
 
 function Settings() {
-  const { me, view, current } = useWorkspace();
+  const { view } = useWorkspace();
   const router = useRouter();
   const [name, setName] = useState(view.workspace.name);
   const [slug, setSlug] = useState(view.workspace.slug);
@@ -30,7 +30,6 @@ function Settings() {
   useEffect(() => {
     setSaved({ name: view.workspace.name, slug: view.workspace.slug });
   }, [view.workspace.name, view.workspace.slug]);
-  if (!me) return null;
   const dirty = name.trim() !== saved.name || slug !== saved.slug;
   const save = async () => {
     if (saving || !dirty || !name.trim() || !validSlug(slug)) return;
@@ -59,7 +58,7 @@ function Settings() {
       await router.navigate({ to: "/$slug/settings", params: { slug } });
   };
   return (
-    <AppShell me={me} current={current} active="settings" title="Settings">
+    <>
       <form
         className="flex max-w-md flex-col gap-6"
         onSubmit={(event) => {
@@ -103,6 +102,6 @@ function Settings() {
           </Button>
         </div>
       </form>
-    </AppShell>
+    </>
   );
 }
