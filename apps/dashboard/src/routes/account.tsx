@@ -6,10 +6,11 @@ import {
   IconLink,
 } from "@tabler/icons-react";
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { authClient, type Provider } from "../auth-client";
+import { getSessions } from "../server/me";
 
 const root = getRouteApi("__root__");
 
@@ -18,11 +19,11 @@ export const Route = createFileRoute("/account")({
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
     if (!parent.loaderData) throw redirect({ to: "/sign-in" });
+    return { sessions: await getSessions() };
   },
   component: Account,
 });
 
-type Session = { id: string; token: string; createdAt: Date | string; userAgent?: string | null };
 /** A short "Chrome on macOS" label; the full user agent is not useful to read. */
 const clientOf = (userAgent: string | null | undefined) => {
   if (!userAgent) return "Unknown client";
@@ -54,16 +55,9 @@ const clientOf = (userAgent: string | null | undefined) => {
 function Account() {
   const me = root.useLoaderData();
   const router = useRouter();
-  const [sessions, setSessions] = useState<ReadonlyArray<Session>>([]);
+  const { sessions } = Route.useLoaderData();
   const [message, setMessage] = useState<string | null>(null);
   const [linking, setLinking] = useState<Provider | null>(null);
-  const reloadSessions = async () => {
-    const { data } = await authClient.listSessions();
-    setSessions(data ?? []);
-  };
-  useEffect(() => {
-    void reloadSessions();
-  }, []);
   if (!me) return null;
   const linked = (provider: string) => me.accounts.find((a) => a.provider === provider);
   const link = async (provider: Provider) => {
@@ -82,7 +76,7 @@ function Account() {
   };
   const revoke = async (token: string) => {
     await authClient.revokeSession({ token });
-    await reloadSessions();
+    await router.invalidate();
   };
   const providers = [
     { id: "slack" as const, label: "Slack", icon: IconBrandSlack },
@@ -148,14 +142,21 @@ function Account() {
             <li key={session.id} className="flex items-center gap-3 px-4 py-3 text-sm">
               <IconDeviceLaptop className="text-muted-foreground size-5" />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{clientOf(session.userAgent)}</span>
+                <span className="truncate">
+                  {clientOf(session.userAgent)}
+                  {session.current ? (
+                    <span className="text-muted-foreground"> · this session</span>
+                  ) : null}
+                </span>
                 <span className="text-muted-foreground text-xs">
                   since {new Date(session.createdAt).toLocaleString()}
                 </span>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => revoke(session.token)}>
-                Revoke
-              </Button>
+              {session.current ? null : (
+                <Button variant="ghost" size="sm" onClick={() => revoke(session.token)}>
+                  Revoke
+                </Button>
+              )}
             </li>
           ))}
         </ul>

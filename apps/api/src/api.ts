@@ -339,6 +339,24 @@ export default class Api extends Cloudflare.Worker<Api>()(
           Effect.tapError((error) => Effect.logWarning(`dashboard.me_failed ${error._tag}`)),
           Effect.orElseSucceed(() => null),
         ),
+      /** The signed-in user's sessions without their tokens beyond what revocation needs. */
+      dashboardSessions: (cookie: string) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            const sessions = yield* auth.api.listSessions({ headers: new Headers({ cookie }) });
+            return sessions
+              .map((session) => ({
+                id: session.id,
+                token: session.token,
+                createdAt: session.createdAt.toISOString(),
+                userAgent: session.userAgent ?? null,
+                current: session.id === me.session.session.id,
+              }))
+              .sort((a, b) =>
+                a.current ? -1 : b.current ? 1 : b.createdAt.localeCompare(a.createdAt),
+              );
+          }).pipe(Effect.provideService(RuntimeContext, runtime)),
+        ),
       dashboardCreateWorkspace: (cookie: string, name: string, slug?: string) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(

@@ -11,3 +11,10 @@ export const getMe = createServerFn({ method: "GET" }).handler(async () => {
   return await api.dashboardMe(cookie);
 });
 export type Me = NonNullable<Awaited<ReturnType<typeof getMe>>>;
+
+export const getSessions = createServerFn({ method: "GET" }).handler(async () => {
+  const cookie = getRequestHeader("cookie") ?? "";
+  const api = Cloudflare.toRpcAsync<Api>(env.API);
+  const result = await api.dashboardSessions(cookie);
+  return result.ok ? result.value : [];
+});
