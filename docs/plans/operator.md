@@ -43,6 +43,5 @@ Offline validation: the harness drives the poll, claim, second-poll, wrong-crede
 
 ## Next increments
 
-1. PR feedback as a task source: the App webhook, the PR conversation attached to the task, targeted replies, and the no-loop rules; see the [repository plan](repository.md).
-2. Specialist rounds on the box as start plus report, reusing the command channel.
-3. User-driven account linking and application-level encryption of stored connections.
+1. Specialist rounds on the box as start plus report, reusing the command channel; pull request feedback already routes to the task, see the [repository plan](repository.md#pull-request-feedback).
+2. User-driven account linking and application-level encryption of stored connections.

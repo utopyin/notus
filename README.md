@@ -2,7 +2,7 @@
 
 A shared-team coding-agent orchestrator. An AI operator coordinates planning, implementation, reviews, and QA; humans approve plans and review and merge the finished code.
 
-Status: the dedicated Slack readiness slice is deployed and confirmed, including warm/cold wake on the retained devbox. The operator round trip is live on the test stage: a Slack input becomes a persisted operator turn in the Task object, the initiator's Connection object forwards one bounded model request per step, the operator can create the task's dev box, check out the task's repository, run bounded commands on the box, push a `notus/` branch and open a pull request with per-operation GitHub App tokens, all as durable tool calls, and the model's answer returns to the thread. Nothing Notus holds can merge. The first live run opened [<owner>/<repo>#1](https://github.com/<owner>/<repo>/pull/1) from a Slack mention. The subscription login is implemented but blocked from Workers egress, so the test stage explicitly uses a Platform API key. Repository checkout and production deployment remain disabled. See [devbox results](docs/research/devbox-results.md) and [intake results](docs/research/intake-results.md). Dependency versions and commands live in [package.json](package.json).
+Status: the dedicated Slack readiness slice is deployed and confirmed, including warm/cold wake on the retained devbox. The operator round trip is live on the test stage: a Slack input becomes a persisted operator turn in the Task object, the initiator's Connection object forwards one bounded model request per step, the operator can create the task's dev box, check out the task's repository, run bounded commands on the box, push a `notus/` branch and open a pull request with per-operation GitHub App tokens, all as durable tool calls, and the model's answer returns to the thread. Nothing Notus holds can merge. The first live run opened [<owner>/<repo>#1](https://github.com/<owner>/<repo>/pull/1) from a Slack mention. Comments on a task's pull request from collaborators with write access now continue that task and are answered on GitHub. The subscription login is implemented but blocked from Workers egress, so the test stage explicitly uses a Platform API key. Repository checkout and production deployment remain disabled. See [devbox results](docs/research/devbox-results.md) and [intake results](docs/research/intake-results.md). Dependency versions and commands live in [package.json](package.json).
 
 ## Documentation
 
@@ -13,6 +13,7 @@ Each topic has one canonical home:
 | [Product context](CONTEXT.md)                       | Requirements, vocabulary, scope, and open product decisions                     |
 | [Agent instructions](AGENTS.md)                     | Working practices and code style                                                |
 | [Architecture](docs/architecture/CONTEXT.md)        | Tier boundaries, provider separation, and service/Layer conventions             |
+| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, request flows, dev box wire, claims        |
 | [Codebase proposal](docs/plans/codebase.md)         | Package responsibilities and reviewed runtime/data recommendations              |
 | [First tracer](docs/plans/tracer.md)                | End-to-end scenario, runnable increments, and blocking experiments              |
 | [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order |
@@ -25,4 +26,4 @@ Each topic has one canonical home:
 | [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup            |
 | [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates              |
 
-The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Next are PR feedback as a task source, then specialist rounds. Each requires separate authorization and validation.
+The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Next are specialist rounds on the dev box. Each requires separate authorization and validation.
