@@ -132,17 +132,26 @@ function Channels() {
             <SelectTrigger id="channel" className="w-full">
               <SelectValue placeholder="Channels the Notus app is in…" />
             </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false} align="start">
+            {/* Sized to its options; the popup's inset plus the item's puts text where the trigger's is. */}
+            <SelectContent
+              alignItemWithTrigger={false}
+              align="start"
+              className="w-max min-w-48 p-1"
+            >
               {options.length === 0 ? (
-                <div className="text-muted-foreground flex items-center gap-2 px-2 py-1.5 text-sm">
+                <div className="text-muted-foreground flex items-center gap-2 py-1 pr-8 pl-1.5 text-sm">
                   <IconMessageCircleOff className="size-4" />
                   No channels found
                 </div>
               ) : (
                 options.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    #{c.name}
-                    {c.isPrivate ? " (private)" : ""}
+                    {c.isPrivate ? (
+                      <IconLockFilled className="text-muted-foreground" />
+                    ) : (
+                      <IconHash className="text-muted-foreground" />
+                    )}
+                    {c.name}
                   </SelectItem>
                 ))
               )}
