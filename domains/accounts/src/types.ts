@@ -5,9 +5,16 @@ export const Fixture = Schema.Struct({ actor: Actor, userId: Schema.NonEmptyStri
 export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
 
 /** A dashboard sign-in and the identities its providers verified. */
+export const Profile = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String,
+  image: Schema.NullOr(Schema.String),
+});
+export interface Profile extends Schema.Schema.Type<typeof Profile> {}
 export const Login = Schema.Struct({
   authUserId: Schema.NonEmptyString,
   actors: Schema.Array(Actor),
+  profile: Profile,
   now: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 export interface Login extends Schema.Schema.Type<typeof Login> {}

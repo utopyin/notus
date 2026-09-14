@@ -211,12 +211,42 @@ export default class Api extends Cloudflare.Worker<Api>()(
         const now = yield* Clock.currentTimeMillis;
         const userId = yield* Identities.Service.pipe(
           Effect.flatMap((identities) =>
-            identities.adopt({ authUserId: session.user.id, actors, now }),
+            identities.adopt({
+              authUserId: session.user.id,
+              actors,
+              profile: {
+                name: session.user.name,
+                email: session.user.email,
+                image: session.user.image ?? null,
+              },
+              now,
+            }),
           ),
         );
         return { session, accounts, userId, now };
       }).pipe(Effect.provideService(RuntimeContext, runtime));
     type SignedIn = NonNullable<Effect.Success<ReturnType<typeof signedIn>>>;
+    /** Member rows carry the display profile of their user, when one has signed in. */
+    const withProfiles = <
+      V extends { readonly members: ReadonlyArray<{ readonly userId: string }> },
+    >(
+      view: V,
+    ) =>
+      Identities.Service.pipe(
+        Effect.flatMap((identities) => identities.profiles(view.members.map((m) => m.userId))),
+        Effect.map((profiles) => ({
+          ...view,
+          members: view.members.map((member) => {
+            const profile = profiles.get(member.userId);
+            return {
+              ...member,
+              name: profile?.name ?? null,
+              email: profile?.email ?? null,
+              image: profile?.image ?? null,
+            };
+          }),
+        })),
+      );
     /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
     interface DashboardFailure {
       readonly _tag: string;
@@ -325,12 +355,14 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
             Effect.flatMap((workspaces) => workspaces.view(workspaceId, me.userId)),
+            Effect.flatMap(withProfiles),
           ),
         ),
       dashboardWorkspaceBySlug: (cookie: string, slug: string) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
             Effect.flatMap((workspaces) => workspaces.viewBySlug(slug, me.userId)),
+            Effect.flatMap(withProfiles),
           ),
         ),
       dashboardSetRole: (cookie: string, workspaceId: string, userId: string, role: Role) =>

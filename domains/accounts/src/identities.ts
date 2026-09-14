@@ -1,6 +1,6 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Actor, key } from "@notus/contracts/source";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -8,8 +8,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { FixtureConflict, IdentityError } from "./errors";
-import { identities, logins } from "./schema";
-import { Fixture, Login } from "./types";
+import { identities, logins, users } from "./schema";
+import { Fixture, Login, Profile } from "./types";
 
 export interface Interface {
   readonly resolve: (actor: Actor) => Effect.Effect<Option.Option<string>, IdentityError>;
@@ -20,6 +20,10 @@ export interface Interface {
    * sign-in; otherwise the sign-in's own ID becomes a canonical user. Never remaps an identity.
    */
   readonly adopt: (login: Login) => Effect.Effect<string, IdentityError>;
+  /** Display profiles of canonical users, for member lists. Users never seen signing in are absent. */
+  readonly profiles: (
+    userIds: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyMap<string, Profile>, IdentityError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/accounts/identities/Service",
@@ -90,6 +94,11 @@ export const layerNoDeps = Layer.effect(
           ]);
         }
         const owner = userId;
+        // The latest sign-in's profile is what member lists show.
+        yield* store.batch([
+          sql`UPDATE account_users SET name = ${login.profile.name}, email = ${login.profile.email},
+          image = ${login.profile.image}, updatedAt = ${login.now} WHERE id = ${owner}`,
+        ]);
         for (const actor of login.actors)
           yield* store.batch([
             sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
@@ -100,7 +109,24 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new IdentityError({ operation: "adopt", cause })),
     );
-    return Service.of({ resolve, seedFixture, adopt });
+    const UserRow = createSelectSchema(users);
+    const profiles = Effect.fn("Identities.profiles")(
+      function* (userIds: ReadonlyArray<string>) {
+        const result = new Map<string, Profile>();
+        if (userIds.length === 0) return result;
+        const rows = yield* store.db
+          .select()
+          .from(users)
+          .where(inArray(users.id, [...userIds]))
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(UserRow))));
+        for (const row of rows)
+          if (row.name !== null && row.email !== null)
+            result.set(row.id, { name: row.name, email: row.email, image: row.image });
+        return result;
+      },
+      Effect.mapError((cause) => new IdentityError({ operation: "profiles", cause })),
+    );
+    return Service.of({ resolve, seedFixture, adopt, profiles });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

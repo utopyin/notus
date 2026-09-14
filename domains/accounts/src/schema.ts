@@ -1,7 +1,12 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+/** Canonical users. The profile is a snapshot from the latest dashboard sign-in, for display only. */
 export const users = sqliteTable("account_users", {
   id: text().primaryKey(),
+  name: text(),
+  email: text(),
+  image: text(),
+  updatedAt: integer(),
 });
 
 /** Administrator-provisioned fixture identities, not OAuth ownership evidence. */
