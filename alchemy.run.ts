@@ -16,6 +16,8 @@ export class Dashboard extends Cloudflare.Website.Vite<Dashboard>()(
     rootDir: "apps/dashboard",
     env: { API: Api },
     domain: { name: hostnames(stage).dashboard, zoneName: zone },
+    // One origin per stage, so cookies and OAuth callbacks always agree.
+    workersDev: false,
   })),
 ) {}
 export type DashboardEnv = Cloudflare.InferEnv<typeof Dashboard>;

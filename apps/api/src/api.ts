@@ -42,6 +42,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
   Stack.useSync(({ stage }) => ({
     main: import.meta.url,
     domain: { name: hostnames(stage).api, zoneName: zone },
+    // One origin per stage: no workers.dev name beside the custom domain.
+    workersDev: false,
   })),
   Effect.gen(function* () {
     const config = yield* deploymentConfig;

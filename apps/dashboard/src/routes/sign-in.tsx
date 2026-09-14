@@ -1,5 +1,6 @@
 import { IconBrandGithub, IconBrandSlack } from "@tabler/icons-react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "../auth-client";
 
@@ -12,8 +13,16 @@ export const Route = createFileRoute("/sign-in")({
 });
 
 function SignIn() {
-  const slack = () => authClient.signIn.social({ provider: "slack", callbackURL: "/" });
-  const github = () => authClient.signIn.social({ provider: "github", callbackURL: "/" });
+  // A second start would replace the OAuth state cookie and orphan the first redirect.
+  const [pending, setPending] = useState<"slack" | "github" | null>(null);
+  const start = async (provider: "slack" | "github") => {
+    if (pending) return;
+    setPending(provider);
+    const { error } = await authClient.signIn.social({ provider, callbackURL: "/" });
+    if (error) setPending(null);
+  };
+  const slack = () => start("slack");
+  const github = () => start("github");
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
       <div className="flex w-full max-w-sm flex-col gap-6">
@@ -25,13 +34,13 @@ function SignIn() {
           </p>
         </div>
         <div className="flex flex-col gap-2">
-          <Button onClick={slack}>
+          <Button disabled={pending !== null} onClick={slack}>
             <IconBrandSlack className="size-4" />
-            Continue with Slack
+            {pending === "slack" ? "Redirecting…" : "Continue with Slack"}
           </Button>
-          <Button variant="outline" onClick={github}>
+          <Button variant="outline" disabled={pending !== null} onClick={github}>
             <IconBrandGithub className="size-4" />
-            Continue with GitHub
+            {pending === "github" ? "Redirecting…" : "Continue with GitHub"}
           </Button>
         </div>
       </div>
