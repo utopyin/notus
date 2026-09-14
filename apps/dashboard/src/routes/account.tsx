@@ -20,6 +20,8 @@ function Account() {
   const router = useRouter();
   const [sessions, setSessions] = useState<ReadonlyArray<Session>>([]);
   const [message, setMessage] = useState<string | null>(null);
+  // A second click before the redirect would issue a new OAuth state and orphan the first.
+  const [linking, setLinking] = useState<Provider | null>(null);
   const reloadSessions = async () => {
     const { data } = await authClient.listSessions();
     setSessions(data ?? []);
@@ -30,8 +32,13 @@ function Account() {
   if (!me) return null;
   const linked = (provider: string) => me.accounts.find((a) => a.provider === provider);
   const link = async (provider: Provider) => {
+    if (linking) return;
+    setLinking(provider);
     const { error } = await authClient.linkSocial({ provider, callbackURL: "/account" });
-    if (error) setMessage(error.message ?? "Linking failed.");
+    if (error) {
+      setMessage(error.message ?? "Linking failed.");
+      setLinking(null);
+    }
   };
   // Better Auth unlinks by its own account row ID, never by the provider's subject.
   const unlink = async (accountId: string) => {
@@ -84,8 +91,10 @@ function Account() {
                   Unlink
                 </Button>
               ) : (
-                <Button size="sm" onClick={() => link(provider)}>
-                  Link {provider === "slack" ? "Slack" : "GitHub"}
+                <Button size="sm" disabled={linking !== null} onClick={() => link(provider)}>
+                  {linking === provider
+                    ? "Redirecting…"
+                    : `Link ${provider === "slack" ? "Slack" : "GitHub"}`}
                 </Button>
               )}
             </div>
