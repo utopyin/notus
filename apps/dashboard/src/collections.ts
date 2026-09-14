@@ -60,9 +60,13 @@ const inviteCollection = (workspaceId: string) =>
       // is then inserted with a marker so nothing is sent twice.
       onInsert: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
-          const metadata: { persisted?: boolean } | undefined = mutation.metadata;
-          if (metadata?.persisted !== true)
-            throw new Error("invites are created through createInvite");
+          const metadata: unknown = mutation.metadata;
+          const persisted =
+            typeof metadata === "object" &&
+            metadata !== null &&
+            "persisted" in metadata &&
+            metadata.persisted === true;
+          if (!persisted) throw new Error("invites are created through createInvite");
         }
       },
       onUpdate: async ({ transaction }) => {
