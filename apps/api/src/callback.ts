@@ -24,7 +24,13 @@ export const handler = <E, R>(
     if (
       request.method !== "POST" ||
       url.search ||
-      !["/runtime/assignment", "/runtime/enroll", "/runtime/ready"].includes(url.pathname)
+      ![
+        "/runtime/assignment",
+        "/runtime/enroll",
+        "/runtime/ready",
+        "/runtime/poll",
+        "/runtime/observe",
+      ].includes(url.pathname)
     )
       return HttpServerResponse.empty({ status: 404 });
     const header = request.headers.authorization ?? "";
@@ -43,7 +49,7 @@ export const handler = <E, R>(
       Stream.runForEach((chunk) =>
         Effect.gen(function* () {
           length += chunk.byteLength;
-          if (length > 8192) return yield* invalid();
+          if (length > 256 * 1024) return yield* invalid();
           chunks.push(chunk);
         }),
       ),
@@ -75,6 +81,17 @@ export const handler = <E, R>(
         { onExcessProperty: "error" },
       ).pipe(Effect.mapError(invalid));
       command = Protocol.Request.cases.Enroll.make({ request: body });
+    } else if (url.pathname === "/runtime/poll") {
+      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.PollRequest))(text, {
+        onExcessProperty: "error",
+      }).pipe(Effect.mapError(invalid));
+      command = Protocol.Request.cases.Poll.make({ request: body });
+    } else if (url.pathname === "/runtime/observe") {
+      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ObserveRequest))(
+        text,
+        { onExcessProperty: "error" },
+      ).pipe(Effect.mapError(invalid));
+      command = Protocol.Request.cases.Observe.make({ request: body });
     } else {
       const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ReadinessRequest))(
         text,
@@ -82,7 +99,9 @@ export const handler = <E, R>(
       ).pipe(Effect.mapError(invalid));
       command = Protocol.Request.cases.Ready.make({ request: body });
     }
-    if ((command._tag === "Ready") !== (capability._tag === "Readiness"))
+    const runtimeBound =
+      command._tag === "Ready" || command._tag === "Poll" || command._tag === "Observe";
+    if (runtimeBound !== (capability._tag === "Readiness"))
       return HttpServerResponse.empty({ status: 403 });
     const result = yield* forward(capability, command);
     if (!result.ok) return HttpServerResponse.empty({ status: statuses[result.reason] });

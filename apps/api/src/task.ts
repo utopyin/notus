@@ -8,6 +8,7 @@ import { Failure as RuntimeFailure } from "@notus/control/runtime/errors";
 import * as Protocol from "@notus/control/runtime/protocol";
 import * as Runtime from "@notus/control/runtime/server";
 import { Attempts } from "@notus/executions/attempts";
+import { Commands } from "@notus/executions/commands";
 import { Devbox } from "@notus/executions/devbox";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepOutcome } from "@notus/executions/steps";
@@ -57,6 +58,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const attemptsLayer = Attempts.layer.pipe(Layer.provide(database));
         const provisioningLayer = Provisioning.layer.pipe(Layer.provide(database));
         const stepsLayer = Steps.layer.pipe(Layer.provide(database));
+        const commandsLayer = Commands.layer.pipe(Layer.provide(database));
         const sourcesLayer = Sources.layer.pipe(
           Layer.provide([
             Layer.succeed(Sources.ConfigurationService, config),
@@ -69,7 +71,10 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const services = yield* Layer.build(
           Layer.merge(
             Layer.merge(stateLayer, sourcesLayer),
-            Layer.merge(Layer.merge(attemptsLayer, provisioningLayer), stepsLayer),
+            Layer.merge(
+              Layer.merge(attemptsLayer, provisioningLayer),
+              Layer.merge(stepsLayer, commandsLayer),
+            ),
           ).pipe(
             Layer.provideMerge(RuntimeLayers.execution(runtime, provider)),
             Layer.provide(cryptoLayer),
@@ -79,6 +84,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const provisioning = yield* Provisioning.Service.pipe(Effect.provideContext(services));
         const devbox = yield* Devbox.Service.pipe(Effect.provideContext(services));
         const steps = yield* Steps.Service.pipe(Effect.provideContext(services));
+        const commands = yield* Commands.Service.pipe(Effect.provideContext(services));
         // Built once per object lifetime; each model request selects its operation at call time.
         const model = yield* Layer.build(Broker.languageModel(connections, context, operator)).pipe(
           Effect.orDie,
@@ -413,6 +419,50 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 );
               }),
             ),
+          runtimePoll: (capability: Authentication.Capability, request: Protocol.PollRequest) =>
+            runtimeResult(
+              Effect.gen(function* () {
+                if (capability._tag !== "Readiness")
+                  return yield* new RuntimeFailure({ reason: "unauthorized" });
+                // Wait outside the gate; each attempt is one short claim inside it.
+                const deadline = (yield* Clock.currentTimeMillis) + request.waitMs;
+                while (true) {
+                  const reply = yield* gate(
+                    Effect.gen(function* () {
+                      const now = yield* Clock.currentTimeMillis;
+                      return yield* Runtime.poll(capability, now).pipe(
+                        Effect.provideContext(services),
+                      );
+                    }),
+                  );
+                  if (reply.command !== null || (yield* Clock.currentTimeMillis) >= deadline)
+                    return yield* Schema.encodeEffect(Protocol.PollReply)(reply);
+                  yield* Effect.sleep("1 second");
+                }
+              }),
+            ),
+          runtimeObserve: (
+            capability: Authentication.Capability,
+            request: Protocol.ObserveRequest,
+          ) =>
+            runtimeResult(
+              Effect.gen(function* () {
+                if (capability._tag !== "Readiness")
+                  return yield* new RuntimeFailure({ reason: "unauthorized" });
+                return yield* gate(
+                  Effect.gen(function* () {
+                    const now = yield* Clock.currentTimeMillis;
+                    yield* arm(now + 1);
+                    const reply = yield* Runtime.observe(capability, request, now).pipe(
+                      Effect.provideContext(services),
+                    );
+                    yield* advance(now);
+                    yield* recompute;
+                    return reply;
+                  }),
+                );
+              }),
+            ),
           snapshot: () =>
             gate(
               Effect.gen(function* () {
@@ -424,6 +474,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                     ? {
                         ...snapshot,
                         steps: yield* steps.snapshot,
+                        commands: yield* commands.snapshot,
                         provisioning: yield* provisioning.current,
                       }
                     : snapshot;

@@ -1,5 +1,6 @@
+import { Commands } from "@notus/executions/commands";
 import { Devbox } from "@notus/executions/devbox";
-import { ProvisioningFailure } from "@notus/executions/errors";
+import { Conflict as RuntimeConflict, ProvisioningFailure } from "@notus/executions/errors";
 import { Provisioning } from "@notus/executions/provisioning";
 import {
   Enrollment,
@@ -187,6 +188,38 @@ export const verifyReadiness = Effect.fn("Runtime.Server.verifyReadiness")(funct
     .fetch(current.resource)
     .pipe(Effect.mapError(() => fail("unavailable")));
   if (observed.instanceId !== capability.instanceId) return yield* fail("pending");
+});
+
+/** One claim attempt under the caller's epoch. The host owns any wait between attempts. */
+export const poll = Effect.fn("Runtime.Server.poll")(function* (
+  capability: ReadinessCapability,
+  now: number,
+) {
+  yield* context(capability);
+  if (now >= capability.expiresAt) return yield* fail("unauthorized");
+  const commands = yield* Commands.Service;
+  const command = yield* commands
+    .claim(capability.epoch, now)
+    .pipe(Effect.mapError(() => fail("unavailable")));
+  return Protocol.PollReply.make({ command });
+});
+
+export const observe = Effect.fn("Runtime.Server.observe")(function* (
+  capability: ReadinessCapability,
+  request: Protocol.ObserveRequest,
+  now: number,
+) {
+  yield* context(capability);
+  if (now >= capability.expiresAt) return yield* fail("unauthorized");
+  const commands = yield* Commands.Service;
+  yield* commands
+    .observe({ commandId: request.commandId, result: request.result }, capability.epoch, now)
+    .pipe(
+      Effect.mapError((error) =>
+        Schema.is(RuntimeConflict)(error) ? fail("conflict") : fail("unavailable"),
+      ),
+    );
+  return Protocol.ObserveReply.make({ acceptedAt: now });
 });
 
 export const accept = Effect.fn("Runtime.Server.accept")(function* (

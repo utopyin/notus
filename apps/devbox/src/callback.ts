@@ -1,5 +1,6 @@
 import { RuntimeClient } from "@notus/control/runtime/client";
 import * as Protocol from "@notus/control/runtime/protocol";
+import type { Command, CommandResult } from "@notus/executions/types";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -21,6 +22,10 @@ export interface Interface {
   readonly ready: <E, R>(
     validate: Effect.Effect<void, E, R>,
   ) => Effect.Effect<void, Failure | E, R>;
+  /** Pull commands until the credential can no longer be refreshed or the host rejects it. */
+  readonly commands: <R>(
+    execute: (command: Command) => Effect.Effect<CommandResult, never, R>,
+  ) => Effect.Effect<never, Failure, R>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/devbox/Callback") {}
 export class Configuration extends Context.Service<
@@ -203,7 +208,53 @@ export const layerNoDeps = Layer.effect(
         pending: { ...pending, acknowledgment: acknowledgment.success },
       });
     });
-    return Service.of({ bound: true, enroll, ready });
+    const commands = Effect.fn("Devbox.Callback.commands")(function* <R>(
+      execute: (command: Command) => Effect.Effect<CommandResult, never, R>,
+    ) {
+      const { store, journal } = yield* read();
+      if (
+        journal === null ||
+        journal.pending === null ||
+        journal.pending.reply === null ||
+        journal.pending.request.kernelBootId !== settings.kernelBootId ||
+        journal.pending.acknowledgment === null
+      )
+        return yield* new Failure({ reason: "binding" });
+      let pending = journal.pending;
+      let reply = journal.pending.reply;
+      // Same exact-replay refresh as readiness: a new epoch is never invented locally.
+      const credential = Effect.gen(function* () {
+        if ((yield* Clock.currentTimeMillis) < reply.expiresAt - 60_000)
+          return reply.readinessCredential;
+        const refreshed = yield* retry(client.enroll(journal.credential, pending.request)).pipe(
+          Effect.mapError(() => new Failure({ reason: "binding" })),
+        );
+        if (
+          refreshed.grant.epoch !== reply.grant.epoch ||
+          refreshed.grant.challenge !== reply.grant.challenge ||
+          refreshed.grant.nextRecoveryRevision !== reply.grant.nextRecoveryRevision
+        )
+          return yield* new Failure({ reason: "binding" });
+        reply = refreshed;
+        pending = { ...pending, reply };
+        yield* store.write({ ...journal, pending });
+        return reply.readinessCredential;
+      });
+      while (true) {
+        const token = yield* credential;
+        const polled = yield* retry(client.poll(token, { waitMs: 20_000 })).pipe(
+          Effect.mapError(() => new Failure({ reason: "binding" })),
+        );
+        const command = polled.command;
+        if (command === null) continue;
+        const result = yield* execute(command);
+        const fresh = yield* credential;
+        yield* retry(client.observe(fresh, { commandId: command.id, result })).pipe(
+          Effect.mapError(() => new Failure({ reason: "binding" })),
+        );
+      }
+    });
+    return Service.of({ bound: true, enroll, ready, commands });
   }),
 );
 
@@ -218,6 +269,8 @@ export const layer = Layer.unwrap(
         ready: Effect.fn("Devbox.Callback.ready")(
           <E, R>(validate: Effect.Effect<void, E, R>) => validate,
         ),
+        // Unbound runs have no control to pull from; stay alive as before.
+        commands: () => Effect.never,
       });
     if (
       Option.isNone(url) ||

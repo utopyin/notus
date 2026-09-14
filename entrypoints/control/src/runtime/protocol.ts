@@ -1,4 +1,11 @@
-import { Enrollment, EpochGrant, Millis, Readiness } from "@notus/executions/types";
+import {
+  Command,
+  CommandResult,
+  Enrollment,
+  EpochGrant,
+  Millis,
+  Readiness,
+} from "@notus/executions/types";
 import * as Schema from "effect/Schema";
 import type { Failure } from "./errors";
 
@@ -38,10 +45,24 @@ export interface ReadinessRequest extends Schema.Schema.Type<typeof ReadinessReq
 export const ReadinessReply = Schema.Struct({ acceptedAt: Millis });
 export interface ReadinessReply extends Schema.Schema.Type<typeof ReadinessReply> {}
 
+/** The runtime pulls commands; the host may hold the request while waiting. */
+export const PollRequest = Schema.Struct({
+  waitMs: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 20_000 })),
+});
+export interface PollRequest extends Schema.Schema.Type<typeof PollRequest> {}
+export const PollReply = Schema.Struct({ command: Schema.NullOr(Command) });
+export interface PollReply extends Schema.Schema.Type<typeof PollReply> {}
+export const ObserveRequest = Schema.Struct({ commandId: Uuid, result: CommandResult });
+export interface ObserveRequest extends Schema.Schema.Type<typeof ObserveRequest> {}
+export const ObserveReply = Schema.Struct({ acceptedAt: Millis });
+export interface ObserveReply extends Schema.Schema.Type<typeof ObserveReply> {}
+
 export const Request = Schema.TaggedUnion({
   Assignment: {},
   Enroll: { request: EnrollmentRequest },
   Ready: { request: ReadinessRequest },
+  Poll: { request: PollRequest },
+  Observe: { request: ObserveRequest },
 });
 export type Request = typeof Request.Type;
 export type RpcReply<A = unknown> =

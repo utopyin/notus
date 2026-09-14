@@ -29,6 +29,15 @@ export interface Interface {
     credential: Redacted.Redacted<string>,
     request: Protocol.ReadinessRequest,
   ) => Effect.Effect<Protocol.ReadinessReply, Failure>;
+  /** Held by the host up to waitMs; the client deadline covers that wait. */
+  readonly poll: (
+    credential: Redacted.Redacted<string>,
+    request: Protocol.PollRequest,
+  ) => Effect.Effect<Protocol.PollReply, Failure>;
+  readonly observe: (
+    credential: Redacted.Redacted<string>,
+    request: Protocol.ObserveRequest,
+  ) => Effect.Effect<Protocol.ObserveReply, Failure>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/Runtime.Client",
@@ -56,6 +65,7 @@ export const layerNoDeps = Layer.effect(
         credential: Redacted.Redacted<string>,
         body: unknown,
         responseSchema: Schema.Codec<A, unknown>,
+        _timeoutMs = 10_000,
       ) {
         if (!Redacted.isRedacted(credential) || Redacted.value(credential).length > 6200)
           return yield* failure("configuration");
@@ -110,10 +120,13 @@ export const layerNoDeps = Layer.effect(
         redirect: "manual",
         credentials: "omit",
       }),
-      Effect.timeoutOrElse({
-        duration: "10 seconds",
-        orElse: () => Effect.fail(failure("transport", true)),
-      }),
+      (effect, _operation, _credential, _body, _schema, timeoutMs = 10_000) =>
+        effect.pipe(
+          Effect.timeoutOrElse({
+            duration: timeoutMs,
+            orElse: () => Effect.fail(failure("transport", true)),
+          }),
+        ),
     );
     return Service.of({
       assignment: Effect.fn("Runtime.Client.assignment")((credential) =>
@@ -130,6 +143,18 @@ export const layerNoDeps = Layer.effect(
           Effect.mapError(() => failure("configuration")),
         );
         return yield* call("ready", credential, body, Protocol.ReadinessReply);
+      }),
+      poll: Effect.fn("Runtime.Client.poll")(function* (credential, request) {
+        const body = yield* Schema.encodeEffect(Protocol.PollRequest)(request).pipe(
+          Effect.mapError(() => failure("configuration")),
+        );
+        return yield* call("poll", credential, body, Protocol.PollReply, request.waitMs + 10_000);
+      }),
+      observe: Effect.fn("Runtime.Client.observe")(function* (credential, request) {
+        const body = yield* Schema.encodeEffect(Protocol.ObserveRequest)(request).pipe(
+          Effect.mapError(() => failure("configuration")),
+        );
+        return yield* call("observe", credential, body, Protocol.ObserveReply);
       }),
     });
   }),

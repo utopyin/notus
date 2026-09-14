@@ -1,10 +1,11 @@
 import type { Admission } from "@notus/contracts/source";
 import { Attempts } from "@notus/executions/attempts";
+import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
 import { digest, type ProvisioningStatus } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
-import { DevboxResult } from "@notus/operator/tools";
+import { CommandOutcome, DevboxResult } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
@@ -106,6 +107,73 @@ const describe = (status: ProvisioningStatus): DevboxResult => {
   };
 };
 const encodeResult = Schema.encodeEffect(DevboxResult);
+const encodeOutcome = Schema.encodeEffect(CommandOutcome);
+const RunParams = Schema.Struct({
+  command: Schema.NonEmptyString.check(Schema.isMaxLength(8192)),
+  purpose: Schema.String,
+});
+// Operational bounds: one command's runtime, the grace before a silent runtime fails it, and
+// how long a box may go without polling before a wake is requested on its behalf.
+const commandTimeoutMs = 120_000;
+const runtimeGraceMs = 10 * 60_000;
+const pollStaleMs = 60_000;
+const commandFailure = (error: string): CommandOutcome => ({
+  exitCode: null,
+  stdout: "",
+  stderr: "",
+  durationMs: 0,
+  timedOut: false,
+  truncated: false,
+  error,
+});
+
+type Evaluation =
+  | { readonly _tag: "Resolved"; readonly result: Schema.Json; readonly isFailure: boolean }
+  | { readonly _tag: "Pending"; readonly deadline: number | null };
+
+/** Read-only view of one unresolved call. resolveWaits applies the mutations it implies. */
+const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
+  stepId: string,
+  call: { readonly id: string; readonly name: string; readonly params: Schema.Json },
+  now: number,
+): Effect.fn.Return<Evaluation, never, Provisioning.Service | Commands.Service> {
+  const provisioning = yield* Provisioning.Service;
+  const commands = yield* Commands.Service;
+  const status = yield* provisioning.current.pipe(Effect.orDie);
+  if (call.name === "create_devbox") {
+    if (
+      status !== null &&
+      status.pendingWork === null &&
+      (status.phase === "ready" || status.phase === "blocked")
+    ) {
+      const encoded = yield* encodeResult(describe(status)).pipe(Effect.orDie);
+      return { _tag: "Resolved", result: encoded, isFailure: status.phase !== "ready" };
+    }
+    return { _tag: "Pending", deadline: null };
+  }
+  if (call.name !== "run_command")
+    return { _tag: "Resolved", result: { error: `unknown tool ${call.name}` }, isFailure: true };
+  const failed = (error: string) =>
+    encodeOutcome(commandFailure(error)).pipe(
+      Effect.orDie,
+      Effect.map((result): Evaluation => ({ _tag: "Resolved", result, isFailure: true })),
+    );
+  if (status === null || status.resourceId === null)
+    return yield* failed("no dev box exists for this task; create one first");
+  if (status.phase === "blocked")
+    return yield* failed(`the dev box is blocked (${status.blockedReason ?? "unknown"})`);
+  const rows = yield* commands.ofStep(stepId).pipe(Effect.orDie);
+  const command = rows.find((row) => row.callId === call.id);
+  if (!command) return yield* failed("the command was rejected before it was queued");
+  if (command.status === "done" && command.result) {
+    const encoded = yield* encodeOutcome({ ...command.result, error: null }).pipe(Effect.orDie);
+    return { _tag: "Resolved", result: encoded, isFailure: command.result.exitCode !== 0 };
+  }
+  if (command.status === "failed") return yield* failed(command.failure ?? "command failed");
+  const deadline = command.createdAt + command.spec.timeoutMs + runtimeGraceMs;
+  if (now >= deadline) return yield* failed("the dev box runtime did not report a result in time");
+  return { _tag: "Pending", deadline };
+});
 
 /** Start durable work for unresolved tool calls. Idempotent: provisioning binds once per attempt. */
 const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
@@ -116,42 +184,64 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
   if (waiting.length === 0) return;
   const task = (yield* state.snapshot).task;
   if (!task) return;
+  const commands = yield* Commands.Service;
   for (const step of waiting)
     for (const call of step.calls) {
-      if (call.name !== "create_devbox") continue;
-      if ((yield* provisioning.current) !== null) continue;
-      const environment = yield* provisioning.captured;
-      yield* provisioning.initialize(
-        { taskId: task.id, workspaceId: task.reservation.workspaceId, environment },
+      if (call.name === "create_devbox") {
+        if ((yield* provisioning.current) !== null) continue;
+        const environment = yield* provisioning.captured;
+        yield* provisioning.initialize(
+          { taskId: task.id, workspaceId: task.reservation.workspaceId, environment },
+          now,
+        );
+        continue;
+      }
+      if (call.name !== "run_command") continue;
+      const status = yield* provisioning.current;
+      if (status === null || status.resourceId === null || status.phase === "blocked") continue;
+      const params = yield* Schema.decodeUnknownEffect(RunParams)(call.params).pipe(Effect.option);
+      if (params._tag === "None") continue;
+      const row = yield* commands.enqueue(
+        step.id,
+        call.id,
+        {
+          kind: "shell",
+          script: params.value.command,
+          cwd: "/workspaces",
+          timeoutMs: commandTimeoutMs,
+        },
         now,
       );
+      if (row.status !== "pending") continue;
+      // A box that has not polled recently may be asleep; the provider path handles the rest.
+      const poll = yield* commands.lastPoll;
+      if (poll === null || now - poll.polledAt > pollStaleMs)
+        yield* provisioning.requestWake(row.id, now).pipe(Effect.ignore);
     }
 });
 
-/** Resolve waiting steps whose provider work has settled; unknown tools fail immediately. */
+/** Resolve waiting steps whose durable work has settled; unknown tools fail immediately. */
 const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: number) {
   const steps = yield* Steps.Service;
-  const provisioning = yield* Provisioning.Service;
+  const commands = yield* Commands.Service;
   let count = 0;
   for (const step of yield* steps.waiting(batchSize)) {
     const results: Array<Schema.Json> = [];
     let pending = false;
     for (const call of step.calls) {
-      if (call.name !== "create_devbox") {
-        results.push(Operator.toolResult(call, { error: `unknown tool ${call.name}` }, true));
-        continue;
-      }
-      const status = yield* provisioning.current;
-      const settled =
-        status !== null &&
-        status.pendingWork === null &&
-        (status.phase === "ready" || status.phase === "blocked");
-      if (!settled) {
+      const evaluation = yield* evaluate(step.id, call, now);
+      if (evaluation._tag === "Pending") {
         pending = true;
         continue;
       }
-      const encoded = yield* encodeResult(describe(status));
-      results.push(Operator.toolResult(call, encoded, status.phase !== "ready"));
+      if (call.name === "run_command" && evaluation.isFailure) {
+        // A silent runtime is recorded as failed so a late observation cannot revive the call.
+        const rows = yield* commands.ofStep(step.id);
+        const command = rows.find((row) => row.callId === call.id);
+        if (command && (command.status === "pending" || command.status === "claimed"))
+          yield* commands.fail(command.id, "no runtime response", now);
+      }
+      results.push(Operator.toolResult(call, evaluation.result, evaluation.isFailure));
     }
     if (pending) continue;
     yield* steps.resolve(step.id, results, now);
@@ -246,6 +336,9 @@ export const record = Effect.fn("OperatorControl.record")(function* (
 ) {
   const steps = yield* Steps.Service;
   yield* steps.record(claimed, outcome, now);
+  // Start durable work for new tool calls before the wake is recomputed.
+  yield* dispatch(now);
+  yield* resolveWaits(now);
   yield* settle(now);
 });
 
@@ -255,15 +348,13 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
   const steps = yield* Steps.Service;
   const provisioning = yield* Provisioning.Service;
   const waiting = yield* steps.waiting(batchSize);
-  if (waiting.length > 0) {
-    const status = yield* provisioning.current;
-    if (
-      waiting.some((step) => step.calls.some((call) => call.name !== "create_devbox")) ||
-      status === null ||
-      (status.pendingWork === null && (status.phase === "ready" || status.phase === "blocked"))
-    )
-      return now;
-  }
+  const deadlines: Array<number> = [];
+  for (const step of waiting)
+    for (const call of step.calls) {
+      const evaluation = yield* evaluate(step.id, call, now);
+      if (evaluation._tag === "Resolved") return now;
+      if (evaluation.deadline !== null) deadlines.push(evaluation.deadline);
+    }
   if ((yield* state.missingHandoffs(yield* attempts.scheduledInputIds, 1)).length > 0) return now;
   const execution = yield* attempts.snapshot;
   const accepted = new Set(execution.outcomes.map((row) => row.invocationId));
@@ -279,6 +370,7 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
     yield* state.nextWake(now),
     yield* steps.nextWake,
     waiting.length > 0 ? yield* provisioning.nextWake : null,
+    ...deadlines,
   ].filter((at): at is number => at !== null);
   return times.length === 0 ? null : Math.max(now, Math.min(...times));
 });

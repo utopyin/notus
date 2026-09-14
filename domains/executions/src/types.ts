@@ -196,6 +196,32 @@ export const WakeReceipt = Schema.Struct({
 });
 export interface WakeReceipt extends Schema.Schema.Type<typeof WakeReceipt> {}
 
+/** What a dev box runtime executes for the operator. Only a bounded shell script for now. */
+export const CommandSpec = Schema.Struct({
+  kind: Schema.Literal("shell"),
+  script: Schema.NonEmptyString.check(Schema.isMaxLength(8192)),
+  cwd: Schema.Literal("/workspaces"),
+  timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 })),
+});
+export interface CommandSpec extends Schema.Schema.Type<typeof CommandSpec> {}
+export const Command = Schema.Struct({ id: Schema.NonEmptyString, spec: CommandSpec });
+export interface Command extends Schema.Schema.Type<typeof Command> {}
+/** Bounded observation the runtime reports; output is truncated, never streamed. */
+export const CommandResult = Schema.Struct({
+  exitCode: Schema.NullOr(Schema.Int),
+  stdout: Schema.String.check(Schema.isMaxLength(65_536)),
+  stderr: Schema.String.check(Schema.isMaxLength(65_536)),
+  durationMs: Millis,
+  timedOut: Schema.Boolean,
+  truncated: Schema.Boolean,
+});
+export interface CommandResult extends Schema.Schema.Type<typeof CommandResult> {}
+export const CommandObservation = Schema.Struct({
+  commandId: Schema.NonEmptyString,
+  result: CommandResult,
+});
+export interface CommandObservation extends Schema.Schema.Type<typeof CommandObservation> {}
+
 /** Non-cryptographic content checksum. Acceptance also compares the complete content.
  * This is never an authentication token, signature, or authority check.
  */

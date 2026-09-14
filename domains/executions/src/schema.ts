@@ -7,6 +7,8 @@ import {
   BlockReason,
   Bootstrap,
   Claim,
+  CommandResult,
+  CommandSpec,
   Enrollment,
   EpochGrant,
   Millis,
@@ -188,6 +190,45 @@ export const Step = createSelectSchema(steps, {
 });
 export interface Step extends Schema.Schema.Type<typeof Step> {}
 
+/** Durable commands for the assigned runtime, pulled by the supervisor and answered by observation. */
+export const commands = sqliteTable(
+  "execution_commands",
+  {
+    id: text().primaryKey(),
+    attemptId: text()
+      .notNull()
+      .references(() => attempts.id),
+    generation: integer().notNull(),
+    stepId: text()
+      .notNull()
+      .references(() => steps.id),
+    callId: text().notNull(),
+    spec: text({ mode: "json" }).$type<CommandSpec>().notNull(),
+    status: text({ enum: ["pending", "claimed", "done", "failed"] }).notNull(),
+    claimEpoch: integer(),
+    claimedAt: integer(),
+    result: text({ mode: "json" }).$type<CommandResult>(),
+    failure: text(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex("execution_command_call").on(t.stepId, t.callId),
+    index("execution_command_status").on(t.status, t.createdAt),
+  ],
+);
+export const CommandRow = createSelectSchema(commands, {
+  spec: CommandSpec,
+  result: Schema.NullOr(CommandResult),
+});
+export interface CommandRow extends Schema.Schema.Type<typeof CommandRow> {}
+/** Last runtime poll, so control knows whether the box is listening before asking for a wake. */
+export const polls = sqliteTable("execution_polls", {
+  singleton: integer().primaryKey().$type<1>(),
+  epoch: integer().notNull(),
+  polledAt: integer().notNull(),
+});
+
 /** The workspace environment captured for this task before any provisioning decision. */
 export const environments = sqliteTable("execution_environment", {
   singleton: integer().primaryKey().$type<1>(),
@@ -206,4 +247,6 @@ export const tables = {
   wakes,
   steps,
   environments,
+  commands,
+  polls,
 };

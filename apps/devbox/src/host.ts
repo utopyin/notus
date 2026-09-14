@@ -80,7 +80,7 @@ export const acquireDirectory = Effect.fn("Devbox.Host.acquireDirectory")(functi
 
 // rc.112's spawner waits for the leader, not the detached group, and skips
 // cleanup after a successful leader exit. Own group cleanup before its finalizer.
-const signalGroup = Effect.fn("Devbox.Host.signalGroup")(
+export const signalGroup = Effect.fn("Devbox.Host.signalGroup")(
   (pid: number, signal: "SIGTERM" | "SIGKILL" | 0) =>
     Effect.sync(() => {
       try {

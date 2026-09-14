@@ -11,6 +11,7 @@ import * as FileSystem from "effect/FileSystem";
 import type * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 import type * as Scope from "effect/Scope";
 import type { Failure as HerdrFailure } from "@notus/herdr/errors";
+import * as Commands from "./commands";
 import { acquireDirectory, assertPlatform, launch, validateDirectories } from "./host";
 import { Failure, Settings } from "./settings";
 import { Callback } from "./callback";
@@ -89,7 +90,8 @@ export const layerNoDeps = Layer.effect(
       return yield* Effect.gen(function* () {
         yield* callback.ready(ready);
         yield* report;
-        return yield* Effect.never;
+        // Serve operator commands for as long as Control accepts this runtime.
+        return yield* callback.commands(Commands.run);
       }).pipe(Effect.raceFirst(unexpectedExit));
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),

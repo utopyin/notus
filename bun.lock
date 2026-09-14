@@ -48,6 +48,7 @@
       "dependencies": {
         "@effect/platform-bun": "catalog:",
         "@notus/control": "workspace:*",
+        "@notus/executions": "workspace:*",
         "@notus/herdr": "workspace:*",
         "effect": "catalog:",
       },
