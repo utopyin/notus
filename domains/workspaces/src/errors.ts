@@ -17,3 +17,20 @@ export class Denied extends Schema.TaggedError<Denied>()("Workspaces.Denied", {
   workspaceId: Schema.String,
   reason: Schema.String,
 }) {}
+
+/** Excludes rows and underlying causes: names and invite tokens never reach a log. */
+export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()(
+  "Workspaces.WorkspaceError",
+  {
+    operation: Schema.String,
+    reason: Schema.Literals([
+      "invalid-input",
+      "storage",
+      "not-found",
+      "forbidden",
+      "conflict",
+      "expired",
+      "last-admin",
+    ]),
+  },
+) {}

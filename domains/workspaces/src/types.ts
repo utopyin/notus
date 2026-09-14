@@ -45,3 +45,51 @@ export const PullConversation = Schema.fromJsonString(
 export const Conversation = Schema.fromJsonString(
   Schema.Tuple([Schema.NonEmptyString, Schema.String.check(Schema.isPattern(/^\d+\.\d{6}$/))]),
 );
+
+export const Role = Schema.Literals(["admin", "member"]);
+export type Role = typeof Role.Type;
+const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+export const WorkspaceName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80));
+export const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{1,47}$/));
+export const Workspace = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: WorkspaceName,
+  slug: Slug,
+  createdBy: Schema.NonEmptyString,
+  createdAt: Millis,
+});
+export interface Workspace extends Schema.Schema.Type<typeof Workspace> {}
+export const Membership = Schema.Struct({
+  workspaceId: Schema.NonEmptyString,
+  userId: Schema.NonEmptyString,
+  role: Role,
+  provenance: Schema.NonEmptyString,
+});
+export interface Membership extends Schema.Schema.Type<typeof Membership> {}
+export const Channel = Schema.Struct({
+  workspaceId: Schema.NonEmptyString,
+  teamId: Schema.NonEmptyString,
+  channelId: Schema.NonEmptyString,
+});
+export interface Channel extends Schema.Schema.Type<typeof Channel> {}
+export const Invite = Schema.Struct({
+  id: Schema.NonEmptyString,
+  workspaceId: Schema.NonEmptyString,
+  role: Role,
+  invitedBy: Schema.NonEmptyString,
+  createdAt: Millis,
+  expiresAt: Millis,
+  acceptedBy: Schema.NullOr(Schema.NonEmptyString),
+  acceptedAt: Schema.NullOr(Millis),
+  revokedAt: Schema.NullOr(Millis),
+});
+export interface Invite extends Schema.Schema.Type<typeof Invite> {}
+/** What a member sees of a workspace; invites appear for admins only. */
+export const WorkspaceView = Schema.Struct({
+  workspace: Workspace,
+  role: Role,
+  members: Schema.Array(Membership),
+  channels: Schema.Array(Channel),
+  invites: Schema.Array(Invite),
+});
+export interface WorkspaceView extends Schema.Schema.Type<typeof WorkspaceView> {}

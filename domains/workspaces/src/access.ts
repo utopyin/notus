@@ -21,10 +21,6 @@ export interface Interface {
     source: Source,
   ) => Effect.Effect<StartGrant, AccessError | Denied>;
   readonly seedFixture: (fixture: Fixture) => Effect.Effect<void, AccessError>;
-  /** Workspaces the user belongs to, for the dashboard. Membership only; no secrets or policy. */
-  readonly workspacesOf: (
-    userId: string,
-  ) => Effect.Effect<ReadonlyArray<{ readonly workspaceId: string }>, AccessError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/access/Service",
@@ -98,23 +94,20 @@ export const layerNoDeps = Layer.effect(
             VALUES (${key(workspaceId, github.installationId, github.fullName)}, ${workspaceId}, ${github.installationId}, ${github.fullName}) ON CONFLICT DO NOTHING`,
           ]);
         yield* store.batch([
+          sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)
+          VALUES (${workspaceId}, ${workspaceId}, ${workspaceId}, ${userId}, 0) ON CONFLICT DO NOTHING`,
           sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
           VALUES (${key(workspaceId, teamId, channelId)}, ${workspaceId}, ${teamId}, ${channelId}) ON CONFLICT DO NOTHING`,
-          sql`INSERT INTO workspace_memberships (key, workspaceId, userId, provenance)
-          VALUES (${key(workspaceId, userId)}, ${workspaceId}, ${userId}, 'admin-fixture') ON CONFLICT DO NOTHING`,
+          sql`INSERT INTO workspace_memberships (key, workspaceId, userId, role, provenance)
+          VALUES (${key(workspaceId, userId)}, ${workspaceId}, ${userId}, 'admin', 'admin-fixture') ON CONFLICT DO NOTHING`,
+          // A membership seeded before roles existed defaulted to member; the fixture user administers.
+          sql`UPDATE workspace_memberships SET role = 'admin'
+          WHERE key = ${key(workspaceId, userId)} AND provenance = 'admin-fixture'`,
         ]);
       },
       Effect.mapError((cause) => new AccessError({ operation: "seedFixture", cause })),
     );
-    const workspacesOf = Effect.fn("Access.workspacesOf")(function* (userId: string) {
-      const rows = yield* store.db
-        .select({ workspaceId: memberships.workspaceId })
-        .from(memberships)
-        .where(eq(memberships.userId, userId))
-        .pipe(Effect.mapError((cause) => new AccessError({ operation: "workspacesOf", cause })));
-      return rows;
-    });
-    return Service.of({ authorizeSource, authorizeStart, seedFixture, workspacesOf });
+    return Service.of({ authorizeSource, authorizeStart, seedFixture });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

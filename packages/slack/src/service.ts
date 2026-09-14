@@ -2,6 +2,7 @@ import { Credentials, DEFAULT_API_BASE_URL } from "@distilled.cloud/slack/Creden
 import * as Errors from "@distilled.cloud/slack/Errors";
 import * as Retry from "@distilled.cloud/slack/Retry";
 import { postMessage } from "@distilled.cloud/slack/chat";
+import { listConversations } from "@distilled.cloud/slack/conversations";
 import { addReaction } from "@distilled.cloud/slack/reactions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -29,8 +30,17 @@ export const Receipt = Schema.Struct({
   deliveryId: Schema.optionalKey(Schema.NonEmptyString),
 });
 export interface Receipt extends Schema.Schema.Type<typeof Receipt> {}
+export const ChannelSummary = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.String,
+  isMember: Schema.Boolean,
+  isPrivate: Schema.Boolean,
+});
+export interface ChannelSummary extends Schema.Schema.Type<typeof ChannelSummary> {}
 export interface Interface {
   readonly react: (channel: string, ts: string) => Effect.Effect<Receipt, DeliveryError>;
+  /** Channels of the installed team, for an administrator choosing which ones a workspace covers. */
+  readonly listChannels: Effect.Effect<ReadonlyArray<ChannelSummary>, DeliveryError>;
   readonly reply: (
     channel: string,
     threadTs: string,
@@ -122,7 +132,37 @@ export const layerNoDeps = Layer.effect(
       );
     const validate = (channel: string, ts: string) =>
       channel === config.allowedChannel && channel.length > 0 && Schema.is(Timestamp)(ts);
+    const ChannelItem = Schema.Struct({
+      id: Schema.NonEmptyString,
+      name: Schema.optionalKey(Schema.String),
+      is_member: Schema.optionalKey(Schema.Boolean),
+      is_private: Schema.optionalKey(Schema.Boolean),
+      is_archived: Schema.optionalKey(Schema.Boolean),
+    });
+    const listChannels = Effect.gen(function* () {
+      const result = yield* run(
+        listConversations({
+          types: "public_channel,private_channel",
+          exclude_archived: true,
+          limit: 1000,
+        }),
+      );
+      if (!result.ok) return yield* ambiguous();
+      const channels: Array<ChannelSummary> = [];
+      for (const item of result.channels) {
+        const decoded = yield* Schema.decodeUnknownEffect(ChannelItem)(item).pipe(Effect.option);
+        if (decoded._tag === "None" || decoded.value.is_archived === true) continue;
+        channels.push({
+          id: decoded.value.id,
+          name: decoded.value.name ?? decoded.value.id,
+          isMember: decoded.value.is_member ?? false,
+          isPrivate: decoded.value.is_private ?? false,
+        });
+      }
+      return channels.sort((a, b) => a.name.localeCompare(b.name));
+    }).pipe(Effect.withSpan("Slack.listChannels"));
     return Service.of({
+      listChannels,
       react: Effect.fn("Slack.react")(function* (channel, ts) {
         if (!validate(channel, ts)) return yield* rejected();
         const result = yield* run(

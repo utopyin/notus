@@ -1,7 +1,12 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
-import { Access } from "@notus/workspaces/access";
+import { Identities } from "@notus/accounts/identities";
+import type { Actor } from "@notus/contracts/source";
+import { Slack } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";
+import type { Role } from "@notus/workspaces/types";
+import { Workspaces } from "@notus/workspaces/workspaces";
+import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
 import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
@@ -63,9 +68,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
     const inboxLayer = Layer.merge(Inbox.layer, Environments.layer).pipe(
-      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
-    );
-    const accessLayer = Access.layer.pipe(
       Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
     );
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
@@ -170,6 +172,88 @@ export default class Api extends Cloudflare.Worker<Api>()(
             kick: ingress(execution.waitUntil(drain)),
           })
         : null;
+    // Dashboard services: workspace administration, identity adoption and the Slack channel list.
+    const dashboardLayer = Layer.mergeAll(
+      Workspaces.layer,
+      Identities.layer,
+      Slack.layer.pipe(
+        Layer.provide(
+          Layer.succeed(Slack.Configuration, {
+            token: config.token,
+            allowedChannel: config.channelId,
+          }),
+        ),
+      ),
+    ).pipe(Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]));
+    type DashboardDeps = Workspaces.Service | Identities.Service | Slack.Service;
+    /**
+     * Resolves the signed-in dashboard user from the forwarded cookie: the Better Auth session,
+     * its linked provider accounts as verified identities, and the canonical Notus user those
+     * identities adopt. Anonymous requests yield null; nothing here is trusted from the caller.
+     */
+    const signedIn = (cookie: string) =>
+      Effect.gen(function* () {
+        const headers = new Headers({ cookie });
+        const session = yield* auth.getSession(headers);
+        if (session === null) return null;
+        const accounts = yield* auth.api.listUserAccounts({ headers });
+        const actors: Array<Actor> = [];
+        for (const account of accounts) {
+          if (account.providerId === "slack" && session.user.slackTeamId)
+            actors.push({
+              kind: "slack",
+              installationId: session.user.slackTeamId,
+              externalId: account.accountId,
+            });
+          if (account.providerId === "github")
+            actors.push({ kind: "github", installationId: "oauth", externalId: account.accountId });
+        }
+        const now = yield* Clock.currentTimeMillis;
+        const userId = yield* Identities.Service.pipe(
+          Effect.flatMap((identities) =>
+            identities.adopt({ authUserId: session.user.id, actors, now }),
+          ),
+        );
+        return { session, accounts, userId, now };
+      }).pipe(Effect.provideService(RuntimeContext, runtime));
+    type SignedIn = NonNullable<Effect.Success<ReturnType<typeof signedIn>>>;
+    /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
+    interface DashboardFailure {
+      readonly _tag: string;
+      readonly reason?: string;
+    }
+    const dashboardResult = <A>(effect: Effect.Effect<A, DashboardFailure, DashboardDeps>) =>
+      effect.pipe(
+        Effect.map((value) => ({ ok: true as const, value })),
+        Effect.catch((error) =>
+          Effect.logWarning(`dashboard.rpc_failed ${error._tag} ${error.reason ?? ""}`).pipe(
+            Effect.as({ ok: false as const, reason: error.reason ?? "failed" }),
+          ),
+        ),
+        Effect.scoped,
+        Effect.provide(dashboardLayer),
+        Effect.orElseSucceed(() => ({ ok: false as const, reason: "failed" })),
+      );
+    const authorized = <A>(
+      cookie: string,
+      run: (me: SignedIn) => Effect.Effect<A, DashboardFailure, DashboardDeps>,
+    ) =>
+      dashboardResult(
+        Effect.gen(function* () {
+          const me = yield* signedIn(cookie).pipe(
+            Effect.mapError((error): DashboardFailure => ({
+              _tag: error._tag,
+              reason: "unauthorized",
+            })),
+          );
+          if (me === null)
+            return yield* Effect.fail<DashboardFailure>({
+              _tag: "Anonymous",
+              reason: "unauthorized",
+            });
+          return yield* run(me);
+        }),
+      );
     return {
       fetch: Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
@@ -187,38 +271,121 @@ export default class Api extends Cloudflare.Worker<Api>()(
        * account subject, sessions without tokens, and workspace membership.
        */
       dashboardMe: (cookie: string) =>
-        Effect.gen(function* () {
-          const headers = new Headers({ cookie });
-          const session = yield* auth.getSession(headers);
-          if (session === null) return null;
-          const accounts = yield* auth.api.listUserAccounts({ headers });
-          const memberships = yield* Effect.scoped(
-            Access.Service.pipe(
-              Effect.flatMap((access) => access.workspacesOf(session.user.id)),
-              Effect.provide(accessLayer),
-            ),
-          );
-          return {
-            user: {
-              id: session.user.id,
-              name: session.user.name,
-              email: session.user.email,
-              image: session.user.image ?? null,
-              slackTeamId: session.user.slackTeamId ?? null,
-            },
-            accounts: accounts.map((account) => ({
-              id: account.id,
-              provider: account.providerId,
-              accountId: account.accountId,
-              createdAt: account.createdAt.toISOString(),
-            })),
-            workspaces: memberships.map((row) => row.workspaceId),
-          };
-        }).pipe(
-          Effect.catchTag("BetterAuthApiError", (error) =>
-            Effect.logWarning(`dashboard.me_failed ${error.statusCode}`).pipe(Effect.as(null)),
+        signedIn(cookie).pipe(
+          Effect.flatMap((me) =>
+            me === null
+              ? Effect.succeed(null)
+              : Workspaces.Service.pipe(
+                  Effect.flatMap((workspaces) => workspaces.listMine(me.userId)),
+                  Effect.map((mine) => ({
+                    user: {
+                      id: me.userId,
+                      name: me.session.user.name,
+                      email: me.session.user.email,
+                      image: me.session.user.image ?? null,
+                      slackTeamId: me.session.user.slackTeamId ?? null,
+                    },
+                    accounts: me.accounts.map((account) => ({
+                      id: account.id,
+                      provider: account.providerId,
+                      accountId: account.accountId,
+                      createdAt: account.createdAt.toISOString(),
+                    })),
+                    workspaces: mine.map((w) => ({
+                      id: w.id,
+                      name: w.name,
+                      slug: w.slug,
+                      role: w.role,
+                    })),
+                  })),
+                ),
           ),
+          Effect.scoped,
+          Effect.provide(dashboardLayer),
+          Effect.tapError((error) => Effect.logWarning(`dashboard.me_failed ${error._tag}`)),
           Effect.orElseSucceed(() => null),
+        ),
+      dashboardCreateWorkspace: (cookie: string, name: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.create(me.userId, name, me.now)),
+          ),
+        ),
+      dashboardWorkspace: (cookie: string, workspaceId: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.view(workspaceId, me.userId)),
+          ),
+        ),
+      dashboardSetRole: (cookie: string, workspaceId: string, userId: string, role: Role) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.setRole(workspaceId, me.userId, userId, role),
+            ),
+          ),
+        ),
+      dashboardRemoveMember: (cookie: string, workspaceId: string, userId: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.removeMember(workspaceId, me.userId, userId)),
+          ),
+        ),
+      dashboardCreateInvite: (cookie: string, workspaceId: string, role: Role) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.createInvite(workspaceId, me.userId, role, me.now),
+            ),
+          ),
+        ),
+      dashboardRevokeInvite: (cookie: string, workspaceId: string, inviteId: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.revokeInvite(workspaceId, me.userId, inviteId, me.now),
+            ),
+          ),
+        ),
+      dashboardAcceptInvite: (cookie: string, token: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.acceptInvite(token, me.userId, me.now)),
+          ),
+        ),
+      dashboardAddChannel: (
+        cookie: string,
+        workspaceId: string,
+        teamId: string,
+        channelId: string,
+      ) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.addChannel(workspaceId, me.userId, { teamId, channelId }),
+            ),
+          ),
+        ),
+      dashboardRemoveChannel: (
+        cookie: string,
+        workspaceId: string,
+        teamId: string,
+        channelId: string,
+      ) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.removeChannel(workspaceId, me.userId, { teamId, channelId }),
+            ),
+          ),
+        ),
+      /** The installed Slack team's channels, for admins picking what a workspace listens to. */
+      dashboardSlackChannels: (cookie: string) =>
+        authorized(cookie, () =>
+          Slack.Service.pipe(
+            Effect.flatMap((slack) => slack.listChannels),
+            Effect.map((channels) => ({ teamId: config.teamId, channels })),
+          ),
         ),
       // Status only: no method here returns or accepts provider tokens.
       connectionStatus: (userId: string) => connections.getByName(userId).status(userId),
