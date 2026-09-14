@@ -16,6 +16,7 @@ import {
   Membership,
   Role,
   Slug,
+  slugOf,
   Workspace,
   WorkspaceName,
   WorkspaceView,
@@ -27,11 +28,22 @@ import {
  * and stored hashed; nothing here returns a secret.
  */
 export interface Interface {
+  /** The slug defaults to the name's kebab-case form; a taken or reserved slug is a conflict. */
   readonly create: (
     actorId: string,
-    name: string,
+    input: { readonly name: string; readonly slug?: string | undefined },
     now: number,
   ) => Effect.Effect<Workspace, WorkspaceError>;
+  /** Admin-only rename or re-slug. */
+  readonly update: (
+    workspaceId: string,
+    actorId: string,
+    input: { readonly name?: string | undefined; readonly slug?: string | undefined },
+  ) => Effect.Effect<Workspace, WorkspaceError>;
+  readonly viewBySlug: (
+    slug: string,
+    userId: string,
+  ) => Effect.Effect<WorkspaceView, WorkspaceError>;
   readonly listMine: (
     userId: string,
   ) => Effect.Effect<ReadonlyArray<Workspace & { readonly role: Role }>, WorkspaceError>;
@@ -153,14 +165,12 @@ export const layerNoDeps = Layer.effect(
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
-    const slugOf = (name: string, suffix: string) => {
-      const base = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 40);
-      return `${base.length < 2 ? "workspace" : base}-${suffix}`;
-    };
+    const slugTaken = (slug: string) =>
+      store.db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.slug, slug))
+        .pipe(Effect.map((rows) => rows.length > 0));
     // Web Crypto's UUID cannot fail on a Worker; a failure here would be a defect, not a result.
     const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
     const tokenHash = (token: string) =>
@@ -170,13 +180,13 @@ export const layerNoDeps = Layer.effect(
 
     const create = Effect.fn("Workspaces.create")(function* (
       actorId: string,
-      value: string,
+      input: { readonly name: string; readonly slug?: string | undefined },
       now: number,
     ) {
-      const name = yield* decodeInput(WorkspaceName, value.trim(), "create");
+      const name = yield* decodeInput(WorkspaceName, input.name.trim(), "create");
+      const slug = yield* decodeInput(Slug, (input.slug ?? slugOf(name)).trim(), "create");
+      if (yield* slugTaken(slug).pipe(storage("create"))) return yield* fail("create", "conflict");
       const id = yield* uuid;
-      const suffix = (yield* uuid).slice(0, 6);
-      const slug = yield* decodeInput(Slug, slugOf(name, suffix), "create");
       yield* store
         .batch([
           sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)
@@ -186,6 +196,42 @@ export const layerNoDeps = Layer.effect(
         ])
         .pipe(storage("create"));
       return Workspace.make({ id, name, slug, createdBy: actorId, createdAt: now });
+    });
+
+    const update = Effect.fn("Workspaces.update")(function* (
+      workspaceId: string,
+      actorId: string,
+      input: { readonly name?: string | undefined; readonly slug?: string | undefined },
+    ) {
+      yield* requireAdmin("update", workspaceId, actorId).pipe(storage("update"));
+      const current = yield* workspace("update", workspaceId).pipe(storage("update"));
+      const name =
+        input.name === undefined
+          ? current.name
+          : yield* decodeInput(WorkspaceName, input.name.trim(), "update");
+      const slug =
+        input.slug === undefined
+          ? current.slug
+          : yield* decodeInput(Slug, input.slug.trim(), "update");
+      if (slug !== current.slug && (yield* slugTaken(slug).pipe(storage("update"))))
+        return yield* fail("update", "conflict");
+      yield* store.db
+        .update(workspaces)
+        .set({ name, slug })
+        .where(eq(workspaces.id, workspaceId))
+        .pipe(storage("update"));
+      return Workspace.make({ ...current, name, slug });
+    });
+
+    const viewBySlug = Effect.fn("Workspaces.viewBySlug")(function* (slug: string, userId: string) {
+      const rows = yield* store.db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.slug, slug))
+        .pipe(storage("viewBySlug"));
+      const id = rows[0]?.id;
+      if (id === undefined) return yield* fail("viewBySlug", "not-found");
+      return yield* view(id, userId);
     });
 
     const listMine = Effect.fn("Workspaces.listMine")(function* (userId: string) {
@@ -423,6 +469,8 @@ export const layerNoDeps = Layer.effect(
 
     return Service.of({
       create,
+      update,
+      viewBySlug,
       listMine,
       view,
       setRole,

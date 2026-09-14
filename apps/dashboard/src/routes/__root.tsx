@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
-import { HeadContent, Link, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
 import { getMe } from "../server/me";
 
+/** The document shell. Every page asks the root loader who is signed in. */
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -13,7 +15,11 @@ export const Route = createRootRoute({
     links: [{ rel: "stylesheet", href: appCss }],
   }),
   loader: () => getMe(),
-  component: RootComponent,
+  component: () => (
+    <TooltipProvider>
+      <Outlet />
+    </TooltipProvider>
+  ),
   notFoundComponent: () => (
     <main className="mx-auto max-w-2xl p-8">
       <h1 className="text-lg font-medium">Not found</h1>
@@ -22,33 +28,6 @@ export const Route = createRootRoute({
   ),
   shellComponent: RootDocument,
 });
-
-function RootComponent() {
-  const me = Route.useLoaderData();
-  return (
-    <>
-      <header className="border-b">
-        <nav className="mx-auto flex max-w-4xl items-center gap-6 px-6 py-3 text-sm">
-          <Link to="/" className="font-medium">
-            Notus
-          </Link>
-          {me ? (
-            <>
-              <Link to="/workspaces" className="text-muted-foreground hover:text-foreground">
-                Workspaces
-              </Link>
-              <Link to="/account" className="text-muted-foreground hover:text-foreground">
-                Account
-              </Link>
-              <span className="text-muted-foreground ml-auto">{me.user.name}</span>
-            </>
-          ) : null}
-        </nav>
-      </header>
-      <Outlet />
-    </>
-  );
-}
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (

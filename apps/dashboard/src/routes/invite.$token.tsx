@@ -7,10 +7,9 @@ const root = getRouteApi("__root__");
 export const Route = createFileRoute("/invite/$token")({
   loader: async ({ params, parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (!parent.loaderData) throw redirect({ to: "/" });
+    if (!parent.loaderData) throw redirect({ to: "/sign-in" });
     const result = await acceptInvite({ data: { token: params.token } });
-    if (result.ok)
-      throw redirect({ to: "/workspaces/$workspaceId", params: { workspaceId: result.value.id } });
+    if (result.ok) throw redirect({ to: "/$slug", params: { slug: result.value.slug } });
     return { reason: result.reason };
   },
   component: Invite,

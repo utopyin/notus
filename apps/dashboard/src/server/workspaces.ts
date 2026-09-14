@@ -10,8 +10,24 @@ const cookie = () => getRequestHeader("cookie") ?? "";
 type Role = "admin" | "member";
 
 export const createWorkspace = createServerFn({ method: "POST" })
-  .inputValidator((input: { name: string }) => input)
-  .handler(async ({ data }) => await api().dashboardCreateWorkspace(cookie(), data.name));
+  .inputValidator((input: { name: string; slug?: string }) => input)
+  .handler(
+    async ({ data }) => await api().dashboardCreateWorkspace(cookie(), data.name, data.slug),
+  );
+
+export const updateWorkspace = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; name?: string; slug?: string }) => input)
+  .handler(
+    async ({ data }) =>
+      await api().dashboardUpdateWorkspace(cookie(), data.workspaceId, {
+        name: data.name,
+        slug: data.slug,
+      }),
+  );
+
+export const getWorkspaceBySlug = createServerFn({ method: "GET" })
+  .inputValidator((input: { slug: string }) => input)
+  .handler(async ({ data }) => await api().dashboardWorkspaceBySlug(cookie(), data.slug));
 
 export const getWorkspace = createServerFn({ method: "GET" })
   .inputValidator((input: { workspaceId: string }) => input)

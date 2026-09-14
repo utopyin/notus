@@ -305,16 +305,32 @@ export default class Api extends Cloudflare.Worker<Api>()(
           Effect.tapError((error) => Effect.logWarning(`dashboard.me_failed ${error._tag}`)),
           Effect.orElseSucceed(() => null),
         ),
-      dashboardCreateWorkspace: (cookie: string, name: string) =>
+      dashboardCreateWorkspace: (cookie: string, name: string, slug?: string) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
-            Effect.flatMap((workspaces) => workspaces.create(me.userId, name, me.now)),
+            Effect.flatMap((workspaces) => workspaces.create(me.userId, { name, slug }, me.now)),
+          ),
+        ),
+      dashboardUpdateWorkspace: (
+        cookie: string,
+        workspaceId: string,
+        input: { readonly name?: string; readonly slug?: string },
+      ) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.update(workspaceId, me.userId, input)),
           ),
         ),
       dashboardWorkspace: (cookie: string, workspaceId: string) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
             Effect.flatMap((workspaces) => workspaces.view(workspaceId, me.userId)),
+          ),
+        ),
+      dashboardWorkspaceBySlug: (cookie: string, slug: string) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) => workspaces.viewBySlug(slug, me.userId)),
           ),
         ),
       dashboardSetRole: (cookie: string, workspaceId: string, userId: string, role: Role) =>

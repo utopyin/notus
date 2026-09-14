@@ -50,7 +50,30 @@ export const Role = Schema.Literals(["admin", "member"]);
 export type Role = typeof Role.Type;
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 export const WorkspaceName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80));
-export const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{1,47}$/));
+/** Path segments that are pages of their own, never a workspace. */
+export const reservedSlugs = new Set([
+  "account",
+  "welcome",
+  "invite",
+  "sign-in",
+  "auth",
+  "api",
+  "workspaces",
+  "assets",
+]);
+export const Slug = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]{1,47}$/),
+  Schema.makeFilter((value) => !reservedSlugs.has(value)),
+);
+/** The default slug for a name: its kebab-case form. */
+export const slugOf = (name: string) =>
+  name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
 export const Workspace = Schema.Struct({
   id: Schema.NonEmptyString,
   name: WorkspaceName,

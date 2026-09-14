@@ -1,14 +1,24 @@
+import {
+  IconBrandGithub,
+  IconBrandSlack,
+  IconDeviceLaptop,
+  IconLinkOff,
+  IconLink,
+} from "@tabler/icons-react";
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { AppShell } from "@/components/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { authClient, type Provider } from "../auth-client";
 
 const root = getRouteApi("__root__");
 
+/** Workspace-less: the signed-in person's identities and sessions. */
 export const Route = createFileRoute("/account")({
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (!parent.loaderData) throw redirect({ to: "/" });
+    if (!parent.loaderData) throw redirect({ to: "/sign-in" });
   },
   component: Account,
 });
@@ -20,7 +30,6 @@ function Account() {
   const router = useRouter();
   const [sessions, setSessions] = useState<ReadonlyArray<Session>>([]);
   const [message, setMessage] = useState<string | null>(null);
-  // A second click before the redirect would issue a new OAuth state and orphan the first.
   const [linking, setLinking] = useState<Provider | null>(null);
   const reloadSessions = async () => {
     const { data } = await authClient.listSessions();
@@ -40,7 +49,6 @@ function Account() {
       setLinking(null);
     }
   };
-  // Better Auth unlinks by its own account row ID, never by the provider's subject.
   const unlink = async (accountId: string) => {
     const { error } = await authClient.unlinkAccount({ accountId });
     if (error) setMessage(error.message ?? "Unlinking failed.");
@@ -50,82 +58,83 @@ function Account() {
     await authClient.revokeSession({ token });
     await reloadSessions();
   };
-  const signOut = async () => {
-    await authClient.signOut();
-    await router.invalidate();
-    await router.navigate({ to: "/" });
-  };
+  const providers = [
+    { id: "slack" as const, label: "Slack", icon: IconBrandSlack },
+    { id: "github" as const, label: "GitHub", icon: IconBrandGithub },
+  ];
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-8 p-8">
-      <section>
-        <h1 className="text-lg font-medium">Account</h1>
-        <p className="text-muted-foreground text-sm">
-          {me.user.name}
-          {me.user.email ? ` · ${me.user.email}` : ""}
-        </p>
-      </section>
+    <AppShell
+      me={me}
+      current={me.workspaces[0] ?? null}
+      active="account"
+      title="Account"
+      description={me.user.email}
+    >
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Identities</h2>
-        {(["slack", "github"] as const).map((provider) => {
-          const account = linked(provider);
-          return (
-            <div
-              key={provider}
-              className="flex items-center justify-between rounded-md border p-3 text-sm"
-            >
-              <div>
-                <div className="font-medium capitalize">{provider}</div>
-                <div className="text-muted-foreground">
-                  {account
-                    ? `Linked as ${account.accountId}${provider === "slack" && me.user.slackTeamId ? ` in team ${me.user.slackTeamId}` : ""}`
-                    : "Not linked"}
+        <ul className="divide-y rounded-lg border">
+          {providers.map((provider) => {
+            const account = linked(provider.id);
+            return (
+              <li key={provider.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+                <provider.icon className="text-muted-foreground size-5" />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{provider.label}</span>
+                  <span className="text-muted-foreground truncate text-xs">
+                    {account
+                      ? `${account.accountId}${provider.id === "slack" && me.user.slackTeamId ? ` · team ${me.user.slackTeamId}` : ""}`
+                      : "Not linked"}
+                  </span>
                 </div>
-              </div>
-              {account ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={me.accounts.length < 2}
-                  onClick={() => unlink(account.id)}
-                >
-                  Unlink
-                </Button>
-              ) : (
-                <Button size="sm" disabled={linking !== null} onClick={() => link(provider)}>
-                  {linking === provider
-                    ? "Redirecting…"
-                    : `Link ${provider === "slack" ? "Slack" : "GitHub"}`}
-                </Button>
-              )}
-            </div>
-          );
-        })}
+                {account ? (
+                  <>
+                    <Badge variant="outline">linked</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={me.accounts.length < 2}
+                      onClick={() => unlink(account.id)}
+                    >
+                      <IconLinkOff className="size-4" />
+                      Unlink
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={linking !== null}
+                    onClick={() => link(provider.id)}
+                  >
+                    <IconLink className="size-4" />
+                    {linking === provider.id ? "Redirecting…" : "Link"}
+                  </Button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
         {message ? <p className="text-destructive text-sm">{message}</p> : null}
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Sessions</h2>
-        {sessions.map((session) => (
-          <div
-            key={session.id}
-            className="flex items-center justify-between rounded-md border p-3 text-sm"
-          >
-            <div>
-              <div>{session.userAgent ?? "Unknown client"}</div>
-              <div className="text-muted-foreground">
-                Started {new Date(session.createdAt).toLocaleString()}
+        <ul className="divide-y rounded-lg border">
+          {sessions.map((session) => (
+            <li key={session.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+              <IconDeviceLaptop className="text-muted-foreground size-5" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{session.userAgent ?? "Unknown client"}</span>
+                <span className="text-muted-foreground text-xs">
+                  since {new Date(session.createdAt).toLocaleString()}
+                </span>
               </div>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => revoke(session.token)}>
-              Revoke
-            </Button>
-          </div>
-        ))}
+              <Button variant="ghost" size="sm" onClick={() => revoke(session.token)}>
+                Revoke
+              </Button>
+            </li>
+          ))}
+        </ul>
       </section>
-      <section>
-        <Button variant="outline" onClick={signOut}>
-          Sign out
-        </Button>
-      </section>
-    </main>
+    </AppShell>
   );
 }
