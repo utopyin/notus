@@ -1,4 +1,9 @@
-import { IconHash, IconLockFilled, IconTrashFilled } from "@tabler/icons-react";
+import {
+  IconHash,
+  IconLockFilled,
+  IconMessageCircleOff,
+  IconTrashFilled,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -129,12 +134,19 @@ function Channels() {
               <SelectValue placeholder="Channels the Notus app is in…" />
             </SelectTrigger>
             <SelectContent>
-              {options.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  #{c.name}
-                  {c.isPrivate ? " (private)" : ""}
-                </SelectItem>
-              ))}
+              {options.length === 0 ? (
+                <div className="text-muted-foreground flex items-center gap-2 px-2 py-1.5 text-sm">
+                  <IconMessageCircleOff className="size-4" />
+                  No channels found
+                </div>
+              ) : (
+                options.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    #{c.name}
+                    {c.isPrivate ? " (private)" : ""}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
