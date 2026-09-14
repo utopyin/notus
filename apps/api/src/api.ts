@@ -10,7 +10,16 @@ import type * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import * as Callback from "./callback";
-import { deploymentConfig, repositoryConfig, runtimeConfig } from "./config";
+import { App as GithubApp } from "@notus/github/app";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import {
+  deploymentConfig,
+  githubConfig,
+  repositoryConfig,
+  runtimeConfig,
+  webhookConfig,
+} from "./config";
+import * as GithubHook from "./github";
 import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
@@ -25,6 +34,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
     const repository = yield* repositoryConfig.pipe(Effect.orDie);
+    const github = yield* githubConfig.pipe(Effect.orDie);
+    const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
+    const githubApp = github
+      ? GithubApp.layer.pipe(
+          Layer.provide([Layer.succeed(GithubApp.Configuration, github), FetchHttpClient.layer]),
+        )
+      : GithubApp.disabled;
     const tasks = yield* Task;
     const connections = yield* Connection;
     const database = yield* SharedDatabase;
@@ -42,7 +58,17 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Effect.scoped(
         Effect.gen(function* () {
           const inbox = yield* Inbox.Service;
-          yield* inbox.seedFixture(config);
+          yield* inbox.seedFixture(
+            github && repository
+              ? {
+                  ...config,
+                  github: {
+                    installationId: github.installationId,
+                    fullName: `${repository.owner}/${repository.name}`,
+                  },
+                }
+              : config,
+          );
           return yield* run(inbox);
         }).pipe(Effect.provide(inboxLayer)),
       );
@@ -96,10 +122,46 @@ export default class Api extends Cloudflare.Worker<Api>()(
       (input) => withInbox((inbox) => inbox.admit(input)),
       execution.waitUntil(drain),
     );
+    // GitHub ingress dependencies: one tagged failure, with the runtime context provided up front.
+    const ingress = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.mapError(() => new GithubHook.IngressFailure({})),
+        Effect.provideService(RuntimeContext, runtime),
+      );
+    const githubHook =
+      github && repository && webhookSecret
+        ? GithubHook.handler({
+            workspaceId: config.workspaceId,
+            installationId: github.installationId,
+            repository: { owner: repository.owner, name: repository.name },
+            secret: webhookSecret,
+            role: (login) =>
+              ingress(
+                GithubApp.Service.pipe(
+                  Effect.flatMap((app) => app.collaboratorRole(repository, login)),
+                  Effect.provide(githubApp),
+                ),
+              ),
+            routeOf: (conversationKey) =>
+              ingress(withInbox((inbox) => inbox.routeOf(conversationKey))),
+            confirm: (taskId, source) =>
+              ingress(
+                tasks
+                  .getByName(taskId)
+                  .attachPullRequest(source)
+                  .pipe(Effect.map((result) => (result.ok ? result.value : null))),
+              ),
+            attach: (route) => ingress(withInbox((inbox) => inbox.attach(route))),
+            admit: (input) => ingress(withInbox((inbox) => inbox.admit(input)).pipe(Effect.asVoid)),
+            kick: ingress(execution.waitUntil(drain)),
+          })
+        : null;
     return {
       fetch: Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const path = new URL(request.url, "https://notus.invalid").pathname;
+        if (path === "/github/events")
+          return yield* githubHook ?? Effect.succeed(HttpServerResponse.empty({ status: 404 }));
         return yield* path.startsWith("/runtime/") ? callback : slack;
       }),
       // Binding RPC only. No fetch route exposes task state or seed authority.

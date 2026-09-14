@@ -84,6 +84,7 @@
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/executions": "workspace:*",
+        "@notus/github": "workspace:*",
         "@notus/slack": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",

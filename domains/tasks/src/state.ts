@@ -1,5 +1,5 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { Admission, key } from "@notus/contracts/source";
+import { Admission, Source, key } from "@notus/contracts/source";
 import { digest } from "@notus/executions/types";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import * as Context from "effect/Context";
@@ -53,6 +53,8 @@ export interface Snapshot extends Schema.Schema.Type<typeof Snapshot> {}
 
 export interface Interface {
   readonly admit: (command: Admission) => Effect.Effect<AdmissionReceipt, TaskError>;
+  /** Records a non-origin source, idempotently. It receives inputs and replies; it never takes updates. */
+  readonly attach: (source: Source, now: number) => Effect.Effect<string, TaskError>;
   readonly missingHandoffs: (
     scheduledInputIds: ReadonlyArray<string>,
     limit: number,
@@ -197,16 +199,34 @@ export const layerNoDeps = Layer.effect(
             });
           } else {
             const task = yield* Schema.decodeEffect(TaskRow)(stored);
-            if (
-              !Equal.equals(task.reservation, reservation) ||
-              task.id !== reservation.taskId ||
-              task.closedAt !== null
-            ) {
+            if (task.id !== reservation.taskId || task.closedAt !== null) {
               return yield* new Conflict({
                 message: "Task reservation, owner, and origin are immutable",
               });
             }
-            sourceId = task.originSourceId;
+            if (Equal.equals(task.reservation, reservation)) {
+              sourceId = task.originSourceId;
+            } else {
+              // An attached source routes through its own conversation but never changes the owner.
+              const attachedId = key(
+                "attached",
+                reservation.source.kind,
+                reservation.source.installationId,
+                reservation.source.conversationId,
+              );
+              const [attached] = yield* tx.select().from(sources).where(eq(sources.id, attachedId));
+              if (
+                !attached ||
+                input.startIntent ||
+                reservation.initiatorId !== task.reservation.initiatorId ||
+                reservation.workspaceId !== task.reservation.workspaceId
+              ) {
+                return yield* new Conflict({
+                  message: "Input source is not attached to this task",
+                });
+              }
+              sourceId = attachedId;
+            }
           }
           const eventKey = key(reservation.source.installationId, input.eventId);
           const [event] = yield* tx.select().from(events).where(eq(events.id, eventKey));
@@ -256,6 +276,39 @@ export const layerNoDeps = Layer.effect(
             inputId: input.inputId,
             duplicate: existing !== undefined,
           };
+        }),
+      );
+    });
+
+    const attach = Effect.fn("State.attach")(function* (value: Source, now: number) {
+      const source = yield* Schema.decodeEffect(Source)(value);
+      yield* Schema.decodeEffect(Millis)(now);
+      return yield* atomic(
+        "attach",
+        Effect.fnUntraced(function* (tx) {
+          const [stored] = yield* tx.select().from(tasks).limit(1);
+          if (!stored) return yield* new NotInitialized({ taskId: "unknown" });
+          const task = yield* Schema.decodeEffect(TaskRow)(stored);
+          if (task.closedAt !== null) return yield* new Conflict({ message: "Task is closed" });
+          if (Equal.equals(task.reservation.source, source)) return task.originSourceId;
+          const id = key("attached", source.kind, source.installationId, source.conversationId);
+          yield* tx
+            .insert(sources)
+            .values({
+              id,
+              taskId: task.id,
+              attachment: {
+                id,
+                source,
+                origin: false,
+                receive: true,
+                reaction: true,
+                reply: true,
+                updates: false,
+              },
+            })
+            .onConflictDoNothing();
+          return id;
         }),
       );
     });
@@ -548,6 +601,7 @@ export const layerNoDeps = Layer.effect(
     ).pipe(Effect.withSpan("State.snapshot"));
     return Service.of({
       admit,
+      attach,
       missingHandoffs,
       missingResponses,
       recordResponse,

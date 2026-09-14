@@ -2,7 +2,7 @@ import { Identities } from "@notus/accounts/identities";
 import { D1 } from "@notus/cloudflare/d1";
 import { Admission, Input, key, Reservation, Source } from "@notus/contracts/source";
 import { Access } from "@notus/workspaces/access";
-import { Conversation } from "@notus/workspaces/types";
+import { Conversation, PullConversation } from "@notus/workspaces/types";
 import { eq, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -25,6 +25,15 @@ import {
 
 export interface Interface {
   readonly admit: (input: Input) => Effect.Effect<Receipt, IntakeError | Conflict | Unauthorized>;
+  /** The route for a conversation, if one exists. */
+  readonly routeOf: (
+    conversationKey: string,
+  ) => Effect.Effect<Schema.Schema.Type<typeof RouteRow> | undefined, IntakeError>;
+  /**
+   * Route an attached conversation to its task, idempotently. Callers must first have the task
+   * confirm the attachment; a route already owned by another task is a conflict.
+   */
+  readonly attach: (route: Reservation) => Effect.Effect<void, IntakeError | Conflict>;
   /** Success from forward must mean Task DO admission and its wake are durable. */
   readonly drain: <E>(
     forward: (admission: Admission) => Effect.Effect<void, E>,
@@ -44,6 +53,14 @@ const inputJson = Schema.fromJsonString(Input);
 const sourceJson = Schema.fromJsonString(Source);
 const storageError = (operation: string) =>
   Effect.mapError((cause: unknown) => new IntakeError({ operation, cause }));
+/** Must match admit's server-side derivation exactly: routes are keyed by it. */
+export const githubConversationKey = Effect.fn("Inbox.githubConversationKey")(function* (
+  workspaceId: string,
+  source: Source,
+) {
+  const [owner, name, number] = yield* Schema.decodeEffect(PullConversation)(source.conversationId);
+  return key(workspaceId, "github", source.installationId, owner, name, number);
+});
 const precedes = (left: string, right: string) =>
   BigInt(left.replace(".", "")) < BigInt(right.replace(".", ""));
 
@@ -62,35 +79,74 @@ export const layerNoDeps = Layer.effect(
     const admit = Effect.fn("Inbox.admit")(function* (value: Input) {
       const decoded = yield* Schema.decodeEffect(Input)(value).pipe(storageError("decodeInput"));
       const source = decoded.target.source;
-      const [channelId, rootTs] = yield* Schema.decodeEffect(Conversation)(
-        source.conversationId,
-      ).pipe(storageError("decodeConversation"));
       yield* Schema.decodeEffect(Timestamp)(decoded.occurredAt).pipe(
         storageError("decodeTimestamp"),
       );
       if (
         decoded.actor.installationId !== source.installationId ||
-        decoded.target.targetId !== decoded.occurredAt
+        decoded.actor.kind !== source.kind
       ) {
         return yield* new IntakeError({
           operation: "decodeInput",
-          cause: "Actor installation or message target mismatch",
+          cause: "Actor installation or kind mismatch",
         });
       }
-      const messageKey = key(
-        decoded.workspaceId,
-        source.kind,
-        source.installationId,
-        channelId,
-        decoded.target.targetId,
-      );
-      const conversationKey = key(
-        decoded.workspaceId,
-        source.kind,
-        source.installationId,
-        channelId,
-        rootTs,
-      );
+      let messageKey: string;
+      let conversationKey: string;
+      let rootTs: string;
+      if (source.kind === "github") {
+        if (decoded.startIntent)
+          return yield* new IntakeError({
+            operation: "decodeInput",
+            cause: "Pull request feedback never starts a task",
+          });
+        const [owner, name, number] = yield* Schema.decodeEffect(PullConversation)(
+          source.conversationId,
+        ).pipe(storageError("decodeConversation"));
+        conversationKey = key(
+          decoded.workspaceId,
+          "github",
+          source.installationId,
+          owner,
+          name,
+          number,
+        );
+        messageKey = key(
+          decoded.workspaceId,
+          "github",
+          source.installationId,
+          owner,
+          name,
+          number,
+          decoded.target.targetId,
+        );
+        rootTs = "";
+      } else {
+        const [channelId, root] = yield* Schema.decodeEffect(Conversation)(
+          source.conversationId,
+        ).pipe(storageError("decodeConversation"));
+        if (decoded.target.targetId !== decoded.occurredAt) {
+          return yield* new IntakeError({
+            operation: "decodeInput",
+            cause: "Slack message target mismatch",
+          });
+        }
+        messageKey = key(
+          decoded.workspaceId,
+          source.kind,
+          source.installationId,
+          channelId,
+          decoded.target.targetId,
+        );
+        conversationKey = key(
+          decoded.workspaceId,
+          source.kind,
+          source.installationId,
+          channelId,
+          root,
+        );
+        rootTs = root;
+      }
       // Never trust caller-supplied dedupe keys to partition tenant data.
       const input: Input = {
         ...decoded,
@@ -310,6 +366,31 @@ export const layerNoDeps = Layer.effect(
       return result;
     }, storageError("drain"));
 
+    const routeOf = Effect.fn("Inbox.routeOf")(function* (conversationKey: string) {
+      return yield* findRoute(conversationKey);
+    });
+    const attach = Effect.fn("Inbox.attach")(function* (value: Reservation) {
+      const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
+        storageError("decodeRoute"),
+      );
+      yield* Schema.decodeEffect(Timestamp)(route.startAt).pipe(storageError("decodeRoute"));
+      const source = yield* Schema.encodeEffect(sourceJson)(route.source).pipe(
+        storageError("encodeRoute"),
+      );
+      const now = yield* Clock.currentTimeMillis;
+      yield* store
+        .batch([
+          sql`INSERT INTO inbox_routes (key, workspaceId, taskId, initiatorId, startMessageKey, startInputId, startAt, source, createdAt, initialized)
+          VALUES (${route.conversationKey}, ${route.workspaceId}, ${route.taskId}, ${route.initiatorId}, ${key("attachment", route.conversationKey)},
+            ${route.startInputId}, ${route.startAt}, ${source}, ${now}, 1)
+          ON CONFLICT(key) DO NOTHING`,
+        ])
+        .pipe(storageError("attachRoute"));
+      const existing = yield* findRoute(route.conversationKey);
+      if (!existing || existing.taskId !== route.taskId)
+        return yield* new Conflict({ key: route.conversationKey });
+    });
+
     const seedFixture = Effect.fn("Inbox.seedFixture")(function* (value: Fixture) {
       const fixture = yield* Schema.decodeEffect(Fixture)(value);
       // Only host administrator code calls this. Identity conflicts stop before access is granted.
@@ -326,6 +407,7 @@ export const layerNoDeps = Layer.effect(
         userId: fixture.canonicalUserId,
         teamId: fixture.teamId,
         channelId: fixture.channelId,
+        ...(fixture.github === undefined ? {} : { github: fixture.github }),
       });
     }, storageError("seedFixture"));
 
@@ -342,7 +424,7 @@ export const layerNoDeps = Layer.effect(
           .where(eq(envelopes.workspaceId, workspaceId)),
       });
     }, storageError("snapshot"));
-    return Service.of({ admit, drain, seedFixture, snapshot });
+    return Service.of({ admit, routeOf, attach, drain, seedFixture, snapshot });
   }),
 );
 

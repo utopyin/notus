@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { AccessError, Denied } from "./errors";
 import { channels, memberships } from "./schema";
-import { Conversation, Fixture, StartGrant } from "./types";
+import { Conversation, Fixture, PullConversation, StartGrant } from "./types";
 
 export interface Interface {
   readonly authorizeSource: (
@@ -39,9 +39,16 @@ export const layerNoDeps = Layer.effect(
       const source = yield* Schema.decodeEffect(Source)(value).pipe(
         Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
       );
-      const [channelId] = yield* Schema.decodeEffect(Conversation)(source.conversationId).pipe(
-        Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
-      );
+      // Slack sources are allowed channels; GitHub sources are pull requests in allowed repositories.
+      const channelId =
+        source.kind === "github"
+          ? yield* Schema.decodeEffect(PullConversation)(source.conversationId).pipe(
+              Effect.map(([owner, name]) => `${owner}/${name}`),
+              Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
+            )
+          : (yield* Schema.decodeEffect(Conversation)(source.conversationId).pipe(
+              Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
+            ))[0];
       const rows = yield* store.db
         .select()
         .from(channels)
@@ -79,8 +86,13 @@ export const layerNoDeps = Layer.effect(
     });
     const seedFixture = Effect.fn("Access.seedFixture")(
       function* (value: Fixture) {
-        const { workspaceId, userId, teamId, channelId } =
+        const { workspaceId, userId, teamId, channelId, github } =
           yield* Schema.decodeEffect(Fixture)(value);
+        if (github)
+          yield* store.batch([
+            sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
+            VALUES (${key(workspaceId, github.installationId, github.fullName)}, ${workspaceId}, ${github.installationId}, ${github.fullName}) ON CONFLICT DO NOTHING`,
+          ]);
         yield* store.batch([
           sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
           VALUES (${key(workspaceId, teamId, channelId)}, ${workspaceId}, ${teamId}, ${channelId}) ON CONFLICT DO NOTHING`,

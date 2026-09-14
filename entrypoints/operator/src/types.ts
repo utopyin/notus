@@ -4,6 +4,8 @@ const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 /** One thread message as the operator sees it. Provider markup is passed through. */
 export const Message = Schema.Struct({
   role: Schema.Literals(["user", "assistant"]),
+  /** Where a human message arrived: the Slack thread or the task's pull request. */
+  via: Schema.Literals(["slack", "github"]),
   /** Source actor ID for human messages, null for Notus's own answers. */
   actor: Schema.NullOr(Schema.NonEmptyString),
   text: Schema.String,

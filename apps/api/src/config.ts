@@ -118,6 +118,11 @@ export const repositoryConfig = Effect.gen(function* () {
   };
 });
 
+/** Signs GitHub webhook deliveries. Absent means the GitHub ingress route does not exist. */
+export const webhookConfig = Effect.gen(function* () {
+  return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
+});
+
 /** Read only by the execution host, not the Slack ingress or the devbox. */
 export const providerConfig = Effect.gen(function* () {
   return {

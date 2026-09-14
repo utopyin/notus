@@ -27,14 +27,15 @@ export const ResponseInput = Schema.Struct({
 });
 export interface ResponseInput extends Schema.Schema.Type<typeof ResponseInput> {}
 
+/** The origin receives updates; attached sources such as a pull request only receive and reply. */
 export const Attachment = Schema.Struct({
   id: Schema.NonEmptyString,
   source: Source,
-  origin: Schema.Literal(true),
-  receive: Schema.Literal(true),
-  reaction: Schema.Literal(true),
-  reply: Schema.Literal(true),
-  updates: Schema.Literal(true),
+  origin: Schema.Boolean,
+  receive: Schema.Boolean,
+  reaction: Schema.Boolean,
+  reply: Schema.Boolean,
+  updates: Schema.Boolean,
 });
 export interface Attachment extends Schema.Schema.Type<typeof Attachment> {}
 

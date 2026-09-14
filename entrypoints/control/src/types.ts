@@ -8,6 +8,9 @@ export const Fixture = Schema.Struct({
   teamId: Schema.NonEmptyString,
   channelId: Schema.NonEmptyString,
   externalUserId: Schema.NonEmptyString,
+  github: Schema.optionalKey(
+    Schema.Struct({ installationId: Schema.NonEmptyString, fullName: Schema.NonEmptyString }),
+  ),
 });
 export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
 

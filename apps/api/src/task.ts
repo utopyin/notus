@@ -1,5 +1,5 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import type { Admission } from "@notus/contracts/source";
+import type { Admission, Source } from "@notus/contracts/source";
 import * as Control from "@notus/control/task";
 import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";
@@ -68,10 +68,23 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const attemptsLayer = Attempts.layer.pipe(Layer.provide(database));
         const provisioningLayer = Provisioning.layer.pipe(Layer.provide(database));
         const stepsLayer = Steps.layer.pipe(Layer.provide(database));
+        // Replies to pull request feedback need the App; without one they fail closed as unsupported.
+        const githubServiceLayer = github
+          ? GithubApp.layer.pipe(
+              Layer.provide([
+                Layer.succeed(GithubApp.Configuration, github),
+                FetchHttpClient.layer,
+              ]),
+            )
+          : GithubApp.disabled;
         const commandsLayer = Commands.layer.pipe(Layer.provide(database));
         const sourcesLayer = Sources.layer.pipe(
           Layer.provide([
-            Layer.succeed(Sources.ConfigurationService, config),
+            Layer.succeed(Sources.ConfigurationService, {
+              ...config,
+              ...(github ? { githubInstallationId: github.installationId } : {}),
+            }),
+            githubServiceLayer,
             Layer.succeed(Slack.Configuration, {
               token: config.token,
               allowedChannel: config.channelId,
@@ -446,6 +459,21 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 return { ok: true as const };
               }),
             ).pipe(Effect.orElseSucceed(() => ({ ok: false as const }))),
+          /** Confirms this task opened the pull request and records it as an attached source. */
+          attachPullRequest: (source: Source) =>
+            gate(
+              Effect.gen(function* () {
+                const now = yield* Clock.currentTimeMillis;
+                return yield* OperatorControl.attach(source, now).pipe(
+                  Effect.provideContext(services),
+                );
+              }),
+            ).pipe(
+              Effect.map((value) =>
+                value === null ? { ok: false as const } : { ok: true as const, value },
+              ),
+              Effect.orElseSucceed(() => ({ ok: false as const })),
+            ),
           acceptOutcome: (observation: Observation) =>
             gate(
               Effect.gen(function* () {

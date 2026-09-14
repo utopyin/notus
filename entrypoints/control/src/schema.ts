@@ -46,7 +46,8 @@ export const messages = sqliteTable(
 export const routes = sqliteTable("inbox_routes", {
   key: text().primaryKey(),
   workspaceId: text().notNull(),
-  taskId: text().notNull().unique(),
+  // One task may own several conversations: its origin and any attached pull request.
+  taskId: text().notNull(),
   initiatorId: text().notNull(),
   startMessageKey: text().notNull(),
   startInputId: text().notNull(),

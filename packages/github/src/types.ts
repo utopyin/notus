@@ -2,6 +2,9 @@ import * as Schema from "effect/Schema";
 
 const Segment = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/));
 /** One GitHub repository a task may target. The installation decides whether it is reachable. */
+/** Owner and name only, for operations that never touch branches. */
+export const RepositoryName = Schema.Struct({ owner: Segment, name: Segment });
+export interface RepositoryName extends Schema.Schema.Type<typeof RepositoryName> {}
 export const Repository = Schema.Struct({
   owner: Segment,
   name: Segment,

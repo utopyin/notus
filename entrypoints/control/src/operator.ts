@@ -1,4 +1,4 @@
-import type { Admission } from "@notus/contracts/source";
+import { key, type Admission, type Source } from "@notus/contracts/source";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
@@ -323,12 +323,16 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           branchOf(repository, params.value.slug),
         ).pipe(Effect.option);
         if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
+        const owner = (yield* state.snapshot).task;
+        if (!owner) continue;
+        // The marker lets PR feedback find this task; the task still confirms before routing.
+        const marker = `\n\n<!-- notus:task=${owner.id} -->`;
         spec = {
           kind: "pull-request",
           repository,
           branch: branch.value,
           title: params.value.title,
-          body: params.value.body,
+          body: `${params.value.body.slice(0, 60_000 - marker.length)}${marker}`,
           timeoutMs: 60_000,
         };
       } else {
@@ -382,6 +386,56 @@ const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: n
   return count;
 });
 
+const PullAddress = Schema.fromJsonString(
+  Schema.Tuple([
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+    Schema.String.check(Schema.isPattern(/^[1-9]\d{0,9}$/)),
+  ]),
+);
+
+/**
+ * Confirms this task opened the pull request before any feedback routes to it. A marker in the
+ * PR body is only a hint: without a completed pull-request action for that number, nothing attaches.
+ */
+export const attach = Effect.fn("OperatorControl.attach")(function* (source: Source, now: number) {
+  const state = yield* State.Service;
+  const provisioning = yield* Provisioning.Service;
+  const commands = yield* Commands.Service;
+  if (source.kind !== "github") return null;
+  const address = yield* Schema.decodeEffect(PullAddress)(source.conversationId).pipe(
+    Effect.option,
+  );
+  if (address._tag === "None") return null;
+  const [owner, name, number] = address.value;
+  const repository = yield* provisioning.repository;
+  const task = (yield* state.snapshot).task;
+  if (
+    !repository ||
+    !task ||
+    task.closedAt !== null ||
+    repository.owner !== owner ||
+    repository.name !== name
+  )
+    return null;
+  const opened = (yield* commands.snapshot).find(
+    (row) =>
+      row.spec.kind === "pull-request" &&
+      row.status === "done" &&
+      row.result?.pullRequest?.number === Number(number),
+  );
+  if (!opened) return null;
+  yield* state.attach(source, now);
+  // Whole seconds: GitHub timestamps have second precision, so feedback in the same second counts.
+  return {
+    taskId: task.id,
+    workspaceId: task.reservation.workspaceId,
+    initiatorId: task.reservation.initiatorId,
+    startInputId: key("pull-request", source.conversationId),
+    startAt: `${Math.floor(opened.updatedAt / 1000)}.000000`,
+  };
+});
+
 export const admit = Effect.fn("OperatorControl.admit")(function* (command: Admission) {
   const state = yield* State.Service;
   const receipt = yield* state.admit(command);
@@ -418,6 +472,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     if (row.id === current.id || row.createdAt > current.createdAt) continue;
     history.push({
       role: "user",
+      via: row.input.actor.kind,
       actor: row.input.actor.externalId,
       text: row.input.text,
       at: row.createdAt,
@@ -427,7 +482,13 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     const input = inputs.get(row.inputId);
     if (!row.final || !input || input.createdAt > current.createdAt || row.inputId === current.id)
       continue;
-    history.push({ role: "assistant", actor: null, text: row.text, at: row.createdAt });
+    history.push({
+      role: "assistant",
+      via: input.input.actor.kind,
+      actor: null,
+      text: row.text,
+      at: row.createdAt,
+    });
   }
   history.sort((left, right) => left.at - right.at);
   const devbox = yield* provisioning.current;
@@ -453,6 +514,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     history,
     current: {
       role: "user",
+      via: current.input.actor.kind,
       actor: current.input.actor.externalId,
       text: current.input.text,
       at: current.createdAt,

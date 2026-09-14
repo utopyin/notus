@@ -8,7 +8,7 @@ import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { AppError } from "./errors";
-import { InstallationToken, PullRequest, Repository, TaskBranch } from "./types";
+import { InstallationToken, PullRequest, Repository, RepositoryName, TaskBranch } from "./types";
 
 /** A dedicated GitHub App: separate from model connections and deployment credentials. */
 export class Configuration extends Context.Service<
@@ -36,6 +36,26 @@ export interface Interface {
     repository: Repository,
     input: { readonly branch: string; readonly title: string; readonly body: string },
   ) => Effect.Effect<PullRequest, AppError>;
+  /** Metadata read: the commenter's role on the repository, "none" when not a collaborator. */
+  readonly collaboratorRole: (
+    repository: RepositoryName,
+    login: string,
+  ) => Effect.Effect<Role, AppError>;
+  /** Pull requests write with Contents read: a top-level comment on the pull request. */
+  readonly comment: (
+    repository: RepositoryName,
+    input: { readonly pullNumber: number; readonly body: string },
+  ) => Effect.Effect<{ readonly id: string; readonly url: string }, AppError>;
+  /** Pull requests write with Contents read: a threaded reply to one review comment. */
+  readonly replyToReviewComment: (
+    repository: RepositoryName,
+    input: { readonly pullNumber: number; readonly commentId: string; readonly body: string },
+  ) => Effect.Effect<{ readonly id: string; readonly url: string }, AppError>;
+  /** Pull requests write with Contents read: an eyes reaction as receipt. */
+  readonly react: (
+    repository: RepositoryName,
+    input: { readonly kind: "issue-comment" | "review-comment"; readonly commentId: string },
+  ) => Effect.Effect<void, AppError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/github/App") {}
 
@@ -58,7 +78,12 @@ type Permissions =
   | { readonly contents: "read"; readonly metadata: "read" }
   | { readonly contents: "write"; readonly metadata: "read" }
   // GitHub reads both refs when opening a pull request, so Contents read is required.
-  | { readonly pull_requests: "write"; readonly contents: "read"; readonly metadata: "read" };
+  | { readonly pull_requests: "write"; readonly contents: "read"; readonly metadata: "read" }
+  | { readonly metadata: "read" };
+const PermissionResponse = Schema.Struct({ role_name: Schema.optionalKey(Schema.String) });
+const CommentResponse = Schema.Struct({ id: Schema.Int, html_url: Schema.NonEmptyString });
+export const Role = Schema.Literals(["admin", "maintain", "write", "triage", "read", "none"]);
+export type Role = typeof Role.Type;
 const ValidationBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   errors: Schema.optionalKey(
@@ -143,11 +168,11 @@ export const layerNoDeps = Layer.effect(
       "user-agent": "notus",
     });
     const token = Effect.fn("GitHub.App.token")(
-      function* (input: Repository, permissions: Permissions) {
+      function* (input: RepositoryName, permissions: Permissions) {
         // The merge endpoint needs both; no Notus token may ever carry both.
         if ("pull_requests" in permissions && permissions.contents !== "read")
           return yield* fail("token", "configuration");
-        const repository = yield* Schema.decodeEffect(Repository)(input).pipe(
+        const repository = yield* Schema.decodeEffect(RepositoryName)(input).pipe(
           Effect.mapError(() => fail("token", "configuration")),
         );
         const bearer = yield* jwt();
@@ -257,7 +282,137 @@ export const layerNoDeps = Layer.effect(
         orElse: () => Effect.fail(fail("pull-request", "transport")),
       }),
     );
+    const discussion = { pull_requests: "write", contents: "read", metadata: "read" } as const;
+    const send = Effect.fn("GitHub.App.send")(
+      function* (
+        operation: "permission" | "comment" | "reaction",
+        repositoryInput: RepositoryName,
+        permissions: Permissions,
+        method: "GET" | "POST",
+        path: string,
+        body: unknown,
+      ) {
+        const repository = yield* Schema.decodeEffect(RepositoryName)(repositoryInput).pipe(
+          Effect.mapError(() => fail(operation, "configuration")),
+        );
+        const grant = yield* token(repository, permissions);
+        const url = `${endpoint}/repos/${repository.owner}/${repository.name}${path}`;
+        const base = (
+          method === "GET" ? HttpClientRequest.get(url) : HttpClientRequest.post(url)
+        ).pipe(headers, HttpClientRequest.bearerToken(grant.token));
+        const request =
+          body === undefined
+            ? base
+            : yield* HttpClientRequest.bodyJson(base, body).pipe(
+                Effect.mapError(() => fail(operation, "configuration")),
+              );
+        const response = yield* http
+          .execute(request)
+          .pipe(Effect.mapError(() => fail(operation, "transport")));
+        const json = yield* response.json.pipe(Effect.orElseSucceed(() => null));
+        return { status: response.status, json };
+      },
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: "20 seconds",
+        orElse: () => Effect.fail(fail("comment", "transport")),
+      }),
+    );
+    const collaboratorRole = Effect.fn("GitHub.App.collaboratorRole")(function* (
+      repository: RepositoryName,
+      login: string,
+    ) {
+      if (!/^[A-Za-z0-9-]{1,39}(\[bot\])?$/.test(login)) return "none" as const;
+      const result = yield* send(
+        "permission",
+        repository,
+        { metadata: "read" },
+        "GET",
+        `/collaborators/${login}/permission`,
+        undefined,
+      );
+      if (result.status === 404) return "none" as const;
+      if (result.status !== 200) return yield* fail("permission", "rejected", result.status);
+      const decoded = yield* Schema.decodeUnknownEffect(PermissionResponse)(result.json).pipe(
+        Effect.mapError(() => fail("permission", "invalid-response")),
+      );
+      return Schema.is(Role)(decoded.role_name) ? decoded.role_name : ("none" as const);
+    });
+    const posted = (operation: "comment", result: { status: number; json: unknown }) =>
+      result.status === 201
+        ? Schema.decodeUnknownEffect(CommentResponse)(result.json).pipe(
+            Effect.map((comment) => ({ id: String(comment.id), url: comment.html_url })),
+            Effect.mapError(() => fail(operation, "invalid-response")),
+          )
+        : Effect.fail(fail(operation, "rejected", result.status));
+    const comment = Effect.fn("GitHub.App.comment")(function* (
+      repository: RepositoryName,
+      input: { readonly pullNumber: number; readonly body: string },
+    ) {
+      if (
+        !Number.isSafeInteger(input.pullNumber) ||
+        input.pullNumber <= 0 ||
+        input.body.length > 60_000
+      )
+        return yield* fail("comment", "configuration");
+      return yield* posted(
+        "comment",
+        yield* send(
+          "comment",
+          repository,
+          discussion,
+          "POST",
+          `/issues/${input.pullNumber}/comments`,
+          {
+            body: input.body,
+          },
+        ),
+      );
+    });
+    const replyToReviewComment = Effect.fn("GitHub.App.replyToReviewComment")(function* (
+      repository: RepositoryName,
+      input: { readonly pullNumber: number; readonly commentId: string; readonly body: string },
+    ) {
+      if (
+        !Number.isSafeInteger(input.pullNumber) ||
+        input.pullNumber <= 0 ||
+        !/^\d{1,20}$/.test(input.commentId) ||
+        input.body.length > 60_000
+      )
+        return yield* fail("comment", "configuration");
+      return yield* posted(
+        "comment",
+        yield* send(
+          "comment",
+          repository,
+          discussion,
+          "POST",
+          `/pulls/${input.pullNumber}/comments/${input.commentId}/replies`,
+          { body: input.body },
+        ),
+      );
+    });
+    const react = Effect.fn("GitHub.App.react")(function* (
+      repository: RepositoryName,
+      input: { readonly kind: "issue-comment" | "review-comment"; readonly commentId: string },
+    ) {
+      if (!/^\d{1,20}$/.test(input.commentId)) return yield* fail("reaction", "configuration");
+      const path =
+        input.kind === "issue-comment"
+          ? `/issues/comments/${input.commentId}/reactions`
+          : `/pulls/comments/${input.commentId}/reactions`;
+      const result = yield* send("reaction", repository, discussion, "POST", path, {
+        content: "eyes",
+      });
+      // 200 means the same reaction already existed, which is the idempotent outcome.
+      if (result.status !== 201 && result.status !== 200)
+        return yield* fail("reaction", "rejected", result.status);
+    });
     return Service.of({
+      collaboratorRole,
+      comment,
+      replyToReviewComment,
+      react,
       readToken: (repository) => token(repository, { contents: "read", metadata: "read" }),
       pushToken: (repository) => token(repository, { contents: "write", metadata: "read" }),
       createPullRequest,
@@ -265,4 +420,17 @@ export const layerNoDeps = Layer.effect(
   }),
 );
 export const layer = layerNoDeps;
+/** For deployments without an App: every operation fails closed as unconfigured. */
+export const disabled = Layer.succeed(
+  Service,
+  Service.of({
+    readToken: () => Effect.fail(fail("token", "configuration")),
+    pushToken: () => Effect.fail(fail("token", "configuration")),
+    createPullRequest: () => Effect.fail(fail("pull-request", "configuration")),
+    collaboratorRole: () => Effect.fail(fail("permission", "configuration")),
+    comment: () => Effect.fail(fail("comment", "configuration")),
+    replyToReviewComment: () => Effect.fail(fail("comment", "configuration")),
+    react: () => Effect.fail(fail("reaction", "configuration")),
+  }),
+);
 export * as App from "./app";

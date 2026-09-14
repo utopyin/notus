@@ -1,7 +1,11 @@
 import * as Schema from "effect/Schema";
 
+/** Source systems Notus receives human input from. */
+export const SourceKind = Schema.Literals(["slack", "github"]);
+export type SourceKind = typeof SourceKind.Type;
+
 export const Actor = Schema.Struct({
-  kind: Schema.Literal("slack"),
+  kind: SourceKind,
   installationId: Schema.NonEmptyString,
   externalId: Schema.NonEmptyString,
 });
@@ -9,7 +13,7 @@ export interface Actor extends Schema.Schema.Type<typeof Actor> {}
 
 /** Opaque conversation address interpreted only by its source adapter. */
 export const Source = Schema.Struct({
-  kind: Schema.Literal("slack"),
+  kind: SourceKind,
   installationId: Schema.NonEmptyString,
   conversationId: Schema.NonEmptyString,
 });

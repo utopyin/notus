@@ -1,6 +1,8 @@
 import { Input, ReplyTarget, Source, key } from "@notus/contracts/source";
 import type { Event } from "@notus/slack/events";
 import { Timestamp } from "@notus/slack/events";
+import { App as GithubApp } from "@notus/github/app";
+import type { AppError } from "@notus/github/errors";
 import { Slack } from "@notus/slack/service";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -13,6 +15,8 @@ export const Configuration = Schema.Struct({
   teamId: Schema.NonEmptyString,
   channelId: Schema.NonEmptyString,
   botUserId: Schema.NonEmptyString,
+  /** The only GitHub App installation whose pull request conversations this deployment answers. */
+  githubInstallationId: Schema.optionalKey(Schema.NonEmptyString),
 });
 export interface Configuration extends Schema.Schema.Type<typeof Configuration> {}
 export class ConfigurationService extends Context.Service<ConfigurationService, Configuration>()(
@@ -90,11 +94,37 @@ export class Service extends Context.Service<Service, Interface>()(
 ) {}
 const unsupported = () => new SourceError({ classification: "unsupported" });
 const Address = Schema.Tuple([Schema.NonEmptyString, Timestamp]);
+const PullAddress = Schema.fromJsonString(
+  Schema.Tuple([
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
+    Schema.String.check(Schema.isPattern(/^[1-9]\d{0,9}$/)),
+  ]),
+);
+const PullTarget = Schema.fromJsonString(
+  Schema.Tuple([
+    Schema.Literals(["issue-comment", "review-comment", "review"]),
+    Schema.String.check(Schema.isPattern(/^\d{1,20}$/)),
+  ]),
+);
+/** A timed-out or undecodable write may have landed, so it is ambiguous, never retried blindly. */
+const githubError = (error: AppError) =>
+  new SourceError({
+    classification:
+      error.reason === "configuration"
+        ? "unsupported"
+        : error.reason === "rejected"
+          ? error.status === 429
+            ? "rate-limited"
+            : "rejected"
+          : "ambiguous",
+  });
 
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const slack = yield* Slack.Service;
+    const github = yield* GithubApp.Service;
     const configuration = yield* ConfigurationService;
     const address = Effect.fn("Sources.address")(function* (source: Source) {
       const validated = yield* Schema.decodeEffect(Source)(source).pipe(
@@ -131,6 +161,42 @@ export const layerNoDeps = Layer.effect(
       const validated = yield* Schema.decodeEffect(ReplyTarget)(target).pipe(
         Effect.mapError(unsupported),
       );
+      if (validated.source.kind === "github") {
+        if (
+          configuration.githubInstallationId === undefined ||
+          validated.source.installationId !== configuration.githubInstallationId
+        )
+          return yield* unsupported();
+        const [owner, name, number] = yield* Schema.decodeEffect(PullAddress)(
+          validated.source.conversationId,
+        ).pipe(Effect.mapError(unsupported));
+        const [kind, id] = yield* Schema.decodeEffect(PullTarget)(validated.targetId).pipe(
+          Effect.mapError(unsupported),
+        );
+        const repository = { owner, name };
+        const pullNumber = Number(number);
+        return {
+          react: Effect.fn("Sources.githubReact")(function* (deliveryId) {
+            // Reviews themselves cannot carry reactions on GitHub; the answer still follows.
+            if (!deliveryId || kind === "review") return yield* unsupported();
+            yield* github
+              .react(repository, { kind, commentId: id })
+              .pipe(Effect.mapError(githubError));
+            return { reference: key("github-reaction", kind, id), deliveryId };
+          }),
+          reply: Effect.fn("Sources.githubReply")(function* (text, deliveryId) {
+            const posted =
+              kind === "review-comment"
+                ? yield* github.replyToReviewComment(repository, {
+                    pullNumber,
+                    commentId: id,
+                    body: text,
+                  })
+                : yield* github.comment(repository, { pullNumber, body: text });
+            return { reference: key("github-comment", posted.id), deliveryId };
+          }, Effect.mapError(githubError)),
+        };
+      }
       const [channel, rootTs] = yield* address(validated.source);
       if (!Schema.is(Timestamp)(validated.targetId)) return yield* unsupported();
       return {
