@@ -102,6 +102,10 @@ export const repositoryConfig = Effect.gen(function* () {
   const fullName = yield* Config.option(Config.schema(RepositoryName, "NOTUS_FIXTURE_REPOSITORY"));
   if (Option.isNone(fullName)) return null;
   const [owner, name] = fullName.value.split("/");
+  const login = yield* Config.schema(
+    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/)),
+    "NOTUS_FIXTURE_GITHUB_LOGIN",
+  );
   return {
     owner: owner ?? "",
     name: name ?? "",
@@ -109,6 +113,8 @@ export const repositoryConfig = Effect.gen(function* () {
       Schema.NonEmptyString,
       "NOTUS_FIXTURE_REPOSITORY_BRANCH",
     ).pipe(Config.withDefault("main")),
+    // Git refs are case-sensitive; keep branch namespaces predictable.
+    branchPrefix: login.toLowerCase(),
   };
 });
 

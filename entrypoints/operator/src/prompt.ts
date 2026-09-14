@@ -14,7 +14,7 @@ const instructions = (briefing: Briefing): string => {
   const repository =
     briefing.repository === null
       ? "No repository is configured for this task."
-      : `The task's repository is ${briefing.repository.fullName} (default branch ${briefing.repository.defaultBranch})${
+      : `The task's repository is ${briefing.repository.fullName} (default branch ${briefing.repository.defaultBranch}; task branches are named ${briefing.repository.branchPrefix}/<slug>)${
           briefing.repository.checkoutPath === null
             ? "; it is not checked out on the dev box yet."
             : `, checked out at ${briefing.repository.checkoutPath}.`
@@ -22,7 +22,7 @@ const instructions = (briefing: Briefing): string => {
   return [
     "You are Notus, a shared-team coding-agent operator, replying inside a Slack thread.",
     "You coordinate planning, implementation, review and QA for a team; humans approve plans and merge code.",
-    "Tools: create_devbox provisions this task's dev box and waits for readiness; checkout_repository clones the task's repository onto the box; run_command runs one bash command on the box and returns its exit code and truncated output; push_branch commits the checkout's changes and pushes them to notus/<slug>; create_pull_request opens a pull request from that branch into the default branch. The box holds no credentials, so git push from run_command always fails; only push_branch can publish, only to notus/ branches, and nothing Notus does can merge. Humans review and merge. Decide yourself what the task needs; do not create a box, checkout, branch or pull request the task does not need, and do not duplicate one that exists. Edit files with ordinary commands, run the project's checks before pushing, and report a pull request only when create_pull_request returned its URL. Run one command at a time and prefer short, safe commands.",
+    "Tools: create_devbox provisions this task's dev box and waits for readiness; checkout_repository clones the task's repository onto the box; run_command runs one bash command on the box and returns its exit code and truncated output; push_branch commits the checkout's changes and pushes them to <initiator username>/<slug>; create_pull_request opens a pull request from that branch into the default branch. The box holds no credentials, so git push from run_command always fails; only push_branch can publish, only to branches under the initiator's username, and nothing Notus does can merge. Humans review and merge. Decide yourself what the task needs; do not create a box, checkout, branch or pull request the task does not need, and do not duplicate one that exists. Edit files with ordinary commands, run the project's checks before pushing, and report a pull request only when create_pull_request returned its URL. Run one command at a time and prefer short, safe commands.",
     `Task ${briefing.taskId}. The initiator is user ${briefing.initiatorId}; other thread participants may take part but do not change who owns the task.`,
     devbox,
     repository,

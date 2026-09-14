@@ -143,7 +143,7 @@ const PullParams = Schema.Struct({
   title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
   body: Schema.String.check(Schema.isMaxLength(60_000)),
 });
-const branchOf = (slug: string) => `notus/${slug}`;
+const branchOf = (repository: RepositoryRef, slug: string) => `${repository.branchPrefix}/${slug}`;
 const toolNames = new Set([
   "create_devbox",
   "run_command",
@@ -298,9 +298,9 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           Effect.option,
         );
         if (params._tag === "None") continue;
-        const branch = yield* Schema.decodeEffect(TaskBranch)(branchOf(params.value.slug)).pipe(
-          Effect.option,
-        );
+        const branch = yield* Schema.decodeEffect(TaskBranch)(
+          branchOf(repository, params.value.slug),
+        ).pipe(Effect.option);
         if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
         spec = {
           kind: "push",
@@ -316,9 +316,9 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           Effect.option,
         );
         if (params._tag === "None") continue;
-        const branch = yield* Schema.decodeEffect(TaskBranch)(branchOf(params.value.slug)).pipe(
-          Effect.option,
-        );
+        const branch = yield* Schema.decodeEffect(TaskBranch)(
+          branchOf(repository, params.value.slug),
+        ).pipe(Effect.option);
         if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
         spec = {
           kind: "pull-request",
@@ -443,6 +443,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
       ? {
           fullName: `${repository.owner}/${repository.name}`,
           defaultBranch: repository.defaultBranch,
+          branchPrefix: repository.branchPrefix,
           checkoutPath: checkedOut?.result?.checkout?.path ?? null,
         }
       : null,

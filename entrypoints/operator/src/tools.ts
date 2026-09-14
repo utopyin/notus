@@ -77,12 +77,12 @@ export const PushOutcome = Schema.Struct({
 export interface PushOutcome extends Schema.Schema.Type<typeof PushOutcome> {}
 const Slug = Schema.String.annotate({
   description:
-    "Short branch slug, lowercase letters, digits and dashes; the branch becomes notus/<slug>.",
+    "Short branch slug, lowercase letters, digits and dashes; the branch becomes <initiator username>/<slug>.",
 });
 
 export const PushBranch = Tool.make("push_branch", {
   description:
-    "Commit every change in the repository checkout as Notus and push it to the branch notus/<slug> on GitHub. Only notus/ branches can be pushed; the default branch never. Requires a checkout with changes. Nothing is merged.",
+    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Requires a checkout with changes. Nothing is merged.",
   parameters: Schema.Struct({
     slug: Slug,
     message: Schema.String.annotate({ description: "Commit message summarizing the change." }),
@@ -101,7 +101,7 @@ export interface PullRequestOutcome extends Schema.Schema.Type<typeof PullReques
 
 export const CreatePullRequest = Tool.make("create_pull_request", {
   description:
-    "Open a pull request from the pushed branch notus/<slug> into the repository's default branch. Humans review and merge; Notus cannot. A pull request exists only when this tool returns its number and URL.",
+    "Open a pull request from the pushed branch <initiator username>/<slug> into the repository's default branch. Humans review and merge; Notus cannot. A pull request exists only when this tool returns its number and URL.",
   parameters: Schema.Struct({
     slug: Slug,
     title: Schema.String.annotate({ description: "Pull request title." }),

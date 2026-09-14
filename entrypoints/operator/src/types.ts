@@ -27,6 +27,7 @@ export const Briefing = Schema.Struct({
     Schema.Struct({
       fullName: Schema.NonEmptyString,
       defaultBranch: Schema.NonEmptyString,
+      branchPrefix: Schema.NonEmptyString,
       checkoutPath: Schema.NullOr(Schema.NonEmptyString),
     }),
   ),

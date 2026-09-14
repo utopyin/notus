@@ -6,11 +6,14 @@ export const Repository = Schema.Struct({
   owner: Segment,
   name: Segment,
   defaultBranch: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._/-]{1,200}$/)),
+  branchPrefix: Schema.optionalKey(Schema.String),
 });
 export interface Repository extends Schema.Schema.Type<typeof Repository> {}
 
-/** A branch Notus may write to: always under notus/, never a default branch. */
-export const TaskBranch = Schema.String.check(Schema.isPattern(/^notus\/[a-z0-9][a-z0-9-]{0,48}$/));
+/** A branch Notus may write to: `<initiator login>/<slug>`, so never a default branch. */
+export const TaskBranch = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9][a-z0-9-]{0,48}$/),
+);
 export const PullRequest = Schema.Struct({
   number: Schema.Int.check(Schema.isGreaterThan(0)),
   url: Schema.String.check(Schema.isPattern(/^https:\/\/github\.com\/[^\s]+$/)),
