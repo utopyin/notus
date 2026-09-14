@@ -139,6 +139,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               if (!claim) break;
               yield* Effect.gen(function* () {
                 const result = yield* devbox.perform(claim);
+                yield* Effect.logInfo(`task.provisioning ${claim.work} -> ${result._tag}`);
                 yield* gate(
                   Effect.gen(function* () {
                     const now = yield* Clock.currentTimeMillis;

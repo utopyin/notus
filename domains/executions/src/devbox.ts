@@ -138,6 +138,16 @@ export const layerNoDeps = Layer.effect(
         }),
         (effect, input) =>
           effect.pipe(
+            Effect.tapError((error) =>
+              // Status and classification only: provider messages, bodies and headers stay out.
+              Effect.logWarning(
+                `devbox.${input.work}_failed ${error._tag}${
+                  Schema.is(ControlError)(error)
+                    ? ` ${error.operation} ${error.reason} ${error.outcome}${error.status === undefined ? "" : ` http=${error.status}`}`
+                    : ""
+                }`,
+              ),
+            ),
             Effect.catch((error): Effect.Effect<ProvisioningResult> => {
               if (
                 Schema.is(ConfigError)(error) ||
