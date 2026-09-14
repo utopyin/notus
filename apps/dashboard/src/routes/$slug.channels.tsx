@@ -132,7 +132,7 @@ function Channels() {
             <SelectTrigger id="channel" className="w-full">
               <SelectValue placeholder="Channels the Notus app is in…" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent alignItemWithTrigger={false} align="start">
               {options.length === 0 ? (
                 <div className="text-muted-foreground flex items-center gap-2 px-2 py-1.5 text-sm">
                   <IconMessageCircleOff className="size-4" />
