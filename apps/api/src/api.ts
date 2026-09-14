@@ -4,7 +4,7 @@ import { Identities } from "@notus/accounts/identities";
 import type { Actor } from "@notus/contracts/source";
 import { Slack } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";
-import type { Role } from "@notus/workspaces/types";
+import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -227,19 +227,21 @@ export default class Api extends Cloudflare.Worker<Api>()(
       }).pipe(Effect.provideService(RuntimeContext, runtime));
     type SignedIn = NonNullable<Effect.Success<ReturnType<typeof signedIn>>>;
     /** Member rows carry the display profile of their user, when one has signed in. */
-    const withProfiles = <
-      V extends { readonly members: ReadonlyArray<{ readonly userId: string }> },
-    >(
-      view: V,
-    ) =>
+    const withProfiles = (view: WorkspaceView) =>
       Identities.Service.pipe(
         Effect.flatMap((identities) => identities.profiles(view.members.map((m) => m.userId))),
         Effect.map((profiles) => ({
-          ...view,
+          workspace: view.workspace,
+          role: view.role,
+          channels: view.channels,
+          invites: view.invites,
           members: view.members.map((member) => {
             const profile = profiles.get(member.userId);
             return {
-              ...member,
+              workspaceId: member.workspaceId,
+              userId: member.userId,
+              role: member.role,
+              provenance: member.provenance,
               name: profile?.name ?? null,
               email: profile?.email ?? null,
               image: profile?.image ?? null,
