@@ -13,6 +13,8 @@ export const TokenSet = Schema.Struct({
   /** Epoch milliseconds. */
   expiresAt: Millis,
   accountId: Schema.NonEmptyString,
+  /** The OpenID token Codex reads its plan and account from; absent on older logins. */
+  idToken: Schema.optionalKey(Schema.NonEmptyString),
 });
 export interface TokenSet extends Schema.Schema.Type<typeof TokenSet> {}
 
@@ -22,6 +24,7 @@ export const StoredLogin = Schema.Struct({
   refresh: Schema.NonEmptyString,
   expires: Schema.Finite,
   accountId: Schema.NonEmptyString,
+  idToken: Schema.optionalKey(Schema.NonEmptyString),
 });
 export interface StoredLogin extends Schema.Schema.Type<typeof StoredLogin> {}
 

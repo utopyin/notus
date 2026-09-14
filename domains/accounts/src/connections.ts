@@ -44,9 +44,17 @@ const stored = (seed: Seed) =>
         accountId: seed.tokens.accountId,
         access: seed.tokens.access,
         refresh: seed.tokens.refresh,
+        idToken: seed.tokens.idToken ?? null,
         expiresAt: seed.tokens.expiresAt,
       }
-    : { provider: seed.provider, accountId: "", access: seed.key, refresh: "", expiresAt: 0 };
+    : {
+        provider: seed.provider,
+        accountId: "",
+        access: seed.key,
+        refresh: "",
+        idToken: null,
+        expiresAt: 0,
+      };
 export const ConnectionStatus = Schema.Struct({
   userId: Schema.NonEmptyString,
   linked: Schema.Boolean,
@@ -88,7 +96,22 @@ export interface Interface {
     request: ForwardRequest,
     gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>,
   ) => Effect.Effect<ForwardResponse, ConnectionError>;
+  /**
+   * A fresh subscription login for an agent process on the user's dev box. The refresh token never
+   * leaves; the caller serializes this with every other call on the connection.
+   */
+  readonly agentLogin: (
+    userId: string,
+    minimumLifetimeMs: number,
+  ) => Effect.Effect<AgentLogin, ConnectionError>;
 }
+export const AgentLogin = Schema.Struct({
+  access: Schema.NonEmptyString,
+  idToken: Schema.NonEmptyString,
+  accountId: Schema.NonEmptyString,
+  expiresAt: Millis,
+});
+export interface AgentLogin extends Schema.Schema.Type<typeof AgentLogin> {}
 export class Service extends Context.Service<Service, Interface>()("@notus/accounts/Connections") {}
 
 export const layerNoDeps = Layer.effect(
@@ -200,9 +223,13 @@ export const layerNoDeps = Layer.effect(
       return project({ ...row, revokedAt: now });
     });
     /** Rotation is persisted before the new access token is ever used. */
-    const fresh = Effect.fn("Connections.fresh")(function* (row: ConnectionRow, now: number) {
+    const fresh = Effect.fn("Connections.fresh")(function* (
+      row: ConnectionRow,
+      now: number,
+      window: number = refreshWindow,
+    ) {
       // API keys do not rotate; only subscription logins expire.
-      if (row.provider !== "openai-chatgpt" || row.expiresAt - now > refreshWindow) return row;
+      if (row.provider !== "openai-chatgpt" || row.expiresAt - now > window) return row;
       const rotated = yield* OAuth.refresh(Redacted.make(row.refresh)).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.mapError((error) =>
@@ -222,6 +249,7 @@ export const layerNoDeps = Layer.effect(
           .set({
             access: rotated.access,
             refresh: rotated.refresh,
+            idToken: rotated.idToken ?? row.idToken,
             expiresAt: rotated.expiresAt,
             rotatedAt: now,
           })
@@ -230,6 +258,7 @@ export const layerNoDeps = Layer.effect(
       return Struct.assign(row, {
         access: rotated.access,
         refresh: rotated.refresh,
+        idToken: rotated.idToken ?? row.idToken,
         expiresAt: rotated.expiresAt,
         rotatedAt: now,
       });
@@ -314,7 +343,26 @@ export const layerNoDeps = Layer.effect(
       }
       return response;
     });
-    return Service.of({ status, link, revoke, forward });
+    const agentLogin = Effect.fn("Connections.agentLogin")(function* (
+      userId: string,
+      minimumLifetimeMs: number,
+    ) {
+      const row = yield* storage(load(userId));
+      if (!row) return yield* fail("not-linked");
+      if (row.revokedAt !== null) return yield* fail("revoked");
+      // Agents need a subscription login with its OpenID token; an API key never reaches a box.
+      if (row.provider !== "openai-chatgpt") return yield* fail("unauthorized");
+      // The box cannot refresh, so the access token must outlive the whole round.
+      const current = yield* fresh(row, yield* Clock.currentTimeMillis, minimumLifetimeMs);
+      if (current.idToken === null) return yield* fail("reconnect-required");
+      return AgentLogin.make({
+        access: current.access,
+        idToken: current.idToken,
+        accountId: current.accountId,
+        expiresAt: current.expiresAt,
+      });
+    });
+    return Service.of({ status, link, revoke, forward, agentLogin });
   }),
 );
 export const layer = layerNoDeps;

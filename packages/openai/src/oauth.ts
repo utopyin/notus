@@ -16,6 +16,7 @@ const TokenResponse = Schema.Struct({
   access_token: Schema.NonEmptyString,
   refresh_token: Schema.NonEmptyString,
   expires_in: Schema.Finite.check(Schema.isGreaterThan(0)),
+  id_token: Schema.optionalKey(Schema.NonEmptyString),
 });
 const claim = "https://api.openai.com/auth";
 const Claims = Schema.fromJsonString(
@@ -81,6 +82,7 @@ export const refresh = Effect.fn("OpenAi.OAuth.refresh")(
       refresh: tokens.refresh_token,
       expiresAt: now + Math.floor(tokens.expires_in * 1000),
       accountId,
+      ...(tokens.id_token === undefined ? {} : { idToken: tokens.id_token }),
     });
   },
   Effect.scoped,

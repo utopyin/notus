@@ -15,11 +15,16 @@ RUN curl --fail --location --retry 3 -o bun.zip \
       https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip \
     && echo 'c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f  bun.zip' | sha256sum --check --strict \
     && unzip bun.zip && chmod 0755 bun-linux-x64-baseline/bun
+# Codex CLI for specialist rounds. Credentials arrive per round; none are baked in.
+RUN curl --fail --location --retry 3 -o codex.tar.gz \
+      https://github.com/openai/codex/releases/download/rust-v0.154.0/codex-x86_64-unknown-linux-musl.tar.gz \
+    && echo 'd7e18b2597ae8f242f5f31ee9e90deef48dbc9edd634d9868fb6435d08c07f02  codex.tar.gz' | sha256sum --check --strict \
+    && tar -xzf codex.tar.gz && mv codex-x86_64-unknown-linux-musl codex && chmod 0755 codex
 
 FROM ${UBUNTU_IMAGE} AS runtime
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64 && test "$(dpkg --print-architecture)" = amd64 \
-    && apt-get update && apt-get install -y --no-install-recommends bash git tmux ca-certificates \
+    && apt-get update && apt-get install -y --no-install-recommends bash git tmux ca-certificates jq \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 1001 devbox \
     && useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash devbox \
@@ -28,6 +33,7 @@ RUN test "$TARGETARCH" = amd64 && test "$(dpkg --print-architecture)" = amd64 \
     && install -d -o 0 -g 0 -m 0755 /usr/local/lib/notus-devbox /usr/local/share/notus-devbox
 COPY --from=downloads --chown=0:0 /downloads/herdr /usr/local/bin/herdr
 COPY --from=downloads --chown=0:0 /downloads/bun-linux-x64-baseline/bun /usr/local/bin/bun
+COPY --from=downloads --chown=0:0 /downloads/codex /usr/local/bin/codex
 COPY --chown=0:0 --chmod=0644 dist/main.js /usr/local/lib/notus-devbox/main.js
 COPY --chown=0:0 --chmod=0755 notus-devbox /usr/local/bin/notus-devbox
 COPY --chown=0:0 --chmod=0644 capabilities.json /usr/local/share/notus-devbox/capabilities.json

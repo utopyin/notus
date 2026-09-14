@@ -18,6 +18,8 @@ import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/connection/migrations";
 
 const loginJson = Schema.fromJsonString(StoredLogin);
+/** Dev box agents sign in through a separate connection object per user. */
+export const agentConnectionId = (userId: string) => `agent:${userId}`;
 
 /**
  * One saved model login per canonical user, addressed by user ID. Only this object reads
@@ -62,6 +64,29 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
          * secret, only while unlinked, and never the same seed twice. Revoking blocks re-seeding.
          */
         const seed = Effect.fn("Connection.seed")(function* (userId: string) {
+          if (userId === agentConnectionId(config.canonicalUserId)) {
+            if (fixture.agentLogin === null) return;
+            const status = yield* connections.status(userId);
+            if (status.linked) return;
+            const login = yield* Schema.decodeEffect(loginJson)(
+              Redacted.value(fixture.agentLogin),
+            ).pipe(Effect.mapError(() => new ConnectionError({ reason: "invalid-input" })));
+            const fingerprint = yield* fingerprintOf(`agent:${login.accountId}:${login.refresh}`);
+            if (status.seedFingerprint === fingerprint) return;
+            yield* connections.link({
+              userId,
+              provider: "openai-chatgpt",
+              tokens: {
+                access: login.access,
+                refresh: login.refresh,
+                expiresAt: Math.max(0, Math.floor(login.expires)),
+                accountId: login.accountId,
+                ...(login.idToken === undefined ? {} : { idToken: login.idToken }),
+              },
+              fingerprint,
+            });
+            return;
+          }
           if (userId !== config.canonicalUserId) return;
           const status = yield* connections.status(userId);
           if (status.linked) return;
@@ -109,6 +134,18 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
               gate(
                 Effect.gen(function* () {
                   return yield* connections.revoke(userId, yield* Clock.currentTimeMillis);
+                }),
+              ),
+            ),
+          /** Only agent connections answer; the login goes to one dev box round, never to storage. */
+          agentLogin: (userId: string, minimumLifetimeMs: number) =>
+            result(
+              gate(
+                Effect.gen(function* () {
+                  if (!userId.startsWith("agent:"))
+                    return yield* new ConnectionError({ reason: "unauthorized" });
+                  yield* seed(userId);
+                  return yield* connections.agentLogin(userId, minimumLifetimeMs);
                 }),
               ),
             ),

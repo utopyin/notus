@@ -75,7 +75,13 @@ export type OperatorConfig = Effect.Success<typeof operatorConfig>;
 export const fixtureConnection = Effect.gen(function* () {
   const login = yield* Config.option(Config.redacted("NOTUS_FIXTURE_CHATGPT_OAUTH"));
   const apiKey = yield* Config.option(Config.redacted("NOTUS_FIXTURE_OPENAI_API_KEY"));
-  return { login: Option.getOrNull(login), apiKey: Option.getOrNull(apiKey) };
+  // The ChatGPT login dev box agents run under. Separate from the operator's model connection.
+  const agentLogin = yield* Config.option(Config.redacted("NOTUS_FIXTURE_AGENT_LOGIN"));
+  return {
+    login: Option.getOrNull(login),
+    apiKey: Option.getOrNull(apiKey),
+    agentLogin: Option.getOrNull(agentLogin),
+  };
 });
 
 /**

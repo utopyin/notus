@@ -91,7 +91,9 @@ export const layerNoDeps = Layer.effect(
         yield* callback.ready(ready);
         yield* report;
         // Serve operator commands for as long as Control accepts this runtime.
-        return yield* callback.commands(Commands.run);
+        return yield* callback
+          .commands(Commands.run)
+          .pipe(Effect.provideService(Settings.Service, settings));
       }).pipe(Effect.raceFirst(unexpectedExit));
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),

@@ -115,12 +115,36 @@ export const CreatePullRequest = Tool.make("create_pull_request", {
   success: PullRequestOutcome,
 });
 
+/** What a specialist reported, or why the round produced no report. */
+export const SpecialistOutcome = Schema.Struct({
+  report: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+});
+export interface SpecialistOutcome extends Schema.Schema.Type<typeof SpecialistOutcome> {}
+
+export const RunSpecialist = Tool.make("run_specialist", {
+  description:
+    "Give one round of work to a Codex coding agent running on the dev box in the repository checkout, and wait for its written report. Use it for implementation, fixes and reviews that take more than a few commands. The same agent name keeps the same agent and its memory across rounds. The agent edits files but cannot push; publish its changes with push_branch after checking them. Requires a checkout.",
+  parameters: Schema.Struct({
+    agent: Schema.String.annotate({
+      description:
+        "Agent name, lowercase letters, digits, dashes or underscores, starting with a letter, such as implementer or reviewer.",
+    }),
+    instructions: Schema.String.annotate({
+      description:
+        "Complete, self-contained instructions for this round: the goal, the relevant files, constraints and what to report.",
+    }),
+  }),
+  success: SpecialistOutcome,
+});
+
 export const toolkit = Toolkit.make(
   CreateDevbox,
   RunCommand,
   CheckoutRepository,
   PushBranch,
   CreatePullRequest,
+  RunSpecialist,
 );
 /**
  * Tool calls are never executed inline. Control records them as durable waits and resolves them
@@ -135,6 +159,7 @@ export const ready = toolkit.pipe(
       checkout_repository: unreachable,
       push_branch: unreachable,
       create_pull_request: unreachable,
+      run_specialist: unreachable,
     }),
   ),
 );
@@ -145,5 +170,6 @@ export const encoded = Toolkit.make(
   CheckoutRepository.setParameters(Schema.toEncoded(CheckoutRepository.parametersSchema)),
   PushBranch.setParameters(Schema.toEncoded(PushBranch.parametersSchema)),
   CreatePullRequest.setParameters(Schema.toEncoded(CreatePullRequest.parametersSchema)),
+  RunSpecialist.setParameters(Schema.toEncoded(RunSpecialist.parametersSchema)),
 );
 export const names = Object.keys(toolkit.tools);

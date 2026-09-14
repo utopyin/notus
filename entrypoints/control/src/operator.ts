@@ -17,6 +17,7 @@ import {
   DevboxResult,
   PullRequestOutcome,
   PushOutcome,
+  SpecialistOutcome,
 } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
@@ -132,6 +133,13 @@ const checkoutPath = (repository: RepositoryRef) => `/workspaces/${repository.na
 const checkoutTimeoutMs = 300_000;
 const encodePush = Schema.encodeEffect(PushOutcome);
 const encodePull = Schema.encodeEffect(PullRequestOutcome);
+const encodeSpecialist = Schema.encodeEffect(SpecialistOutcome);
+/** A specialist round may run long; the box keeps an idle marker while it does. */
+const specialistTimeoutMs = 45 * 60_000;
+const SpecialistParams = Schema.Struct({
+  agent: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,31}$/)),
+  instructions: Schema.NonEmptyString.check(Schema.isMaxLength(32_000)),
+});
 const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,48}$/));
 const PushParams = Schema.Struct({
   slug: Slug,
@@ -153,6 +161,7 @@ const toolNames = new Set([
   "checkout_repository",
   "push_branch",
   "create_pull_request",
+  "run_specialist",
 ]);
 // Operational bounds: one command's runtime, the grace before a silent runtime fails it, and
 // how long a box may go without polling before a wake is requested on its behalf.
@@ -204,7 +213,9 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
           ? encodePush({ branch: null, headSha: null, newCommit: null, error })
           : name === "create_pull_request"
             ? encodePull({ number: null, url: null, branch: null, error })
-            : encodeOutcome(commandFailure(error));
+            : name === "run_specialist"
+              ? encodeSpecialist({ report: null, error })
+              : encodeOutcome(commandFailure(error));
     return encoded.pipe(
       Effect.orDie,
       Effect.map((result): Evaluation => ({ _tag: "Resolved", result, isFailure: true })),
@@ -241,6 +252,14 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
           row.result.push.headSha === done.headSha,
       );
       const encoded = yield* encodePush({ ...done, newCommit: !repeated, error: null }).pipe(
+        Effect.orDie,
+      );
+      return { _tag: "Resolved", result: encoded, isFailure: false };
+    }
+    if (name === "run_specialist") {
+      const done = command.result.specialist;
+      if (!done) return yield* failed(`the specialist round produced no report${stderr}`);
+      const encoded = yield* encodeSpecialist({ report: done.report, error: null }).pipe(
         Effect.orDie,
       );
       return { _tag: "Resolved", result: encoded, isFailure: false };
@@ -345,6 +364,19 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           title: params.value.title,
           body: `${params.value.body.slice(0, 60_000 - marker.length)}${marker}`,
           timeoutMs: 60_000,
+        };
+      } else if (call.name === "run_specialist") {
+        if (repository === null) continue;
+        const params = yield* Schema.decodeUnknownEffect(SpecialistParams)(call.params).pipe(
+          Effect.option,
+        );
+        if (params._tag === "None") continue;
+        spec = {
+          kind: "specialist",
+          agent: params.value.agent,
+          instructions: params.value.instructions,
+          path: checkoutPath(repository),
+          timeoutMs: specialistTimeoutMs,
         };
       } else {
         const params = yield* Schema.decodeUnknownEffect(RunParams)(call.params).pipe(

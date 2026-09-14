@@ -14,6 +14,8 @@ export const connections = sqliteTable("account_connections", {
   accountId: text().notNull(),
   access: text().notNull(),
   refresh: text().notNull(),
+  /** OpenID token of a subscription login, kept so an agent login file can be written. */
+  idToken: text(),
   expiresAt: integer().notNull(),
   /** Identifies the explicit administrator link that supplied the original pair. */
   seedFingerprint: text().notNull(),

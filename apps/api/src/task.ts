@@ -24,7 +24,9 @@ import * as Drizzle from "alchemy/Drizzle/Cloudflare";
 import { CurrentRuntimeContext } from "alchemy/RuntimeContext";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
@@ -37,7 +39,7 @@ import {
   providerConfig,
   runtimeConfig,
 } from "./config";
-import { Connection } from "./connection";
+import { Connection, agentConnectionId } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/task/migrations";
@@ -145,6 +147,55 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.option,
               )
             : Effect.succeedNone;
+        /**
+         * A Codex login file for one specialist round, from the initiator's agent connection. The
+         * refresh token stays in the Connection object; the file is returned once, never persisted.
+         */
+        /** The Codex CLI login file shape: tokens only, no API key, no refresh token. */
+        const CodexAuthFile = Schema.fromJsonString(
+          Schema.Struct({
+            OPENAI_API_KEY: Schema.Null,
+            tokens: Schema.Struct({
+              id_token: Schema.NonEmptyString,
+              access_token: Schema.NonEmptyString,
+              refresh_token: Schema.Literal(""),
+              account_id: Schema.NonEmptyString,
+            }),
+            last_refresh: Schema.NonEmptyString,
+          }),
+        );
+        const agentAuth = (lifetimeMs: number) =>
+          Effect.gen(function* () {
+            const initiatorId = yield* gate(
+              State.Service.pipe(
+                Effect.flatMap((state) => state.snapshot),
+                Effect.map((snapshot) => snapshot.task?.reservation.initiatorId ?? null),
+                Effect.provideContext(services),
+              ),
+            ).pipe(Effect.orElseSucceed(() => null));
+            if (initiatorId === null) return Option.none<string>();
+            const id = agentConnectionId(initiatorId);
+            const login = yield* connections.getByName(id).agentLogin(id, lifetimeMs);
+            if (!login.ok) {
+              yield* Effect.logWarning(`task.agent_login_failed ${login.reason}`);
+              return Option.none<string>();
+            }
+            const now = yield* Clock.currentTimeMillis;
+            yield* Effect.logInfo(
+              `task.agent_login expires_in_min=${Math.floor((login.value.expiresAt - now) / 60_000)}`,
+            );
+            const file = yield* Schema.encodeEffect(CodexAuthFile)({
+              OPENAI_API_KEY: null,
+              tokens: {
+                id_token: login.value.idToken,
+                access_token: login.value.access,
+                refresh_token: "",
+                account_id: login.value.accountId,
+              },
+              last_refresh: DateTime.formatIso(DateTime.makeUnsafe(now)),
+            });
+            return Option.some(file);
+          }).pipe(Effect.catchCause(() => Effect.succeed(Option.none<string>())));
         /** Control-plane actions: currently only opening pull requests, never on the box. */
         const performControl = (command: {
           readonly id: string;
@@ -581,14 +632,28 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   if (reply.command !== null) {
                     const command = reply.command;
                     let credential: string | null = null;
-                    if (command.spec.kind === "checkout" || command.spec.kind === "push") {
+                    if (
+                      command.spec.kind === "checkout" ||
+                      command.spec.kind === "push" ||
+                      command.spec.kind === "specialist"
+                    ) {
                       // Minted outside the gate, returned once, never persisted.
-                      const token = yield* mint(command.spec.repository, command.spec.kind);
+                      const token =
+                        command.spec.kind === "specialist"
+                          ? // Refresh first if the login would expire before the round's deadline.
+                            yield* agentAuth(command.spec.timeoutMs + 10 * 60_000)
+                          : yield* mint(command.spec.repository, command.spec.kind);
                       if (token._tag === "None") {
                         yield* gate(
                           Effect.gen(function* () {
                             const now = yield* Clock.currentTimeMillis;
-                            yield* commands.fail(command.id, "github-credential-unavailable", now);
+                            yield* commands.fail(
+                              command.id,
+                              command.spec.kind === "specialist"
+                                ? "agent-credential-unavailable"
+                                : "github-credential-unavailable",
+                              now,
+                            );
                             yield* advance(now);
                             yield* recompute;
                           }),

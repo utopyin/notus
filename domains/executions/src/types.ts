@@ -254,6 +254,15 @@ export const CommandSpec = Schema.Union([
     timeoutMs: Timeout,
   }),
   Schema.Struct({
+    /** One specialist round: a Codex agent on the box works on the checkout and writes a report. */
+    kind: Schema.Literal("specialist"),
+    /** The Herdr agent name; the same name reuses the same live agent across rounds. */
+    agent: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,31}$/)),
+    instructions: Schema.NonEmptyString.check(Schema.isMaxLength(32_000)),
+    path: WorkspacePath,
+    timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 60_000, maximum: 3_600_000 })),
+  }),
+  Schema.Struct({
     kind: Schema.Literal("pull-request"),
     repository: RepositoryRef,
     branch: TaskBranch,
@@ -289,6 +298,10 @@ export const CommandResult = Schema.Struct({
       branch: TaskBranch,
       headSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
     }),
+  ),
+  /** Present for specialist rounds whose agent wrote its report. */
+  specialist: Schema.optionalKey(
+    Schema.Struct({ report: Schema.String.check(Schema.isMaxLength(65_536)) }),
   ),
   /** Present for successfully opened pull requests only. */
   pullRequest: Schema.optionalKey(

@@ -34,6 +34,7 @@ const TokenResponse = Schema.Struct({
   access_token: Schema.String,
   refresh_token: Schema.String,
   expires_in: Schema.Finite,
+  id_token: Schema.optionalKey(Schema.String),
 });
 
 export class TokenError extends Schema.TaggedError<TokenError>()("ChatGpt.TokenError", {
@@ -72,6 +73,7 @@ export const exchange = (
       refresh: response.refresh_token,
       expires: now + response.expires_in * 1000,
       accountId,
+      ...(response.id_token ? { idToken: response.id_token } : {}),
     };
   });
 
