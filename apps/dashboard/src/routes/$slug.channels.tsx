@@ -1,4 +1,4 @@
-import { IconHash, IconLock, IconTrash } from "@tabler/icons-react";
+import { IconHash, IconLockFilled, IconTrashFilled } from "@tabler/icons-react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -78,7 +78,7 @@ function Channels() {
                 className="flex items-center gap-3 px-4 py-3 text-sm"
               >
                 {info?.isPrivate ? (
-                  <IconLock className="text-muted-foreground size-4" />
+                  <IconLockFilled className="text-muted-foreground size-4" />
                 ) : (
                   <IconHash className="text-muted-foreground size-4" />
                 )}
@@ -88,7 +88,7 @@ function Channels() {
                 </div>
                 {isAdmin ? (
                   <Button variant="ghost" size="sm" onClick={() => remove(row)}>
-                    <IconTrash className="size-4" />
+                    <IconTrashFilled className="size-4" />
                     Remove
                   </Button>
                 ) : null}

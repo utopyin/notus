@@ -1,4 +1,4 @@
-import { IconCopy, IconMailForward, IconX } from "@tabler/icons-react";
+import { IconCopy, IconMailFilled, IconX } from "@tabler/icons-react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
@@ -83,7 +83,7 @@ function Invites() {
     >
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={creating} onClick={() => create("member")}>
-          <IconMailForward className="size-4" />
+          <IconMailFilled className="size-4" />
           Invite a member
         </Button>
         <Button variant="outline" disabled={creating} onClick={() => create("admin")}>

@@ -1,4 +1,4 @@
-import { IconHash, IconMailForward, IconUsers } from "@tabler/icons-react";
+import { IconMailFilled, IconMessageCircleFilled, IconUsersGroup } from "@tabler/icons-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useWorkspace } from "./$slug";
@@ -14,14 +14,14 @@ function Overview() {
   const items = [
     {
       to: "/$slug/members" as const,
-      icon: IconUsers,
+      icon: IconUsersGroup,
       label: "Members",
       value: view.members.length,
       hint: `${view.members.filter((m) => m.role === "admin").length} admin`,
     },
     {
       to: "/$slug/channels" as const,
-      icon: IconHash,
+      icon: IconMessageCircleFilled,
       label: "Slack channels",
       value: view.channels.length,
       hint: "mentions start tasks here",
@@ -30,7 +30,7 @@ function Overview() {
       ? [
           {
             to: "/$slug/invites" as const,
-            icon: IconMailForward,
+            icon: IconMailFilled,
             label: "Open invites",
             value: open,
             hint: "valid for a week",

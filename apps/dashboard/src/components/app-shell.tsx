@@ -1,14 +1,14 @@
 import {
   IconCheck,
-  IconHash,
-  IconLayoutDashboard,
+  IconLayoutDashboardFilled,
   IconLogout,
-  IconMailForward,
+  IconMailFilled,
+  IconMessageCircleFilled,
   IconPlus,
   IconSelector,
-  IconSettings,
-  IconUser,
-  IconUsers,
+  IconSettingsFilled,
+  IconUserFilled,
+  IconUsersGroup,
 } from "@tabler/icons-react";
 import { Link, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -123,31 +123,34 @@ export function AppShell(props: {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      className="[&>svg]:text-muted-foreground"
                       tooltip="Overview"
                       isActive={active === "overview"}
                       render={<Link to="/$slug" params={{ slug }} />}
                     >
-                      <IconLayoutDashboard />
+                      <IconLayoutDashboardFilled />
                       <span>Overview</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      className="[&>svg]:text-muted-foreground"
                       tooltip="Members"
                       isActive={active === "members"}
                       render={<Link to="/$slug/members" params={{ slug }} />}
                     >
-                      <IconUsers />
+                      <IconUsersGroup />
                       <span>Members</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      className="[&>svg]:text-muted-foreground"
                       tooltip="Channels"
                       isActive={active === "channels"}
                       render={<Link to="/$slug/channels" params={{ slug }} />}
                     >
-                      <IconHash />
+                      <IconMessageCircleFilled />
                       <span>Channels</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -155,21 +158,23 @@ export function AppShell(props: {
                     <>
                       <SidebarMenuItem>
                         <SidebarMenuButton
+                          className="[&>svg]:text-muted-foreground"
                           tooltip="Invites"
                           isActive={active === "invites"}
                           render={<Link to="/$slug/invites" params={{ slug }} />}
                         >
-                          <IconMailForward />
+                          <IconMailFilled />
                           <span>Invites</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                       <SidebarMenuItem>
                         <SidebarMenuButton
+                          className="[&>svg]:text-muted-foreground"
                           tooltip="Settings"
                           isActive={active === "settings"}
                           render={<Link to="/$slug/settings" params={{ slug }} />}
                         >
-                          <IconSettings />
+                          <IconSettingsFilled />
                           <span>Settings</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
@@ -203,7 +208,7 @@ export function AppShell(props: {
                 />
                 <DropdownMenuContent align="start" className="w-56">
                   <DropdownMenuItem render={<Link to="/account" />}>
-                    <IconUser className="size-4" />
+                    <IconUserFilled className="size-4" />
                     Account
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

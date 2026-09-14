@@ -1,4 +1,4 @@
-import { IconShieldCheck, IconUserMinus } from "@tabler/icons-react";
+import { IconShieldCheckFilled, IconUserMinus } from "@tabler/icons-react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
@@ -61,7 +61,7 @@ function Members() {
                     change(member.userId, member.role === "admin" ? "member" : "admin")
                   }
                 >
-                  <IconShieldCheck className="size-4" />
+                  <IconShieldCheckFilled className="size-4" />
                   {member.role === "admin" ? "Make member" : "Make admin"}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => remove(member.userId)}>
