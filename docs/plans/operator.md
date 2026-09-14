@@ -35,7 +35,14 @@ On 2026-09-14 the devbox increment ran live: the operator called `create_devbox`
 
 The devbox increment was validated offline the same way: a mocked model round returning a `create_devbox` call, one inactive Create and one Activate, real enrollment and readiness callbacks against the operator attempt, the tool result replayed as a function-call output in the next request, and the answer delivered; both providers pass 79 checks and the readiness and simulation harness was rerun.
 
+## Commands on the box
+
+The third increment adds `run_command`. A call becomes a durable command bound to the active attempt; the enrolled supervisor long-polls the runtime `poll` endpoint under its epoch-bound readiness credential, claims one command at a time, runs it as the devbox user in `/workspaces` with a fixed environment that excludes every callback credential, and reports the bounded result through `observe`. A poll from a newer epoch fails commands an older runtime still held; nothing is re-run automatically. If the box has not polled recently the dispatch asks for a wake through the existing provisioning path. Commands without a dev box, on a blocked box, or without a runtime report within the command timeout plus ten minutes fail with an explanation the model sees. Output is truncated at 64 KiB per stream and a command runs at most two minutes.
+
+Offline validation: the harness drives the poll, claim, second-poll, wrong-credential, observe, identical replay and conflicting replay cases and checks the output replays into the next model round, 97 checks across both providers; the readiness and simulation harness was rerun. The real executor was run inside the new Linux AMD64 image with exit codes, cwd, UID, filtered environment, timeout kill and truncation checks. The image was published as version 2 of the same repository, audited with the previous policy (the registry dropped the `shell` field this time, which the audit now tolerates), and the workspace environment moved to revision 2; evidence is machine-local under `/tmp/notus-commands-publish/` and `/tmp/notus-environment-commands/`. Tasks that captured revision 1 keep their existing boxes; new tasks use the new image.
+
 ## Next increments
 
-1. Commands on the box through the outbound callback channel: the supervisor long-polls for durable commands under its epoch credential and posts observations; specialist rounds become start plus report.
-2. User-driven account linking and application-level encryption of stored connections.
+1. Repository access as its own gate: the GitHub App, checkout on the box, and command authority separated from model connections.
+2. Specialist rounds on the box as start plus report, reusing the command channel.
+3. User-driven account linking and application-level encryption of stored connections.
