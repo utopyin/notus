@@ -5,8 +5,9 @@ import {
   IconTrashFilled,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "@tanstack/react-db";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,19 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { collectionsOf, type ChannelRow } from "../collections";
+import { queryClient } from "../query";
 import { slackChannels } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
+
+/**
+ * The channels the Slack app can see. Cached on the shared client so returning to the page shows
+ * the last list at once; a fresh copy is fetched in the background once it is a few minutes old.
+ */
+const slackChannelsQuery = queryOptions({
+  queryKey: ["slack-channels"],
+  queryFn: () => slackChannels(),
+  staleTime: 5 * 60_000,
+});
 
 export const Route = createFileRoute("/$slug/channels")({
   staticData: {
@@ -34,15 +46,13 @@ export const Route = createFileRoute("/$slug/channels")({
   ssr: false,
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (parent.loaderData) await collectionsOf(parent.loaderData.workspace.id).channels.preload();
+    if (!parent.loaderData) return;
+    // Not awaited: the page renders its skeleton while Slack answers.
+    void queryClient.prefetchQuery(slackChannelsQuery);
+    await collectionsOf(parent.loaderData.workspace.id).channels.preload();
   },
   component: Channels,
 });
-
-type Available = {
-  teamId: string;
-  channels: ReadonlyArray<{ id: string; name: string; isMember: boolean; isPrivate: boolean }>;
-};
 
 function Channels() {
   const { view } = useWorkspace();
@@ -50,19 +60,14 @@ function Channels() {
   const { data } = useLiveQuery({
     query: (q) => q.from({ channel: channels }).orderBy(({ channel }) => channel.channelId, "asc"),
   });
-  // Slack's channel list: null while loading, or the failure reason when Slack refused.
-  const [available, setAvailable] = useState<Available | null>(null);
-  const [listing, setListing] = useState<string | null>(null);
+  const { data: result } = useQuery(slackChannelsQuery, queryClient);
+  // Slack's channel list once it answered, or the reason it refused.
+  const available = result?.ok ? result.value : null;
+  const listing = result && !result.ok ? result.reason : null;
+  const loading = result === undefined;
   const [manual, setManual] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const isAdmin = view.role === "admin";
-  useEffect(() => {
-    void slackChannels().then((result) => {
-      if (result.ok) setAvailable(result.value);
-      else setListing(result.reason);
-    });
-  }, []);
-  const loading = available === null && listing === null;
   const byId = new Map(available?.channels.map((c) => [c.id, c]) ?? []);
   const linked = new Set(data.map((row) => row.channelId));
   const report = (error: unknown) =>
