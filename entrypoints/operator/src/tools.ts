@@ -68,7 +68,58 @@ export const CheckoutRepository = Tool.make("checkout_repository", {
   success: CheckoutOutcome,
 });
 
-export const toolkit = Toolkit.make(CreateDevbox, RunCommand, CheckoutRepository);
+/** Where the task's branch went. */
+export const PushOutcome = Schema.Struct({
+  branch: Schema.NullOr(Schema.String),
+  headSha: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+});
+export interface PushOutcome extends Schema.Schema.Type<typeof PushOutcome> {}
+const Slug = Schema.String.annotate({
+  description:
+    "Short branch slug, lowercase letters, digits and dashes; the branch becomes notus/<slug>.",
+});
+
+export const PushBranch = Tool.make("push_branch", {
+  description:
+    "Commit every change in the repository checkout as Notus and push it to the branch notus/<slug> on GitHub. Only notus/ branches can be pushed; the default branch never. Requires a checkout with changes. Nothing is merged.",
+  parameters: Schema.Struct({
+    slug: Slug,
+    message: Schema.String.annotate({ description: "Commit message summarizing the change." }),
+  }),
+  success: PushOutcome,
+});
+
+/** The opened pull request, or why none exists. */
+export const PullRequestOutcome = Schema.Struct({
+  number: Schema.NullOr(Schema.Int),
+  url: Schema.NullOr(Schema.String),
+  branch: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+});
+export interface PullRequestOutcome extends Schema.Schema.Type<typeof PullRequestOutcome> {}
+
+export const CreatePullRequest = Tool.make("create_pull_request", {
+  description:
+    "Open a pull request from the pushed branch notus/<slug> into the repository's default branch. Humans review and merge; Notus cannot. A pull request exists only when this tool returns its number and URL.",
+  parameters: Schema.Struct({
+    slug: Slug,
+    title: Schema.String.annotate({ description: "Pull request title." }),
+    body: Schema.String.annotate({
+      description:
+        "Pull request description: what changed, why, how it was checked, and open decisions.",
+    }),
+  }),
+  success: PullRequestOutcome,
+});
+
+export const toolkit = Toolkit.make(
+  CreateDevbox,
+  RunCommand,
+  CheckoutRepository,
+  PushBranch,
+  CreatePullRequest,
+);
 /**
  * Tool calls are never executed inline. Control records them as durable waits and resolves them
  * from provider observations, so the handlers here are unreachable by construction.
@@ -80,6 +131,8 @@ export const ready = toolkit.pipe(
       create_devbox: unreachable,
       run_command: unreachable,
       checkout_repository: unreachable,
+      push_branch: unreachable,
+      create_pull_request: unreachable,
     }),
   ),
 );
@@ -88,5 +141,7 @@ export const encoded = Toolkit.make(
   CreateDevbox.setParameters(Schema.toEncoded(CreateDevbox.parametersSchema)),
   RunCommand.setParameters(Schema.toEncoded(RunCommand.parametersSchema)),
   CheckoutRepository.setParameters(Schema.toEncoded(CheckoutRepository.parametersSchema)),
+  PushBranch.setParameters(Schema.toEncoded(PushBranch.parametersSchema)),
+  CreatePullRequest.setParameters(Schema.toEncoded(CreatePullRequest.parametersSchema)),
 );
 export const names = Object.keys(toolkit.tools);

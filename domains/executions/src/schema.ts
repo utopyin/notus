@@ -205,6 +205,9 @@ export const commands = sqliteTable(
       .references(() => steps.id),
     callId: text().notNull(),
     spec: text({ mode: "json" }).$type<CommandSpec>().notNull(),
+    executor: text({ enum: ["runtime", "control"] })
+      .notNull()
+      .default("runtime"),
     status: text({ enum: ["pending", "claimed", "done", "failed"] }).notNull(),
     claimEpoch: integer(),
     claimedAt: integer(),

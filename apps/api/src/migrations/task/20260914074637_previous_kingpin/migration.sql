@@ -1,0 +1,1 @@
+ALTER TABLE `execution_commands` ADD `executor` text DEFAULT 'runtime' NOT NULL;

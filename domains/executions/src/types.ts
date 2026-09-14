@@ -208,7 +208,12 @@ export const RepositoryRef = Schema.Struct({
   defaultBranch: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._/-]{1,200}$/)),
 });
 export interface RepositoryRef extends Schema.Schema.Type<typeof RepositoryRef> {}
-/** What a dev box runtime executes for the operator: a bounded shell script or a read-only checkout. */
+/** A branch Notus may write to: always under notus/, never a default branch. */
+export const TaskBranch = Schema.String.check(Schema.isPattern(/^notus\/[a-z0-9][a-z0-9-]{0,48}$/));
+/**
+ * What executes for the operator. shell, checkout and push run on the dev box runtime;
+ * pull-request runs in the control plane with its own token.
+ */
 export const CommandSpec = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("shell"),
@@ -222,8 +227,26 @@ export const CommandSpec = Schema.Union([
     path: WorkspacePath,
     timeoutMs: Timeout,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("push"),
+    repository: RepositoryRef,
+    path: WorkspacePath,
+    branch: TaskBranch,
+    message: Schema.NonEmptyString.check(Schema.isMaxLength(2000)),
+    timeoutMs: Timeout,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("pull-request"),
+    repository: RepositoryRef,
+    branch: TaskBranch,
+    title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
+    body: Schema.String.check(Schema.isMaxLength(60_000)),
+    timeoutMs: Timeout,
+  }),
 ]);
 export type CommandSpec = typeof CommandSpec.Type;
+export const executorOf = (spec: CommandSpec): "runtime" | "control" =>
+  spec.kind === "pull-request" ? "control" : "runtime";
 export const Command = Schema.Struct({ id: Schema.NonEmptyString, spec: CommandSpec });
 export interface Command extends Schema.Schema.Type<typeof Command> {}
 /** Bounded observation the runtime reports; output is truncated, never streamed. */
@@ -240,6 +263,21 @@ export const CommandResult = Schema.Struct({
       path: WorkspacePath,
       branch: Schema.NonEmptyString,
       headSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+    }),
+  ),
+  /** Present for successful pushes only. */
+  push: Schema.optionalKey(
+    Schema.Struct({
+      branch: TaskBranch,
+      headSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+    }),
+  ),
+  /** Present for successfully opened pull requests only. */
+  pullRequest: Schema.optionalKey(
+    Schema.Struct({
+      number: Schema.Int.check(Schema.isGreaterThan(0)),
+      url: Schema.String.check(Schema.isPattern(/^https:\/\/github\.com\/[^\s]+$/)),
+      branch: TaskBranch,
     }),
   ),
 });

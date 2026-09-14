@@ -5,13 +5,20 @@ import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
 import {
   digest,
+  TaskBranch,
   WorkspacePath,
   type CommandSpec,
   type ProvisioningStatus,
   type RepositoryRef,
 } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
-import { CheckoutOutcome, CommandOutcome, DevboxResult } from "@notus/operator/tools";
+import {
+  CheckoutOutcome,
+  CommandOutcome,
+  DevboxResult,
+  PullRequestOutcome,
+  PushOutcome,
+} from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
@@ -124,6 +131,26 @@ const RunParams = Schema.Struct({
 });
 const checkoutPath = (repository: RepositoryRef) => `/workspaces/${repository.name}`;
 const checkoutTimeoutMs = 300_000;
+const encodePush = Schema.encodeEffect(PushOutcome);
+const encodePull = Schema.encodeEffect(PullRequestOutcome);
+const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,48}$/));
+const PushParams = Schema.Struct({
+  slug: Slug,
+  message: Schema.NonEmptyString.check(Schema.isMaxLength(2000)),
+});
+const PullParams = Schema.Struct({
+  slug: Slug,
+  title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
+  body: Schema.String.check(Schema.isMaxLength(60_000)),
+});
+const branchOf = (slug: string) => `notus/${slug}`;
+const toolNames = new Set([
+  "create_devbox",
+  "run_command",
+  "checkout_repository",
+  "push_branch",
+  "create_pull_request",
+]);
 // Operational bounds: one command's runtime, the grace before a silent runtime fails it, and
 // how long a box may go without polling before a wake is requested on its behalf.
 const commandTimeoutMs = 120_000;
@@ -163,35 +190,51 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     }
     return { _tag: "Pending", deadline: null };
   }
-  if (call.name !== "run_command" && call.name !== "checkout_repository")
+  if (!toolNames.has(call.name))
     return { _tag: "Resolved", result: { error: `unknown tool ${call.name}` }, isFailure: true };
-  const checkout = call.name === "checkout_repository";
+  const name = call.name;
   const failed = (error: string): Effect.Effect<Evaluation> => {
-    const encoded: Effect.Effect<Schema.Json, Schema.SchemaError> = checkout
-      ? encodeCheckout({ path: null, branch: null, headSha: null, error })
-      : encodeOutcome(commandFailure(error));
+    const encoded: Effect.Effect<Schema.Json, Schema.SchemaError> =
+      name === "checkout_repository"
+        ? encodeCheckout({ path: null, branch: null, headSha: null, error })
+        : name === "push_branch"
+          ? encodePush({ branch: null, headSha: null, error })
+          : name === "create_pull_request"
+            ? encodePull({ number: null, url: null, branch: null, error })
+            : encodeOutcome(commandFailure(error));
     return encoded.pipe(
       Effect.orDie,
       Effect.map((result): Evaluation => ({ _tag: "Resolved", result, isFailure: true })),
     );
   };
-  if (status === null || status.resourceId === null)
+  const onBox = name !== "create_pull_request";
+  if (onBox && (status === null || status.resourceId === null))
     return yield* failed("no dev box exists for this task; create one first");
-  if (status.phase === "blocked")
+  if (onBox && status !== null && status.phase === "blocked")
     return yield* failed(`the dev box is blocked (${status.blockedReason ?? "unknown"})`);
-  if (checkout && (yield* provisioning.repository.pipe(Effect.orDie)) === null)
+  if (name !== "run_command" && (yield* provisioning.repository.pipe(Effect.orDie)) === null)
     return yield* failed("no repository is configured for this task");
   const rows = yield* commands.ofStep(stepId).pipe(Effect.orDie);
   const command = rows.find((row) => row.callId === call.id);
   if (!command) return yield* failed("the command was rejected before it was queued");
   if (command.status === "done" && command.result) {
-    if (checkout) {
+    const stderr = command.result.stderr ? `: ${command.result.stderr.slice(0, 500)}` : "";
+    if (name === "checkout_repository") {
       const done = command.result.checkout;
-      if (!done)
-        return yield* failed(
-          `checkout failed${command.result.stderr ? `: ${command.result.stderr.slice(0, 500)}` : ""}`,
-        );
+      if (!done) return yield* failed(`checkout failed${stderr}`);
       const encoded = yield* encodeCheckout({ ...done, error: null }).pipe(Effect.orDie);
+      return { _tag: "Resolved", result: encoded, isFailure: false };
+    }
+    if (name === "push_branch") {
+      const done = command.result.push;
+      if (!done) return yield* failed(`push failed${stderr}`);
+      const encoded = yield* encodePush({ ...done, error: null }).pipe(Effect.orDie);
+      return { _tag: "Resolved", result: encoded, isFailure: false };
+    }
+    if (name === "create_pull_request") {
+      const done = command.result.pullRequest;
+      if (!done) return yield* failed(`pull request failed${stderr}`);
+      const encoded = yield* encodePull({ ...done, error: null }).pipe(Effect.orDie);
       return { _tag: "Resolved", result: encoded, isFailure: false };
     }
     const encoded = yield* encodeOutcome({
@@ -232,18 +275,58 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         );
         continue;
       }
-      if (call.name !== "run_command" && call.name !== "checkout_repository") continue;
+      if (!toolNames.has(call.name) || call.name === "create_devbox") continue;
       const status = yield* provisioning.current;
-      if (status === null || status.resourceId === null || status.phase === "blocked") continue;
+      const repository = yield* provisioning.repository;
+      if (
+        call.name !== "create_pull_request" &&
+        (status === null || status.resourceId === null || status.phase === "blocked")
+      )
+        continue;
       let spec: CommandSpec;
       if (call.name === "checkout_repository") {
-        const repository = yield* provisioning.repository;
         if (repository === null) continue;
         spec = {
           kind: "checkout",
           repository,
           path: checkoutPath(repository),
           timeoutMs: checkoutTimeoutMs,
+        };
+      } else if (call.name === "push_branch") {
+        if (repository === null) continue;
+        const params = yield* Schema.decodeUnknownEffect(PushParams)(call.params).pipe(
+          Effect.option,
+        );
+        if (params._tag === "None") continue;
+        const branch = yield* Schema.decodeEffect(TaskBranch)(branchOf(params.value.slug)).pipe(
+          Effect.option,
+        );
+        if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
+        spec = {
+          kind: "push",
+          repository,
+          path: checkoutPath(repository),
+          branch: branch.value,
+          message: params.value.message,
+          timeoutMs: checkoutTimeoutMs,
+        };
+      } else if (call.name === "create_pull_request") {
+        if (repository === null) continue;
+        const params = yield* Schema.decodeUnknownEffect(PullParams)(call.params).pipe(
+          Effect.option,
+        );
+        if (params._tag === "None") continue;
+        const branch = yield* Schema.decodeEffect(TaskBranch)(branchOf(params.value.slug)).pipe(
+          Effect.option,
+        );
+        if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
+        spec = {
+          kind: "pull-request",
+          repository,
+          branch: branch.value,
+          title: params.value.title,
+          body: params.value.body,
+          timeoutMs: 60_000,
         };
       } else {
         const params = yield* Schema.decodeUnknownEffect(RunParams)(call.params).pipe(
@@ -258,7 +341,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         };
       }
       const row = yield* commands.enqueue(step.id, call.id, spec, now);
-      if (row.status !== "pending") continue;
+      if (row.status !== "pending" || row.executor !== "runtime") continue;
       // A box that has not polled recently may be asleep; the provider path handles the rest.
       const poll = yield* commands.lastPoll;
       if (poll === null || now - poll.polledAt > pollStaleMs)

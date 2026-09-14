@@ -13,7 +13,7 @@ import { App as GithubApp } from "@notus/github/app";
 import { Devbox } from "@notus/executions/devbox";
 import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepOutcome } from "@notus/executions/steps";
-import type { Observation, RepositoryRef } from "@notus/executions/types";
+import type { CommandSpec, Observation, RepositoryRef } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
 import { Slack } from "@notus/slack/service";
 import { Sources } from "@notus/tasks/sources";
@@ -104,15 +104,60 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ]),
             )
           : null;
-        const readToken = (repository: RepositoryRef) =>
+        const mint = (repository: RepositoryRef, kind: "checkout" | "push") =>
           githubLayer
             ? GithubApp.Service.pipe(
-                Effect.flatMap((app) => app.readToken(repository)),
+                Effect.flatMap((app) =>
+                  kind === "checkout" ? app.readToken(repository) : app.pushToken(repository),
+                ),
                 Effect.provide(githubLayer),
                 Effect.map((token) => Redacted.value(token.token)),
                 Effect.option,
               )
             : Effect.succeedNone;
+        /** Control-plane actions: currently only opening pull requests, never on the box. */
+        const performControl = (command: {
+          readonly id: string;
+          readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" }>;
+        }) =>
+          githubLayer
+            ? GithubApp.Service.pipe(
+                Effect.flatMap((app) =>
+                  app.createPullRequest(command.spec.repository, {
+                    branch: command.spec.branch,
+                    title: command.spec.title,
+                    body: command.spec.body,
+                  }),
+                ),
+                Effect.provide(githubLayer),
+                Effect.map((pull) => ({
+                  exitCode: 0,
+                  stdout: "",
+                  stderr: "",
+                  durationMs: 0,
+                  timedOut: false,
+                  truncated: false,
+                  pullRequest: pull,
+                })),
+                Effect.catch((error) =>
+                  Effect.succeed({
+                    exitCode: 1,
+                    stdout: "",
+                    stderr: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
+                    durationMs: 0,
+                    timedOut: false,
+                    truncated: false,
+                  }),
+                ),
+              )
+            : Effect.succeed({
+                exitCode: 1,
+                stdout: "",
+                stderr: "github-credential-unavailable",
+                durationMs: 0,
+                timedOut: false,
+                truncated: false,
+              });
         // Built once per object lifetime; each model request selects its operation at call time.
         const model = yield* Layer.build(Broker.languageModel(connections, context, operator)).pipe(
           Effect.orDie,
@@ -232,6 +277,31 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   yield* recompute;
                 }),
               ).pipe(Effect.catchCause(() => Effect.logError("task.operator_record_failed")));
+            }
+          }
+          if ((yield* mode) === "operator") {
+            for (let index = 0; index < 2; index++) {
+              const claimed = yield* gate(
+                Effect.gen(function* () {
+                  const now = yield* Clock.currentTimeMillis;
+                  yield* arm(now + 60_000);
+                  const command = yield* commands.claimControl(now);
+                  return command ? { command, claimedAt: now } : null;
+                }),
+              );
+              if (!claimed || claimed.command.spec.kind !== "pull-request") break;
+              const spec = claimed.command.spec;
+              // Provider call outside the gate; the lease fences a lost isolate.
+              const result = yield* performControl({ id: claimed.command.id, spec });
+              yield* gate(
+                Effect.gen(function* () {
+                  const now = yield* Clock.currentTimeMillis;
+                  yield* arm(now + 1);
+                  yield* commands.complete(claimed.command.id, claimed.claimedAt, result, now);
+                  yield* advance(now);
+                  yield* recompute;
+                }),
+              ).pipe(Effect.catchCause(() => Effect.logError("task.control_action_failed")));
             }
           }
           const counts = { claimed: 0, confirmed: 0, rateLimited: 0, rejected: 0, ambiguous: 0 };
@@ -466,9 +536,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   if (reply.command !== null) {
                     const command = reply.command;
                     let credential: string | null = null;
-                    if (command.spec.kind === "checkout") {
+                    if (command.spec.kind === "checkout" || command.spec.kind === "push") {
                       // Minted outside the gate, returned once, never persisted.
-                      const token = yield* readToken(command.spec.repository);
+                      const token = yield* mint(command.spec.repository, command.spec.kind);
                       if (token._tag === "None") {
                         yield* gate(
                           Effect.gen(function* () {

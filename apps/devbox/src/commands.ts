@@ -76,6 +76,24 @@ const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout"
   ].join("\n");
 };
 
+/** Commit everything in the checkout as the App's bot identity and push the task branch. */
+const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => {
+  const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
+  const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  return [
+    "set -eu",
+    `path=${quote(spec.path)}`,
+    `[ -d "$path/.git" ] || { echo "no checkout at $path" >&2; exit 3; }`,
+    `cd "$path"`,
+    `git checkout --quiet -B ${quote(spec.branch)}`,
+    "git add -A",
+    `if git diff --cached --quiet; then echo "nothing to commit" >&2; exit 4; fi`,
+    `git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}`,
+    `git push --quiet ${quote(url)} ${quote(`HEAD:refs/heads/${spec.branch}`)}`,
+    "git rev-parse HEAD",
+  ].join("\n");
+};
+
 /**
  * One bash command as the devbox user with a fixed environment. The supervisor's own
  * environment, including callback credentials, is never inherited. A checkout's read token
@@ -95,7 +113,14 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
     truncated: false,
   });
   const spec = command.spec;
-  const script = spec.kind === "shell" ? spec.script : checkoutScript(spec);
+  if (spec.kind === "pull-request")
+    return failure(0, "pull requests are opened by control, never on the box");
+  const script =
+    spec.kind === "shell"
+      ? spec.script
+      : spec.kind === "checkout"
+        ? checkoutScript(spec)
+        : pushScript(spec);
   const cwd = spec.kind === "shell" ? spec.cwd : "/workspaces";
   const env = spec.kind === "shell" ? baseEnv : gitEnv(command.credential);
   return yield* Effect.scoped(
@@ -154,18 +179,20 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         timedOut,
         truncated: stdout.truncated || stderr.truncated,
       };
-      if (spec.kind !== "checkout" || exit !== 0) return result;
+      if (spec.kind === "shell" || exit !== 0) return result;
       const headSha = stdout.text.trim().split("\n").at(-1) ?? "";
       if (!/^[0-9a-f]{40}$/.test(headSha)) return result;
-      return {
+      const base = {
         exitCode: result.exitCode,
         stdout: result.stdout,
         stderr: result.stderr,
         durationMs: result.durationMs,
         timedOut: result.timedOut,
         truncated: result.truncated,
-        checkout: { path: spec.path, branch: spec.repository.defaultBranch, headSha },
       };
+      return spec.kind === "checkout"
+        ? { ...base, checkout: { path: spec.path, branch: spec.repository.defaultBranch, headSha } }
+        : { ...base, push: { branch: spec.branch, headSha } };
     }),
   ).pipe(
     Effect.catch(() =>
