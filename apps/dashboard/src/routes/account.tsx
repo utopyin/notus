@@ -8,7 +8,6 @@ import {
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { authClient, type Provider } from "../auth-client";
 
@@ -24,6 +23,33 @@ export const Route = createFileRoute("/account")({
 });
 
 type Session = { id: string; token: string; createdAt: Date | string; userAgent?: string | null };
+/** A short "Chrome on macOS" label; the full user agent is not useful to read. */
+const clientOf = (userAgent: string | null | undefined) => {
+  if (!userAgent) return "Unknown client";
+  const browser = /Edg\//.test(userAgent)
+    ? "Edge"
+    : /OPR\//.test(userAgent)
+      ? "Opera"
+      : /Firefox\//.test(userAgent)
+        ? "Firefox"
+        : /Chrome\//.test(userAgent)
+          ? "Chrome"
+          : /Safari\//.test(userAgent)
+            ? "Safari"
+            : "Browser";
+  const os = /iPhone|iPad/.test(userAgent)
+    ? "iOS"
+    : /Android/.test(userAgent)
+      ? "Android"
+      : /Mac OS X/.test(userAgent)
+        ? "macOS"
+        : /Windows/.test(userAgent)
+          ? "Windows"
+          : /Linux/.test(userAgent)
+            ? "Linux"
+            : "unknown OS";
+  return `${browser} on ${os}`;
+};
 
 function Account() {
   const me = root.useLoaderData();
@@ -88,7 +114,6 @@ function Account() {
                 </div>
                 {account ? (
                   <>
-                    <Badge variant="outline">linked</Badge>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -123,7 +148,7 @@ function Account() {
             <li key={session.id} className="flex items-center gap-3 px-4 py-3 text-sm">
               <IconDeviceLaptop className="text-muted-foreground size-5" />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{session.userAgent ?? "Unknown client"}</span>
+                <span className="truncate">{clientOf(session.userAgent)}</span>
                 <span className="text-muted-foreground text-xs">
                   since {new Date(session.createdAt).toLocaleString()}
                 </span>
