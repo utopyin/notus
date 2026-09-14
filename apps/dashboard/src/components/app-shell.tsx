@@ -39,6 +39,7 @@ import {
 import { authClient } from "../auth-client";
 import { WorkspaceMark } from "./workspace-mark";
 import type { Me } from "../server/me";
+import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
@@ -55,8 +56,13 @@ export function AppShell(props: {
   description?: string;
   children: ReactNode;
 }) {
-  const { me, current, active, title, description, children } = props;
+  const { me, active, title, description, children } = props;
   const router = useRouter();
+  // Live rows so a rename or re-slug shows here the moment it is made.
+  const workspaces = useWorkspaces(me.workspaces);
+  const current = props.current
+    ? (workspaces.find((w) => w.id === props.current?.id) ?? props.current)
+    : null;
   const signOut = async () => {
     await authClient.signOut();
     await router.invalidate();
@@ -101,7 +107,7 @@ export function AppShell(props: {
                   {/* Base UI requires a label to live inside a group. */}
                   <DropdownMenuGroup>
                     <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-                    {me.workspaces.map((workspace) => (
+                    {workspaces.map((workspace) => (
                       <DropdownMenuItem
                         key={workspace.id}
                         render={<Link to="/$slug" params={{ slug: workspace.slug }} />}

@@ -90,7 +90,12 @@ function Invites() {
       description="Invite links are valid for a week and can be used once."
     >
       <div className="flex items-center">
-        <Button className="rounded-r-none" disabled={creating} onClick={() => create("member")}>
+        <Button
+          variant="outline"
+          className="rounded-r-none"
+          disabled={creating}
+          onClick={() => create("member")}
+        >
           <IconMailFilled className="size-4" />
           Invite a member
         </Button>
@@ -98,7 +103,8 @@ function Invites() {
           <DropdownMenuTrigger
             render={
               <Button
-                className="rounded-l-none border-l border-l-primary-foreground/20 px-2"
+                variant="outline"
+                className="-ml-px rounded-l-none px-2"
                 disabled={creating}
                 aria-label="More invite options"
               >
@@ -106,7 +112,7 @@ function Invites() {
               </Button>
             }
           />
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="min-w-max whitespace-nowrap">
             <DropdownMenuItem onClick={() => create("admin")}>Invite an admin</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

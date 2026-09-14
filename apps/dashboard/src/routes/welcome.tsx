@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { slugOf, validSlug } from "../lib/slug";
 import { createWorkspace } from "../server/workspaces";
+import { workspacesCollection } from "../workspaces-collection";
 
 const root = getRouteApi("__root__");
 
@@ -41,6 +42,7 @@ function Welcome() {
       );
       return;
     }
+    void workspacesCollection().utils.refetch();
     await router.invalidate();
     await router.navigate({ to: "/$slug", params: { slug: result.value.slug } });
   };

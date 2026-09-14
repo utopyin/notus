@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { validSlug } from "../lib/slug";
-import { updateWorkspace } from "../server/workspaces";
+import { workspacesCollection } from "../workspaces-collection";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/settings")({
@@ -29,21 +29,27 @@ function Settings() {
   const save = async () => {
     if (saving || !dirty || !name.trim() || !validSlug(slug)) return;
     setSaving(true);
-    const result = await updateWorkspace({ data: { workspaceId: view.workspace.id, name, slug } });
-    setSaving(false);
-    if (!result.ok) {
+    // Optimistic through the shared collection: the sidebar updates at once, and rolls back on refusal.
+    const tx = workspacesCollection().update(view.workspace.id, (draft) => {
+      draft.name = name.trim();
+      draft.slug = slug;
+    });
+    try {
+      await tx.isPersisted.promise;
+    } catch (error) {
+      setSaving(false);
+      const reason = error instanceof Error ? error.message : "failed";
       setMessage(
-        result.reason === "conflict"
-          ? "That slug is already taken."
-          : `That did not work (${result.reason}).`,
+        reason === "conflict" ? "That slug is already taken." : `That did not work (${reason}).`,
       );
       return;
     }
+    setSaving(false);
     setMessage(null);
     await router.invalidate();
     // A new slug means a new address for every page of this workspace.
-    if (result.value.slug !== view.workspace.slug)
-      await router.navigate({ to: "/$slug/settings", params: { slug: result.value.slug } });
+    if (slug !== view.workspace.slug)
+      await router.navigate({ to: "/$slug/settings", params: { slug } });
   };
   return (
     <AppShell me={me} current={current} active="settings" title="Settings">

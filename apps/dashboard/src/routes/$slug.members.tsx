@@ -88,7 +88,7 @@ function Members() {
                       </Button>
                     }
                   />
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="min-w-max whitespace-nowrap">
                     <DropdownMenuItem
                       onClick={() =>
                         change(member.userId, member.role === "admin" ? "member" : "admin")
