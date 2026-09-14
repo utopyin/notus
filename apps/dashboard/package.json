@@ -9,6 +9,7 @@
   "dependencies": {
     "@base-ui/react": "1.8.0",
     "@fontsource-variable/geist": "5.3.0",
+    "@paper-design/shaders-react": "0.0.80",
     "@tabler/icons-react": "3.46.0",
     "@tanstack/query-db-collection": "1.2.13",
     "@tanstack/react-db": "0.3.8",

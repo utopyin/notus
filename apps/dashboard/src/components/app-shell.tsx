@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -37,6 +38,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { authClient } from "../auth-client";
+import { WorkspaceMark } from "./workspace-mark";
 import type { Me } from "../server/me";
 
 type Current = Me["workspaces"][number];
@@ -79,9 +81,13 @@ export function AppShell(props: {
                 <DropdownMenuTrigger
                   render={
                     <SidebarMenuButton size="lg" tooltip="Switch workspace">
-                      <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md text-sm font-semibold">
-                        {(current?.name ?? "N")[0]?.toUpperCase()}
-                      </span>
+                      {current ? (
+                        <WorkspaceMark id={current.id} name={current.name} className="size-8" />
+                      ) : (
+                        <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md text-sm font-semibold">
+                          N
+                        </span>
+                      )}
                       <span className="flex min-w-0 flex-1 flex-col text-left leading-tight">
                         <span className="truncate font-medium">{current?.name ?? "Notus"}</span>
                         <span className="text-muted-foreground truncate text-xs">
@@ -93,18 +99,22 @@ export function AppShell(props: {
                   }
                 />
                 <DropdownMenuContent align="start" className="w-64">
-                  <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-                  {me.workspaces.map((workspace) => (
-                    <DropdownMenuItem
-                      key={workspace.id}
-                      render={<Link to="/$slug" params={{ slug: workspace.slug }} />}
-                    >
-                      <span className="truncate">{workspace.name}</span>
-                      {workspace.id === current?.id ? (
-                        <IconCheck className="ml-auto size-4" />
-                      ) : null}
-                    </DropdownMenuItem>
-                  ))}
+                  {/* Base UI requires a label to live inside a group. */}
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
+                    {me.workspaces.map((workspace) => (
+                      <DropdownMenuItem
+                        key={workspace.id}
+                        render={<Link to="/$slug" params={{ slug: workspace.slug }} />}
+                      >
+                        <WorkspaceMark id={workspace.id} name={workspace.name} className="size-5" />
+                        <span className="truncate">{workspace.name}</span>
+                        {workspace.id === current?.id ? (
+                          <IconCheck className="ml-auto size-4" />
+                        ) : null}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem render={<Link to="/welcome" />}>
                     <IconPlus className="size-4" />
