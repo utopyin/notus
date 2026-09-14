@@ -12,6 +12,7 @@
       },
       "devDependencies": {
         "@effect/tsgo": "0.45.0",
+        "@notus/stages": "workspace:*",
         "drizzle-kit": "catalog:",
         "mime": "4.1.0",
         "oxfmt": "^0.67.0",
@@ -38,6 +39,7 @@
         "@notus/openai": "workspace:*",
         "@notus/operator": "workspace:*",
         "@notus/slack": "workspace:*",
+        "@notus/stages": "workspace:*",
         "@notus/tasks": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "alchemy": "catalog:",
@@ -207,6 +209,9 @@
         "@distilled.cloud/slack": "1.0.0-rc.9",
         "effect": "catalog:",
       },
+    },
+    "packages/stages": {
+      "name": "@notus/stages",
     },
     "scripts": {
       "name": "@notus/scripts",
@@ -678,6 +683,8 @@
     "@notus/scripts": ["@notus/scripts@workspace:scripts"],
 
     "@notus/slack": ["@notus/slack@workspace:packages/slack"],
+
+    "@notus/stages": ["@notus/stages@workspace:packages/stages"],
 
     "@notus/tasks": ["@notus/tasks@workspace:domains/tasks"],
 

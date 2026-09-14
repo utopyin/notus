@@ -1,0 +1,11 @@
+{
+  "name": "@notus/stages",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check:types": "tsc --noEmit"
+  }
+}

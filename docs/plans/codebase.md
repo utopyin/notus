@@ -5,14 +5,14 @@ Proposed ownership, not implemented packages. Follows the [product requirements]
 ## Package layout
 
 ```text
-packages/       contracts/ namespace/ herdr/ plannotator/ slack/ openai/ github/ cloudflare/
+packages/       contracts/ stages/ namespace/ herdr/ plannotator/ slack/ openai/ github/ cloudflare/
 domains/        workspaces/ accounts/ tasks/ executions/
 entrypoints/    control/ operator/
 apps/           api/ devbox/
 alchemy.run.ts
 ```
 
-Introduce packages as needed, not empty scaffolding. `contracts` holds shared IDs, actor/source references, messages, and artifact references/digests. The other tier-1 packages communicate with their named providers.
+Introduce packages as needed, not empty scaffolding. `contracts` holds shared IDs, actor/source references, messages, and artifact references/digests. `stages` holds deployment stage conventions only: which stage is production and which hostnames a stage owns. The other tier-1 packages communicate with their named providers.
 
 ## Domain ownership
 
