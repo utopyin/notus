@@ -56,6 +56,13 @@ const inviteCollection = (workspaceId: string) =>
       queryFn: async () => [...(await load(workspaceId)).invites],
       queryClient,
       getKey: (row: InviteRow) => row.id,
+      // Invites are created through the server first, because the token is shown once; the row
+      // is then inserted with a marker so nothing is sent twice.
+      onInsert: async ({ transaction }) => {
+        for (const mutation of transaction.mutations)
+          if (mutation.metadata?.persisted !== true)
+            throw new Error("invites are created through createInvite");
+      },
       onUpdate: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           if (mutation.changes.revokedAt === undefined) continue;

@@ -49,8 +49,7 @@ function Invites() {
     // The token is shown once; the collection only ever holds the hashed row's metadata.
     setFresh({ role, url: `${window.location.origin}/invite/${result.value.token}` });
     setCopied(false);
-    invites.insert(result.value.invite, { optimistic: false });
-    void invites.utils.refetch();
+    invites.insert(result.value.invite, { metadata: { persisted: true } });
   };
   const revoke = (invite: InviteRow) => {
     invites
