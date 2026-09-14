@@ -44,12 +44,14 @@ function Settings() {
       );
       return;
     }
-    setSaving(false);
     setMessage(null);
+    // Stay disabled until the page's own data reflects the save; otherwise the form looks dirty
+    // for an instant between the write and the refresh.
     await router.invalidate();
     // A new slug means a new address for every page of this workspace.
     if (slug !== view.workspace.slug)
       await router.navigate({ to: "/$slug/settings", params: { slug } });
+    setSaving(false);
   };
   return (
     <AppShell me={me} current={current} active="settings" title="Settings">
