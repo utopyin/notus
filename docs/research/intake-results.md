@@ -84,12 +84,12 @@ Plan with `bun run plan`, or explicitly:
 bunx --no-install alchemy plan --env-file .env.dev --no-input
 ```
 
-Configure Slack Event Subscriptions with `<worker url>/slack/events` and both `app_mention` and `message.channels`; the GitHub App webhook points at `<worker url>/github/events`. Both must be re-pointed whenever the Worker name changes. The signed challenge is verified from the client side; saving this URL in Slack is left to the user. OAuth scopes alone do not subscribe the app. Keep the channel/team allowlist unchanged during testing.
+Configure Slack Event Subscriptions with `<api host>/slack/events` and both `app_mention` and `message.channels`; the GitHub App webhook points at `<api host>/github/events`. Sign-in callbacks are `<dashboard host>/auth/callback/slack` on the Slack app and `<dashboard host>/auth/callback/github` on the GitHub App. The signed challenge is verified from the client side; saving this URL in Slack is left to the user. OAuth scopes alone do not subscribe the app. Keep the channel/team allowlist unchanged during testing.
 
 Deployed resources of a developer stage, first deployed 2026-09-14 with workspace ID `notus`:
 
-- Worker `notus-api-<stage>-<suffix>`.
-- URL `https://notus-api-<stage>-<suffix>.<account>.workers.dev`.
+- API Worker `notus-api-<stage>-<suffix>` at `https://api.<stage>.notus.run`.
+- Dashboard Worker `notus-dashboard-<stage>-<suffix>` at `https://<stage>.notus.run`, with its Better Auth database `AuthDb`.
 - D1 `Notus-SharedDatabase-<stage>-<suffix>`, ID `<d1-database-id>`, environment revision 3 on image version 9 (revision 1 was image version 7, whose Codex lacked its code-mode host; revision 2 was version 8; version 9 adds the idle poll backoff).
 - Slack app `<slack-app-id>`, team `<slack-team-id>`, channel `<slack-channel-id>`.
 
