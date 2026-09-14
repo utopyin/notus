@@ -1,5 +1,6 @@
 import { Dithering } from "@paper-design/shaders-react";
 import { ClientOnly } from "@tanstack/react-router";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 /** FNV-1a over the id; every parameter below is a pure function of the hash. */
@@ -77,6 +78,15 @@ export const markOf = (id: string) => {
 const world = 256;
 
 /**
+ * When this page started, so a mark mounted later resumes the wave where an earlier one left off.
+ * The shader clock is `frame + elapsed * speed` in milliseconds; every navigation renders a fresh
+ * sidebar, and without this the wave would restart from the seed frame each time.
+ */
+const started = typeof performance === "undefined" ? 0 : performance.now();
+const frameNow = (seed: number, speed: number) =>
+  typeof performance === "undefined" ? seed : seed + (performance.now() - started) * speed;
+
+/**
  * A workspace's mark: a dithered wave whose two colours come from its id, so it looks the same
  * everywhere and for everyone. Renders on the client only; the server sends the background colour
  * so nothing jumps on hydration.
@@ -89,6 +99,8 @@ export function WorkspaceMark(props: {
 }) {
   const params = markOf(props.id);
   const size = props.size ?? 32;
+  // Read the clock once per mount: the shader keeps its own time from there.
+  const [frame] = useState(() => frameNow(params.frame, params.speed));
   return (
     <span
       role="img"
@@ -114,7 +126,7 @@ export function WorkspaceMark(props: {
           type="4x4"
           size={2}
           scale={params.scale}
-          frame={params.frame}
+          frame={frame}
           speed={params.speed}
         />
       </ClientOnly>
