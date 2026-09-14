@@ -69,7 +69,7 @@ export const markOf = (id: string) => {
     colorFront: oklch(0.78 + unit(seed, 3) * 0.08, 0.17, inkHue),
     scale: 1.1 + unit(seed, 4) * 0.3,
     frame: Math.floor(unit(seed, 5) * 100_000),
-    speed: 1,
+    speed: 0.3,
   };
 };
 
