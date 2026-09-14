@@ -46,6 +46,9 @@ const ReviewComment = Schema.Struct({
   pull_request: Pull,
   comment: Schema.Struct({
     id: Schema.Int,
+    path: Schema.String,
+    line: Schema.optionalKey(Schema.NullOr(Schema.Int)),
+    original_line: Schema.optionalKey(Schema.NullOr(Schema.Int)),
     body: Schema.String,
     user: User,
     created_at: Schema.NonEmptyString,
@@ -85,6 +88,8 @@ export interface Feedback {
   readonly viaAppId: number | null;
   readonly body: string;
   readonly createdAt: string;
+  /** The file and line a review comment is attached to; null for conversation comments and reviews. */
+  readonly location: { readonly path: string; readonly line: number | null } | null;
 }
 export type Decoded =
   | { readonly type: "feedback"; readonly feedback: Feedback }
@@ -161,6 +166,7 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           viaAppId: event.comment.performed_via_github_app?.id ?? null,
           body: event.comment.body,
           createdAt: event.comment.created_at,
+          location: null,
         },
       };
     }
@@ -181,6 +187,10 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           viaAppId: event.comment.performed_via_github_app?.id ?? null,
           body: event.comment.body,
           createdAt: event.comment.created_at,
+          location: {
+            path: event.comment.path,
+            line: event.comment.line ?? event.comment.original_line ?? null,
+          },
         },
       };
     }
@@ -205,6 +215,7 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           viaAppId: event.review.performed_via_github_app?.id ?? null,
           body,
           createdAt: event.review.submitted_at,
+          location: null,
         },
       };
     }

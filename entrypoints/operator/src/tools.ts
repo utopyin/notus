@@ -72,6 +72,8 @@ export const CheckoutRepository = Tool.make("checkout_repository", {
 export const PushOutcome = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   headSha: Schema.NullOr(Schema.String),
+  /** False when the push published a commit this branch already had: nothing changed. */
+  newCommit: Schema.NullOr(Schema.Boolean),
   error: Schema.NullOr(Schema.String),
 });
 export interface PushOutcome extends Schema.Schema.Type<typeof PushOutcome> {}
@@ -82,7 +84,7 @@ const Slug = Schema.String.annotate({
 
 export const PushBranch = Tool.make("push_branch", {
   description:
-    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Requires a checkout with changes. Nothing is merged.",
+    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Requires a checkout with changes. newCommit is false when there was nothing new to commit, meaning the branch did not change. Nothing is merged.",
   parameters: Schema.Struct({
     slug: Slug,
     message: Schema.String.annotate({ description: "Commit message summarizing the change." }),

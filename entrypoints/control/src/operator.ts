@@ -201,7 +201,7 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
       name === "checkout_repository"
         ? encodeCheckout({ path: null, branch: null, headSha: null, error })
         : name === "push_branch"
-          ? encodePush({ branch: null, headSha: null, error })
+          ? encodePush({ branch: null, headSha: null, newCommit: null, error })
           : name === "create_pull_request"
             ? encodePull({ number: null, url: null, branch: null, error })
             : encodeOutcome(commandFailure(error));
@@ -231,7 +231,18 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     if (name === "push_branch") {
       const done = command.result.push;
       if (!done) return yield* failed(`push failed${stderr}`);
-      const encoded = yield* encodePush({ ...done, error: null }).pipe(Effect.orDie);
+      // The runtime re-publishes an unchanged HEAD as success; an earlier push of the same commit means nothing changed.
+      const repeated = (yield* commands.snapshot.pipe(Effect.orDie)).some(
+        (row) =>
+          row.id !== command.id &&
+          row.spec.kind === "push" &&
+          row.status === "done" &&
+          row.result?.push?.branch === done.branch &&
+          row.result.push.headSha === done.headSha,
+      );
+      const encoded = yield* encodePush({ ...done, newCommit: !repeated, error: null }).pipe(
+        Effect.orDie,
+      );
       return { _tag: "Resolved", result: encoded, isFailure: false };
     }
     if (name === "create_pull_request") {

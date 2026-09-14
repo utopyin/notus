@@ -126,7 +126,11 @@ export const handler = (dependencies: Dependencies) =>
         externalId: feedback.author.login,
       },
       target: { source, targetId: key(feedback.target.kind, feedback.target.id) },
-      text: feedback.body,
+      // A review comment is about one line; the operator needs that anchor to change the right code.
+      text:
+        feedback.location === null
+          ? feedback.body
+          : `Review comment on ${feedback.location.path}${feedback.location.line === null ? "" : ` line ${feedback.location.line}`} (line numbers refer to the pull request branch):\n${feedback.body}`,
       occurredAt,
       startIntent: false,
     });
