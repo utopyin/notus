@@ -3,7 +3,6 @@ import { Inbox } from "@notus/control/inbox";
 import { Access } from "@notus/workspaces/access";
 import { Environments } from "@notus/workspaces/environments";
 import * as Cloudflare from "alchemy/Cloudflare";
-import { Stage } from "alchemy/Stage";
 import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -11,7 +10,7 @@ import * as Option from "effect/Option";
 import type * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
-import { hostnames, zone } from "@notus/stages/hosts";
+import { domainOf } from "@notus/stages/hosts";
 import * as Callback from "./callback";
 import { App as GithubApp } from "@notus/github/app";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
@@ -34,10 +33,7 @@ import { Task } from "./task";
 
 export default class Api extends Cloudflare.Worker<Api>()(
   "Api",
-  Effect.map(Stage, (stage) => ({
-    main: import.meta.url,
-    domain: { name: hostnames(stage).api, zoneName: zone },
-  })),
+  { main: import.meta.url, ...domainOf("api") },
   Effect.gen(function* () {
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);

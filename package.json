@@ -33,11 +33,11 @@
     "check:types": "turbo run check:types && tsc",
     "check": "bun run fix && bun run check:types",
     "prepare": "effect-tsgo patch --oxlint",
-    "deploy": "alchemy deploy --stage \"$USER\" --env-file .env.dev",
-    "deploy:production": "alchemy deploy --stage production --env-file .env.production",
-    "plan": "alchemy plan --stage \"$USER\" --env-file .env.dev",
-    "destroy": "alchemy destroy --stage \"$USER\" --env-file .env.dev",
-    "destroy:production": "alchemy destroy --stage production --env-file .env.production",
+    "deploy": "ALCHEMY_STAGE=\"$USER\" alchemy deploy --env-file .env.dev",
+    "deploy:production": "ALCHEMY_STAGE=production alchemy deploy --env-file .env.production",
+    "plan": "ALCHEMY_STAGE=\"$USER\" alchemy plan --env-file .env.dev",
+    "destroy": "ALCHEMY_STAGE=\"$USER\" alchemy destroy --env-file .env.dev",
+    "destroy:production": "ALCHEMY_STAGE=production alchemy destroy --env-file .env.production",
     "login:chatgpt": "bun run scripts/chatgpt/login.ts"
   },
   "dependencies": {
