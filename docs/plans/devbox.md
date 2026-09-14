@@ -14,7 +14,7 @@ Provider settings belong to the provider package. Do not introduce a shared devc
 
 ## Runtime boundary
 
-The image contains no model credentials, repository credentials, native OAuth caches, provider CLI login, or agent restoration. It must not launch a model or specialist. Readiness checks are bounded and validate the native protocol; socket existence or a running process is insufficient.
+The image contains no model credentials, repository credentials, native OAuth caches, provider CLI login, or agent restoration. It must not launch a model or specialist on its own. Since version 7 it ships the pinned Codex CLI, which only runs inside a specialist round with a login file that arrives with that round and carries no refresh token; see the [operator plan](operator.md#specialist-rounds). Readiness checks are bounded and validate the native protocol; socket existence or a running process is insufficient.
 
 Image extensions are trusted executable inputs: a child Dockerfile can replace any image file. Non-root execution and separate processes do not prove isolation from repository code. Model authorization, credential-broker support, enforced isolation, authenticated attempt binding, durable provisioning intent, and result acceptance remain gates before real execution.
 

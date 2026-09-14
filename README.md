@@ -26,4 +26,4 @@ Each topic has one canonical home:
 | [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup            |
 | [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates              |
 
-The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Next are specialist rounds on the dev box. Each requires separate authorization and validation.
+The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Specialist rounds run Codex on the dev box under the initiator's subscription; the [operator plan](docs/plans/operator.md#specialist-rounds) records how a round is kept alive and signed in. Each requires separate authorization and validation.
