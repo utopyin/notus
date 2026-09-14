@@ -1,6 +1,6 @@
 import { createCollection } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { queryClient } from "./query";
 import { getMe, type Me } from "./server/me";
 import { updateWorkspace } from "./server/workspaces";
@@ -42,16 +42,25 @@ export const workspacesCollection = () => {
   return collection;
 };
 
-/** Live workspaces on the client; the loader's snapshot on the server and until the first sync. */
-export const useWorkspaces = (initial: ReadonlyArray<WorkspaceRow>) => {
-  const [rows, setRows] = useState(initial);
-  useEffect(() => {
-    const live = workspacesCollection();
-    void live.preload();
-    const subscription = live.subscribeChanges(() => setRows(live.toArray), {
-      includeInitialState: true,
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-  return rows;
+/** The rows as of the last change, kept so a re-render without a change reads the same array. */
+let snapshot: ReadonlyArray<WorkspaceRow> | null = null;
+const subscribe = (onChange: () => void) => {
+  const live = workspacesCollection();
+  void live.preload();
+  const subscription = live.subscribeChanges(
+    () => {
+      snapshot = live.toArray;
+      onChange();
+    },
+    { includeInitialState: true },
+  );
+  return () => subscription.unsubscribe();
 };
+
+/** Live workspaces on the client; the loader's snapshot on the server and until the first sync. */
+export const useWorkspaces = (initial: ReadonlyArray<WorkspaceRow>) =>
+  useSyncExternalStore(
+    subscribe,
+    () => snapshot ?? initial,
+    () => initial,
+  );

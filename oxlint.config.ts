@@ -13,6 +13,26 @@ export default defineConfig({
         return acc;
       }, {} as DummyRuleMap),
     },
+    {
+      // Dashboard components derive from props and stores; nothing reacts to a state change with
+      // a side effect. Subscriptions go through useSyncExternalStore or TanStack's hooks.
+      files: ["apps/dashboard/**/*"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            paths: [
+              {
+                name: "react",
+                importNames: ["useEffect", "useLayoutEffect"],
+                message:
+                  "No effects in the dashboard: derive from props and stores, subscribe with useSyncExternalStore, and use @tanstack/react-hotkeys for shortcuts.",
+              },
+            ],
+          },
+        ],
+      },
+    },
   ],
   rules: {
     "import/extensions": ["error", "never"],

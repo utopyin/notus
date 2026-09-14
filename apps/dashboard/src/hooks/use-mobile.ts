@@ -1,19 +1,19 @@
-import * as React from "react";
+import { useSyncExternalStore } from "react";
 
 const MOBILE_BREAKPOINT = 768;
 
+const query = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+const subscribe = (onChange: () => void) => {
+  const mql = query();
+  mql.addEventListener("change", onChange);
+  return () => mql.removeEventListener("change", onChange);
+};
+
+/** Whether the viewport is narrower than the sidebar's breakpoint; false when rendering on the server. */
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    };
-    mql.addEventListener("change", onChange);
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    return () => mql.removeEventListener("change", onChange);
-  }, []);
-
-  return !!isMobile;
+  return useSyncExternalStore(
+    subscribe,
+    () => query().matches,
+    () => false,
+  );
 }

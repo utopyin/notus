@@ -47,6 +47,11 @@ Decisions taken with the user on 2026-09-14: a TanStack Start app on its own Wor
 - The environment editor exposes the workspace's Namespace configuration as the opaque JSON the provider package validates, with the revision history the `workspace_environments` table already keeps and a diff between revisions. The approved image reference stays a deployment gate; the editor can only select images the deployment approves.
 - The Namespace control token stays a deployment secret for now. A per-workspace token, encrypted like connections, is a later increment.
 
+## Client conventions
+
+- **No effects.** `useEffect` and `useLayoutEffect` are lint errors in `apps/dashboard`. Values derive from props, loader data and stores during render; a side effect that runs because state changed is a bug in waiting. Anything that is genuinely an external source (a TanStack DB collection, a media query) is read with `useSyncExternalStore`, and server data lives in TanStack Query or a collection rather than in component state, so it survives navigation.
+- **Shortcuts** go through `@tanstack/react-hotkeys` (`useHotkey("Mod+B", …)`), never hand-rolled `keydown` listeners, so bindings are declared once, cross-platform, and visible to devtools.
+
 ## Data changes
 
 New tables in shared D1: `workspaces`, `workspace_invites`, `workspace_github_installations`, `workspace_repositories`, `workspace_roles`, `workspace_repository_instructions`, `workspace_policies`. Changed: `workspace_memberships` gains `role`. Better Auth owns `user`, `session`, `account` and `verification` in the dedicated `AuthDb`, migrated by Alchemy at deploy. The Task object records resolved instructions beside the captured repository. Drizzle migrations are generated, never hand-edited, and each increment ships its own.

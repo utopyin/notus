@@ -1,5 +1,5 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,9 +27,6 @@ function Settings() {
   const [saved, setSaved] = useState({ name: view.workspace.name, slug: view.workspace.slug });
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    setSaved({ name: view.workspace.name, slug: view.workspace.slug });
-  }, [view.workspace.name, view.workspace.slug]);
   const dirty = name.trim() !== saved.name || slug !== saved.slug;
   const save = async () => {
     if (saving || !dirty || !name.trim() || !validSlug(slug)) return;
