@@ -16,6 +16,12 @@ import * as Schema from "effect/Schema";
 import * as Journal from "./journal";
 import { Failure, Settings } from "./settings";
 
+/** How long after a command the box keeps long-polling before backing off. */
+const activeWindowMs = 3 * 60_000;
+/** Idle checks start this far apart and double up to the cap; the cap stays under control's 60 s stale threshold. */
+const idleIntervalMs = 5_000;
+const idleIntervalMaxMs = 45_000;
+
 export interface Interface {
   readonly bound: boolean;
   readonly enroll: Effect.Effect<void, Failure>;
@@ -240,18 +246,35 @@ export const layerNoDeps = Layer.effect(
         yield* store.write({ ...journal, pending });
         return reply.readinessCredential;
       });
+      // Long-poll continuously while work is flowing; a held poll keeps the Task object busy, so
+      // an idle box switches to short checks spaced further and further apart. The spacing stays
+      // under control's stale threshold, so a queued command never triggers a needless wake.
+      let activeUntil = (yield* Clock.currentTimeMillis) + activeWindowMs;
+      let idlePolls = 0;
       while (true) {
         const token = yield* credential;
-        const polled = yield* retry(client.poll(token, { waitMs: 20_000 })).pipe(
+        const now = yield* Clock.currentTimeMillis;
+        const active = now < activeUntil;
+        const polled = yield* retry(client.poll(token, { waitMs: active ? 20_000 : 0 })).pipe(
           Effect.mapError(() => new Failure({ reason: "binding" })),
         );
         const command = polled.command;
-        if (command === null) continue;
+        if (command === null) {
+          if (!active) {
+            yield* Effect.sleep(
+              Duration.millis(Math.min(idleIntervalMaxMs, idleIntervalMs * 2 ** idlePolls)),
+            );
+            idlePolls = Math.min(idlePolls + 1, 8);
+          }
+          continue;
+        }
         const result = yield* execute(command);
         const fresh = yield* credential;
         yield* retry(client.observe(fresh, { commandId: command.id, result })).pipe(
           Effect.mapError(() => new Failure({ reason: "binding" })),
         );
+        activeUntil = (yield* Clock.currentTimeMillis) + activeWindowMs;
+        idlePolls = 0;
       }
     });
     return Service.of({ bound: true, enroll, ready, commands });
