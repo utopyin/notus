@@ -9,10 +9,12 @@ import { Conflict, StorageFailure, type ExecutionError } from "./errors";
 import { Step, invocations, steps } from "./schema";
 import { Millis } from "./types";
 
-// Operational bounds. The lease exceeds one bounded provider call; limits stop runaway turns.
+// Operational bounds. The lease exceeds one bounded provider call. The step bound is a runaway
+// guard, not a usage limit: product policy imposes no execution cap, and real editing work
+// takes many rounds.
 const leaseMs = 150_000;
 const maxAttempts = 6;
-const maxSteps = 8;
+const maxSteps = 200;
 
 export const StepClaim = Schema.Struct({
   id: Schema.NonEmptyString,
