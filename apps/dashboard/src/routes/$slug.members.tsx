@@ -73,7 +73,10 @@ function Members() {
                   {member.email ?? `joined via ${member.provenance}`}
                 </span>
               </div>
-              <Badge variant={member.role === "admin" ? "default" : "secondary"}>
+              <Badge
+                variant={member.role === "admin" ? "default" : "secondary"}
+                className="capitalize"
+              >
                 {member.role}
               </Badge>
               {isAdmin ? (

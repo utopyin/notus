@@ -64,15 +64,17 @@ function Invites() {
   };
   const status = (invite: InviteRow) =>
     invite.revokedAt !== null
-      ? { label: "revoked", tone: "secondary" as const }
+      ? { label: "Revoked", tone: "secondary" as const }
       : invite.acceptedAt !== null
-        ? { label: "accepted", tone: "default" as const }
+        ? { label: "Accepted", tone: "default" as const }
         : invite.expiresAt < Date.now()
-          ? { label: "expired", tone: "secondary" as const }
+          ? { label: "Expired", tone: "secondary" as const }
           : {
-              label: `open until ${new Date(invite.expiresAt).toLocaleDateString()}`,
+              label: `Open until ${new Date(invite.expiresAt).toLocaleDateString()}`,
               tone: "outline" as const,
             };
+  // Show who accepted by name when they are a member we know.
+  const nameOf = (userId: string) => view.members.find((m) => m.userId === userId)?.name ?? userId;
   return (
     <AppShell
       me={me}
@@ -116,7 +118,7 @@ function Invites() {
                   <span className="font-medium capitalize">{invite.role} invite</span>
                   <span className="text-muted-foreground text-xs">
                     created {new Date(invite.createdAt).toLocaleString()}
-                    {invite.acceptedBy ? ` · accepted by ${invite.acceptedBy}` : ""}
+                    {invite.acceptedBy ? ` · accepted by ${nameOf(invite.acceptedBy)}` : ""}
                   </span>
                 </div>
                 <Badge variant={s.tone}>{s.label}</Badge>
