@@ -208,17 +208,20 @@ function Channels(props: {
     teamId: string;
     channels: ReadonlyArray<{ id: string; name: string; isMember: boolean; isPrivate: boolean }>;
   } | null>(null);
+  const [listing, setListing] = useState<string | null>(null);
+  const [manual, setManual] = useState("");
   useEffect(() => {
     if (!isAdmin) return;
     void slackChannels().then((result) => {
       if (result.ok) setAvailable(result.value);
+      else setListing(result.reason);
     });
   }, [isAdmin]);
   const names = new Map(available?.channels.map((c) => [c.id, c.name]) ?? []);
   const linked = new Set(data.map((row) => row.channelId));
-  const add = (channelId: string) => {
-    if (!available) return;
-    const tx = channels.insert({ workspaceId, teamId: available.teamId, channelId });
+  const add = (channelId: string, teamId = available?.teamId ?? data[0]?.teamId) => {
+    if (!teamId) return;
+    const tx = channels.insert({ workspaceId, teamId, channelId });
     tx.isPersisted.promise.catch((error: unknown) =>
       onFail(error instanceof Error ? error.message : "failed"),
     );
@@ -255,6 +258,37 @@ function Channels(props: {
           </div>
         ))
       )}
+      {isAdmin && listing ? (
+        <p className="text-muted-foreground text-sm">
+          Slack refused to list channels ({listing}). The app needs the channels:read and
+          groups:read scopes; until then, add a channel by its ID.
+        </p>
+      ) : null}
+      {isAdmin && !available ? (
+        <form
+          className="flex items-end gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (/^[CG][A-Z0-9]{6,}$/.test(manual)) {
+              add(manual);
+              setManual("");
+            }
+          }}
+        >
+          <label className="flex flex-1 flex-col gap-1 text-sm">
+            <span className="font-medium">Channel ID</span>
+            <input
+              className="rounded-md border px-3 py-2 font-mono"
+              value={manual}
+              placeholder="C0123456789"
+              onChange={(event) => setManual(event.target.value.trim())}
+            />
+          </label>
+          <Button type="submit" size="sm" disabled={!/^[CG][A-Z0-9]{6,}$/.test(manual)}>
+            Add
+          </Button>
+        </form>
+      ) : null}
       {isAdmin && available ? (
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium">Add a channel</span>
