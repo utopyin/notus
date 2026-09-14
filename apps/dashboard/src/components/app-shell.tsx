@@ -8,7 +8,6 @@ import {
   IconSelector,
   IconSettingsFilled,
   IconUserFilled,
-  IconUsersGroup,
 } from "@tabler/icons-react";
 import { Link, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
@@ -149,7 +148,7 @@ export function AppShell(props: {
                       isActive={active === "members"}
                       render={<Link to="/$slug/members" params={{ slug }} />}
                     >
-                      <IconUsersGroup />
+                      <IconUserFilled />
                       <span>Members</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

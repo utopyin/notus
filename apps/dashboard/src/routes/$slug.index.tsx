@@ -1,4 +1,4 @@
-import { IconMailFilled, IconMessageCircleFilled, IconUsersGroup } from "@tabler/icons-react";
+import { IconMailFilled, IconMessageCircleFilled, IconUserFilled } from "@tabler/icons-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { useWorkspace } from "./$slug";
@@ -14,7 +14,7 @@ function Overview() {
   const items = [
     {
       to: "/$slug/members" as const,
-      icon: IconUsersGroup,
+      icon: IconUserFilled,
       label: "Members",
       value: view.members.length,
       hint: `${view.members.filter((m) => m.role === "admin").length} admin`,
