@@ -90,7 +90,7 @@ Deployed resources of a developer stage, first deployed 2026-09-14 with workspac
 
 - Worker `notus-api-<stage>-<suffix>`.
 - URL `https://notus-api-<stage>-<suffix>.<account>.workers.dev`.
-- D1 `Notus-SharedDatabase-<stage>-<suffix>`, ID `<d1-database-id>`, environment revision 1 on image version 7.
+- D1 `Notus-SharedDatabase-<stage>-<suffix>`, ID `<d1-database-id>`, environment revision 2 on image version 8 (revision 1 was image version 7, whose Codex lacked its code-mode host).
 - Slack app `<slack-app-id>`, team `<slack-team-id>`, channel `<slack-channel-id>`.
 
 The former simulation Worker and database were deleted through the API on the same day; their tasks and retained devbox assignment were abandoned, and Alchemy's state store still lists that stage.
