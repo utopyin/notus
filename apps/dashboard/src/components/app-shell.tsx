@@ -1,12 +1,15 @@
 import {
   IconCheck,
+  IconDeviceDesktopFilled,
   IconLayoutDashboardFilled,
   IconLogout,
   IconMailFilled,
   IconMessageCircleFilled,
+  IconMoonFilled,
   IconPlus,
   IconSelector,
   IconSettingsFilled,
+  IconSunFilled,
   IconUserFilled,
 } from "@tabler/icons-react";
 import { Link, useRouter } from "@tanstack/react-router";
@@ -18,7 +21,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -37,6 +45,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { authClient } from "../auth-client";
+import { setTheme, useTheme, type Theme } from "../theme";
 import { WorkspaceMark } from "./workspace-mark";
 import type { Me } from "../server/me";
 import { useWorkspaces } from "../workspaces-collection";
@@ -71,6 +80,7 @@ export function AppShell(props: {
   const router = useRouter();
   // Live rows so a rename or re-slug shows here the moment it is made.
   const workspaces = useWorkspaces(me.workspaces);
+  const theme = useTheme();
   const current = props.current
     ? (workspaces.find((w) => w.id === props.current?.id) ?? props.current)
     : null;
@@ -237,6 +247,37 @@ export function AppShell(props: {
                     <IconUserFilled className="size-4" />
                     Account
                   </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      {theme === "dark" ? (
+                        <IconMoonFilled className="size-4" />
+                      ) : theme === "light" ? (
+                        <IconSunFilled className="size-4" />
+                      ) : (
+                        <IconDeviceDesktopFilled className="size-4" />
+                      )}
+                      Theme
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="min-w-max">
+                      <DropdownMenuRadioGroup
+                        value={theme}
+                        onValueChange={(value: Theme) => setTheme(value)}
+                      >
+                        <DropdownMenuRadioItem value="light">
+                          <IconSunFilled className="size-4" />
+                          Light
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="dark">
+                          <IconMoonFilled className="size-4" />
+                          Dark
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="system">
+                          <IconDeviceDesktopFilled className="size-4" />
+                          System
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={signOut}>
                     <IconLogout className="size-4" />

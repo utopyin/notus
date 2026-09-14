@@ -3,6 +3,7 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-r
 import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
 import { getMe } from "../server/me";
+import { themeScript } from "../theme";
 
 /** The document shell. Every page asks the root loader who is signed in. */
 export const Route = createRootRoute({
@@ -31,8 +32,10 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // The theme script sets the class before hydration, so the server's html attributes differ on purpose.
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>
