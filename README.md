@@ -26,4 +26,8 @@ Each topic has one canonical home:
 | [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup            |
 | [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates              |
 
+## Stages
+
+A stage is either a developer's own, named after `$USER`, or `production`. `bun run deploy` deploys your stage from the ignored `.env.dev`; `bun run deploy:production` deploys production from `.env.production`. Each stage owns its Worker, D1 database and Durable Objects. Credentials come from the `notus` Alchemy profile, an API token, selected by `ALCHEMY_PROFILE` in the env file; see the [intake results](docs/research/intake-results.md) for the setup notes.
+
 The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Specialist rounds run Codex on the dev box under the initiator's subscription; the [operator plan](docs/plans/operator.md#specialist-rounds) records how a round is kept alive and signed in. Each requires separate authorization and validation.

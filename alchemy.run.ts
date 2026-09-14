@@ -8,12 +8,13 @@ export default Alchemy.Stack(
   "Notus",
   { providers: Cloudflare.providers(), state: Cloudflare.state() },
   Effect.gen(function* () {
+    // Two kinds of stage: a developer's own, named after $USER by default, and "production".
+    // Every stage gets its own Worker, D1 database and Durable Objects.
     const stage = yield* Stage;
-    if (stage !== "simulation") {
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(stage))
       return yield* Effect.die(
-        "Notus only supports the dedicated simulation test stage; production, models and repository checkout are disabled.",
+        `Stage name "${stage}" must be lowercase letters, digits and dashes.`,
       );
-    }
     const api = yield* Api;
     return { url: api.url };
   }),

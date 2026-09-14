@@ -74,26 +74,19 @@ The first live input exposed another app integration problem. The drain requeste
 
 The user manages the Slack app in Inboxapp.com. Existing app, bot, and dedicated test-channel IDs remain configured; display-name changes do not require replacing those IDs. Scopes remain limited to mentions, public-channel history, message posting, and reactions. No teammate invitations or unrelated-channel messages are part of the rename.
 
-Cloudflare uses Utopy's account through the separate `notus-simulation` Alchemy profile. It does not use Inbox's Cloudflare account or replace the existing default profile.
+Cloudflare uses Utopy's account through the separate `notus` Alchemy profile, selected by `ALCHEMY_PROFILE` in the env file. It does not use Inbox's Cloudflare account or replace the existing default profile. The profile holds an API token rather than an OAuth login: OAuth access tokens last an hour and each refresh rotates a single-use refresh token, so any long-running Alchemy process (a log tail, for example) that refreshed with a stale copy invalidated the login for every other command. The earlier `notus-simulation` profile and its OAuth login were retired for that reason.
 
-Local credentials and fixture identifiers live in ignored `.env.simulation` with mode `0600`. Do not print or commit that file. Worker configuration uses Alchemy-captured Config bindings, with redacted Slack secrets. Fixture seeding is private runtime configuration, not a public registration endpoint or model authorization grant.
+There are two kinds of stage. A developer's own stage is named after `$USER` (Alchemy's default) and is deployed with `bun run deploy`, which reads the ignored `.env.dev`. The `production` stage is deployed with `bun run deploy:production` from `.env.production` and does not exist yet. Each stage owns its Worker, D1 database and Durable Objects, so a stage change starts from empty state; the former `simulation` stage was destroyed without migration when this split was introduced. Local credentials and fixture identifiers live in the ignored env file with mode `0600`. Do not print or commit that file. Worker configuration uses Alchemy-captured Config bindings, with redacted Slack secrets. Fixture seeding is private runtime configuration, not a public registration endpoint or model authorization grant.
 
-Plan explicitly with:
+Plan with `bun run plan`, or explicitly:
 
 ```sh
-bunx --no-install alchemy plan --stage simulation --profile notus-simulation --env-file .env.simulation --no-input
+bunx --no-install alchemy plan --env-file .env.dev --no-input
 ```
 
-Do not use root production-oriented scripts for this slice. The stack rejects stages other than `simulation`.
+Configure Slack Event Subscriptions with `<worker url>/slack/events` and both `app_mention` and `message.channels`; the GitHub App webhook points at `<worker url>/github/events`. Both must be re-pointed whenever the Worker name changes. The signed challenge is verified from the client side; saving this URL in Slack is left to the user. OAuth scopes alone do not subscribe the app. Keep the channel/team allowlist unchanged during testing.
 
-Configure Slack Event Subscriptions with `https://notus-api-simulation-<suffix>.<account>.workers.dev/slack/events` and both `app_mention` and `message.channels`. The signed challenge is verified from the client side; saving this URL in Slack is left to the user. OAuth scopes alone do not subscribe the app. Keep the channel/team allowlist unchanged during testing.
-
-Deployed resources:
-
-- Worker `notus-api-simulation-<suffix>`.
-- URL `https://notus-api-simulation-<suffix>.<account>.workers.dev`.
-- D1 `Notus-SharedDatabase-simulation-<suffix>`, ID `2196489a-a870-46a4-879a-c911a6edba83`.
-- Slack app `<slack-app-id>`, team `<slack-team-id>`, channel `<slack-channel-id>`.
+Deployed resources of a developer stage are recorded in the [current status](#current-status) once deployed; Alchemy names them `notus-api-<stage>-<suffix>` and `Notus-SharedDatabase-<stage>-<suffix>`. The Slack app is `<slack-app-id>`, team `<slack-team-id>`, channel `<slack-channel-id>`.
 
 ## Remaining evidence
 
@@ -108,12 +101,12 @@ The historical live round trip and persisted receipts were verified before the r
 
 ## Cleanup
 
-The new Notus simulation remains deployed. All historical local tail processes have stopped. One earlier tail deletion failed; other completed inspection tails reported cleanup. Historical snapshot previews had no keepalive and no explicit delete API. Their individual expiry was not verified before the former Worker was retired.
+The developer stage remains deployed. All historical local tail processes have stopped. One earlier tail deletion failed; other completed inspection tails reported cleanup. Historical snapshot previews had no keepalive and no explicit delete API. Their individual expiry was not verified before the former Worker was retired.
 
-To retire it, first disable this app's Slack Event Subscriptions, then inspect and destroy only the `simulation` stack using profile `notus-simulation`. Do not use the root production-oriented script or remove the shared Alchemy state store, other profiles, or unrelated account resources.
+To retire a developer stage, first disable this app's Slack Event Subscriptions and the GitHub App webhook, then destroy only that stage. Do not remove the shared Alchemy state store, other profiles, or unrelated account resources.
 
 ```sh
-bunx --no-install alchemy destroy --stage simulation --profile notus-simulation --env-file .env.simulation --no-input
+bun run destroy
 ```
 
 Slack app/channel cleanup is owned by the user. Retire only the dedicated simulation resources and remove their private local configuration when no longer needed. The new Notus stack has not been destroyed.
