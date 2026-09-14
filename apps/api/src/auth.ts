@@ -90,6 +90,11 @@ export const makeAuth = (dashboard: DashboardConfig) =>
             github: {
               clientId: dashboard.github.clientId,
               clientSecret: Redacted.value(dashboard.github.clientSecret),
+              // A GitHub App's user token ignores the email scope, so a private email comes back
+              // empty. GitHub's no-reply address stands in; it is unique and not used for mail.
+              mapProfileToUser: (profile) => ({
+                email: profile.email ?? `${profile.id}+${profile.login}@users.noreply.github.com`,
+              }),
             },
           },
     plugins:
