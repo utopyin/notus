@@ -48,6 +48,7 @@ These are private test artifacts in the approved workspace, not public releases.
 | Checkout runtime         | `notus/base-herdr-0.9.0-biv7fr`, v3, `s9fs9s20rv2sq`    | `sha256:a956fd5384ff47395358d4531c1bc7ecd127e73abfcd2add8182a226fb8deccf` |
 | Push runtime             | `notus/base-herdr-0.9.0-biv7fr`, v4, `2qtklm7748g70`    | `sha256:a426fdbf7c9eb2fdca49083ca1960fccedad25ff07481217b13956cd6f8df75f` |
 | Policy-decoupled runtime | `notus/base-herdr-0.9.0-biv7fr`, v5, `8d1dqu5v08l18`    | `sha256:32876cdc5fff0ce293d9e1aeb3b52354a54d41c955723fe9d2f2aaca813888a6` |
+| Push retry runtime       | `notus/base-herdr-0.9.0-biv7fr`, v6, `kgrl2k0u2n1qo`    | `sha256:ec5203866a6def3eabf6db197d9c2bc9321a4f52ba08a44961105651cef38de3` |
 
 Full base reference:
 
