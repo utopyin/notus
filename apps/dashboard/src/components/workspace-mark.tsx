@@ -1,4 +1,4 @@
-import { GrainGradient } from "@paper-design/shaders-react";
+import { Dithering } from "@paper-design/shaders-react";
 import { ClientOnly } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
@@ -42,10 +42,7 @@ const oklch = (l: number, c: number, hDeg: number): string => {
       -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
       -0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3,
     ];
-    const srgb = linear.map((v) =>
-      v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055,
-    );
-    return srgb;
+    return linear.map((v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
   };
   let chroma = c;
   let rgb = convert(chroma);
@@ -57,40 +54,22 @@ const oklch = (l: number, c: number, hDeg: number): string => {
   return `#${rgb.map(toHex).join("")}`;
 };
 
-/** Hue offsets of the four bands relative to the base hue, by harmony scheme. */
-const schemes = [
-  [0, 30, 60, 90], // analogous sweep
-  [0, 180, 30, 210], // complementary pairs
-  [0, 120, 240, 60], // triadic plus a bridge
-  [0, 150, 210, 30], // split complementary
-] as const;
-
-/** The shader parameters a workspace always gets: fixed by its id, animated slowly. */
+/**
+ * The dithering parameters a workspace always gets. Two colours: a deep saturated background and
+ * a bright ink far enough around the hue wheel to contrast, both from the id, plus the wave's
+ * starting frame so a reload shows the same picture.
+ */
 export const markOf = (id: string) => {
   const seed = hash(id);
   const hue = unit(seed, 0) * 360;
-  const scheme = schemes[Math.floor(unit(seed, 1) * schemes.length)] ?? schemes[0];
-  // Lightness climbs across the bands so neighbours always differ, order shuffled by the id.
-  const lightnessSteps = [0.5, 0.64, 0.78, 0.9];
-  const rotate = Math.floor(unit(seed, 8) * lightnessSteps.length);
-  const colors = scheme.map((offset, index) => {
-    const l = lightnessSteps[(index + rotate) % lightnessSteps.length] ?? 0.7;
-    // Vibrant throughout: chroma stays high, slightly lower on the lightest band.
-    const c = l > 0.85 ? 0.14 : 0.2 + unit(seed, 10 + index) * 0.06;
-    return oklch(l, c, (hue + offset) % 360);
-  });
+  // Ink sits 120 to 220 degrees away: always a clear complement, never a near-duplicate.
+  const inkHue = (hue + 120 + unit(seed, 1) * 100) % 360;
   return {
-    colors,
-    // The background is itself a saturated, darker band so no flat area dominates.
-    colorBack: oklch(0.4, 0.17, (hue + 200) % 360),
-    softness: 0.45 + unit(seed, 2) * 0.35,
-    intensity: 0.5 + unit(seed, 3) * 0.3,
-    noise: 0.03 + unit(seed, 4) * 0.07,
-    // The wave lives in a fixed world box that covers the mark, so a few bands always show.
-    scale: 0.9 + unit(seed, 6) * 0.5,
-    rotation: Math.floor(unit(seed, 5) * 360),
-    frame: Math.floor(unit(seed, 7) * 100_000),
-    speed: 0.3,
+    colorBack: oklch(0.36 + unit(seed, 2) * 0.08, 0.16, hue),
+    colorFront: oklch(0.78 + unit(seed, 3) * 0.08, 0.17, inkHue),
+    scale: 1.1 + unit(seed, 4) * 0.3,
+    frame: Math.floor(unit(seed, 5) * 100_000),
+    speed: 1,
   };
 };
 
@@ -98,9 +77,9 @@ export const markOf = (id: string) => {
 const world = 256;
 
 /**
- * A workspace's mark: a grain gradient wave whose colours, angle and texture come from its id, so
- * it looks the same everywhere and for everyone. Renders on the client only; the server sends the
- * background colour so nothing jumps on hydration.
+ * A workspace's mark: a dithered wave whose two colours come from its id, so it looks the same
+ * everywhere and for everyone. Renders on the client only; the server sends the background colour
+ * so nothing jumps on hydration.
  */
 export function WorkspaceMark(props: {
   id: string;
@@ -118,18 +97,16 @@ export function WorkspaceMark(props: {
       style={{ backgroundColor: params.colorBack, width: size, height: size }}
     >
       <ClientOnly fallback={null}>
-        <GrainGradient
+        <Dithering
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
           fit="cover"
           worldWidth={world}
           worldHeight={world}
-          rotation={params.rotation}
-          colors={params.colors}
           colorBack={params.colorBack}
-          softness={params.softness}
-          intensity={params.intensity}
-          noise={params.noise}
+          colorFront={params.colorFront}
           shape="wave"
+          type="4x4"
+          size={2}
           scale={params.scale}
           frame={params.frame}
           speed={params.speed}
