@@ -93,8 +93,14 @@ export function WorkspaceMark(props: {
     <span
       role="img"
       aria-label={props.name}
-      className={cn("relative block shrink-0 overflow-hidden rounded-md", props.className)}
-      style={{ backgroundColor: params.colorBack, width: size, height: size }}
+      className={cn("relative block shrink-0 overflow-hidden", props.className)}
+      // Corners scale with the mark: about a fifth of its size, so small marks stay crisp.
+      style={{
+        backgroundColor: params.colorBack,
+        width: size,
+        height: size,
+        borderRadius: Math.max(3, Math.round(size / 5)),
+      }}
     >
       <ClientOnly fallback={null}>
         <Dithering

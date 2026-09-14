@@ -81,7 +81,7 @@ export function AppShell(props: {
                   render={
                     <SidebarMenuButton size="lg" tooltip="Switch workspace">
                       {current ? (
-                        <WorkspaceMark id={current.id} name={current.name} size={24} />
+                        <WorkspaceMark id={current.id} name={current.name} size={28} />
                       ) : (
                         <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md text-sm font-semibold">
                           N
