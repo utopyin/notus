@@ -1,6 +1,6 @@
 import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { authClient, signInWithSlack } from "../auth-client";
+import { authClient } from "../auth-client";
 
 const root = getRouteApi("__root__");
 
@@ -24,10 +24,7 @@ function Home() {
 }
 
 function SignIn() {
-  const slack = async () => {
-    const { data } = await signInWithSlack("/");
-    if (data?.url) window.location.href = data.url;
-  };
+  const slack = () => authClient.signIn.social({ provider: "slack", callbackURL: "/" });
   const github = () => authClient.signIn.social({ provider: "github", callbackURL: "/" });
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 p-8">

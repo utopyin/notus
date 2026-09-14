@@ -1,7 +1,7 @@
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { authClient, linkSlack } from "../auth-client";
+import { authClient, type Provider } from "../auth-client";
 
 const root = getRouteApi("__root__");
 
@@ -29,14 +29,8 @@ function Account() {
   }, []);
   if (!me) return null;
   const linked = (provider: string) => me.accounts.find((a) => a.provider === provider);
-  const link = async (provider: "slack" | "github") => {
-    if (provider === "slack") {
-      const { data, error } = await linkSlack("/account");
-      if (error) setMessage(error.message ?? "Linking failed.");
-      else if (data?.url) window.location.href = data.url;
-      return;
-    }
-    const { error } = await authClient.linkSocial({ provider: "github", callbackURL: "/account" });
+  const link = async (provider: Provider) => {
+    const { error } = await authClient.linkSocial({ provider, callbackURL: "/account" });
     if (error) setMessage(error.message ?? "Linking failed.");
   };
   // Better Auth unlinks by its own account row ID, never by the provider's subject.
