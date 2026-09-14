@@ -117,7 +117,9 @@ const describe = (status: ProvisioningStatus): DevboxResult => {
     blockedReason: status.blockedReason,
     message: ready
       ? "The dev box is provisioned and its runtime reported ready. No repository, shell or command access exists yet."
-      : `Provisioning stopped in phase ${status.phase}${status.blockedReason ? ` (${status.blockedReason})` : ""}. No dev box is usable.`,
+      : status.blockedReason === "provider-throttled" && status.resourceId === null
+        ? "Namespace refused to create the dev box because of a temporary rate limit. Nothing was created. Calling create_devbox again later retries the same creation."
+        : `Provisioning stopped in phase ${status.phase}${status.blockedReason ? ` (${status.blockedReason})` : ""}. No dev box is usable.`,
   };
 };
 const encodeResult = Schema.encodeEffect(DevboxResult);
@@ -173,16 +175,28 @@ type Evaluation =
   | { readonly _tag: "Resolved"; readonly result: Schema.Json; readonly isFailure: boolean }
   | { readonly _tag: "Pending"; readonly deadline: number | null };
 
+/** Only calls issued after the 429 retry, so each throttled call fails once instead of looping. */
+const retriesThrottled = (status: ProvisioningStatus, waitingSince: number) =>
+  status.phase === "blocked" &&
+  status.blockedReason === "provider-throttled" &&
+  status.resourceId === null &&
+  status.pendingWork === null &&
+  waitingSince > status.observedAt;
+
 /** Read-only view of one unresolved call. resolveWaits applies the mutations it implies. */
 const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
   stepId: string,
   call: { readonly id: string; readonly name: string; readonly params: Schema.Json },
   now: number,
+  waitingSince: number,
 ): Effect.fn.Return<Evaluation, never, Provisioning.Service | Commands.Service> {
   const provisioning = yield* Provisioning.Service;
   const commands = yield* Commands.Service;
   const status = yield* provisioning.current.pipe(Effect.orDie);
   if (call.name === "create_devbox") {
+    // A call made after a throttled Create waits while dispatch re-arms that same Create.
+    if (status !== null && retriesThrottled(status, waitingSince))
+      return { _tag: "Pending", deadline: null };
     if (
       status !== null &&
       status.pendingWork === null &&
@@ -270,7 +284,11 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
   for (const step of waiting)
     for (const call of step.calls) {
       if (call.name === "create_devbox") {
-        if ((yield* provisioning.current) !== null) continue;
+        const existing = yield* provisioning.current;
+        if (existing !== null) {
+          if (retriesThrottled(existing, step.updatedAt)) yield* provisioning.retryThrottled(now);
+          continue;
+        }
         const environment = yield* provisioning.captured;
         yield* provisioning.initialize(
           { taskId: task.id, workspaceId: task.reservation.workspaceId, environment },
@@ -365,7 +383,7 @@ const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: n
     const results: Array<Schema.Json> = [];
     let pending = false;
     for (const call of step.calls) {
-      const evaluation = yield* evaluate(step.id, call, now);
+      const evaluation = yield* evaluate(step.id, call, now, step.updatedAt);
       if (evaluation._tag === "Pending") {
         pending = true;
         continue;
@@ -558,7 +576,7 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
   const deadlines: Array<number> = [];
   for (const step of waiting)
     for (const call of step.calls) {
-      const evaluation = yield* evaluate(step.id, call, now);
+      const evaluation = yield* evaluate(step.id, call, now, step.updatedAt);
       if (evaluation._tag === "Resolved") return now;
       if (evaluation.deadline !== null) deadlines.push(evaluation.deadline);
     }

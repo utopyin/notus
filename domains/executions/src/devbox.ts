@@ -156,6 +156,9 @@ export const layerNoDeps = Layer.effect(
               )
                 return Effect.succeed(ProvisioningResult.cases.Rejected.make({}));
               if (Schema.is(ControlError)(error)) {
+                // Namespace answers 429 before it creates anything; this is a refusal, not a lost Create.
+                if (input.work === "create" && error.operation === "Create" && error.status === 429)
+                  return Effect.succeed(ProvisioningResult.cases.Throttled.make({}));
                 if (error.operation === "Fetch" && error.status === 404)
                   return Effect.succeed(
                     input.work === "activate"

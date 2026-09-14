@@ -33,6 +33,8 @@ export const BlockReason = Schema.Literals([
   "activation-unresolved",
   "startup-timeout",
   "provider-rejected",
+  /** Namespace refused Create with 429 before creating anything. A later create_devbox retries. */
+  "provider-throttled",
   "external-expired",
   "recovery-unverified",
 ]);
@@ -95,6 +97,8 @@ export const ProvisioningResult = Schema.TaggedUnion({
   Running: { resourceId: Schema.NonEmptyString, instanceId: Schema.NonEmptyString },
   Stopped: { resourceId: Schema.NonEmptyString, verified: Schema.Literal(true) },
   Rejected: {},
+  /** Create was refused with 429: nothing was created, so Create may run again later. */
+  Throttled: {},
   ExternalExpire: { resourceId: Schema.NonEmptyString },
 });
 export type ProvisioningResult = typeof ProvisioningResult.Type;
