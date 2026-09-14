@@ -160,7 +160,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   Effect.succeed({
                     exitCode: 1,
                     stdout: "",
-                    stderr: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
+                    stderr: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}${error.detail === undefined ? "" : ` (${error.detail})`}`,
                     durationMs: 0,
                     timedOut: false,
                     truncated: false,

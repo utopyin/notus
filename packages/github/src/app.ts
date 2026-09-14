@@ -57,7 +57,14 @@ const PullInput = Schema.Struct({
 type Permissions =
   | { readonly contents: "read"; readonly metadata: "read" }
   | { readonly contents: "write"; readonly metadata: "read" }
-  | { readonly pull_requests: "write"; readonly metadata: "read" };
+  // GitHub reads both refs when opening a pull request, so Contents read is required.
+  | { readonly pull_requests: "write"; readonly contents: "read"; readonly metadata: "read" };
+const ValidationBody = Schema.Struct({
+  message: Schema.optionalKey(Schema.String),
+  errors: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ message: Schema.optionalKey(Schema.String) })),
+  ),
+});
 const fail = (operation: AppError["operation"], reason: AppError["reason"], status?: number) =>
   new AppError({ operation, reason, ...(status === undefined ? {} : { status }) });
 const base64url = (bytes: Uint8Array) => Encoding.encodeBase64Url(bytes);
@@ -137,6 +144,9 @@ export const layerNoDeps = Layer.effect(
     });
     const token = Effect.fn("GitHub.App.token")(
       function* (input: Repository, permissions: Permissions) {
+        // The merge endpoint needs both; no Notus token may ever carry both.
+        if ("pull_requests" in permissions && permissions.contents !== "read")
+          return yield* fail("token", "configuration");
         const repository = yield* Schema.decodeEffect(Repository)(input).pipe(
           Effect.mapError(() => fail("token", "configuration")),
         );
@@ -189,7 +199,11 @@ export const layerNoDeps = Layer.effect(
         );
         if (pull.branch === repository.defaultBranch)
           return yield* fail("pull-request", "configuration");
-        const grant = yield* token(repository, { pull_requests: "write", metadata: "read" });
+        const grant = yield* token(repository, {
+          pull_requests: "write",
+          contents: "read",
+          metadata: "read",
+        });
         const request = yield* HttpClientRequest.post(
           `${endpoint}/repos/${repository.owner}/${repository.name}/pulls`,
         ).pipe(
@@ -206,8 +220,25 @@ export const layerNoDeps = Layer.effect(
         const response = yield* http
           .execute(request)
           .pipe(Effect.mapError(() => fail("pull-request", "transport")));
-        if (response.status !== 201)
-          return yield* fail("pull-request", "rejected", response.status);
+        if (response.status !== 201) {
+          const validation = yield* response.json.pipe(
+            Effect.flatMap(Schema.decodeUnknownEffect(ValidationBody)),
+            Effect.option,
+          );
+          const detail =
+            validation._tag === "Some"
+              ? [validation.value.message, ...(validation.value.errors ?? []).map((e) => e.message)]
+                  .filter((part): part is string => typeof part === "string")
+                  .join(": ")
+                  .slice(0, 300)
+              : "";
+          return yield* new AppError({
+            operation: "pull-request",
+            reason: "rejected",
+            status: response.status,
+            ...(detail ? { detail } : {}),
+          });
+        }
         const body = yield* response.json.pipe(
           Effect.mapError(() => fail("pull-request", "invalid-response")),
         );
