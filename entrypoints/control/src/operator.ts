@@ -5,7 +5,6 @@ import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
 import {
   digest,
-  TaskBranch,
   WorkspacePath,
   type CommandSpec,
   type ProvisioningStatus,
@@ -144,6 +143,10 @@ const PullParams = Schema.Struct({
   body: Schema.String.check(Schema.isMaxLength(60_000)),
 });
 const branchOf = (repository: RepositoryRef, slug: string) => `${repository.branchPrefix}/${slug}`;
+/** Policy: exactly `<initiator login>/<slug>`, never the default branch. The wire schema is looser. */
+const TaskBranchPolicy = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9][a-z0-9-]{0,48}$/),
+);
 const toolNames = new Set([
   "create_devbox",
   "run_command",
@@ -298,7 +301,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           Effect.option,
         );
         if (params._tag === "None") continue;
-        const branch = yield* Schema.decodeEffect(TaskBranch)(
+        const branch = yield* Schema.decodeEffect(TaskBranchPolicy)(
           branchOf(repository, params.value.slug),
         ).pipe(Effect.option);
         if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
@@ -316,7 +319,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           Effect.option,
         );
         if (params._tag === "None") continue;
-        const branch = yield* Schema.decodeEffect(TaskBranch)(
+        const branch = yield* Schema.decodeEffect(TaskBranchPolicy)(
           branchOf(repository, params.value.slug),
         ).pipe(Effect.option);
         if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;

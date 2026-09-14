@@ -10,9 +10,22 @@ export const Repository = Schema.Struct({
 });
 export interface Repository extends Schema.Schema.Type<typeof Repository> {}
 
-/** A branch Notus may write to: `<initiator login>/<slug>`, so never a default branch. */
+/**
+ * Any safe git branch name on the wire. Which branches a task may push to is control policy,
+ * enforced where the command is built, so a policy change never strands a deployed runtime.
+ */
 export const TaskBranch = Schema.String.check(
-  Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9][a-z0-9-]{0,48}$/),
+  Schema.isMaxLength(200),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/),
+  Schema.makeFilter(
+    (value) =>
+      !value.includes("..") &&
+      !value.includes("//") &&
+      !value.includes("@{") &&
+      !value.endsWith("/") &&
+      !value.endsWith(".") &&
+      !value.endsWith(".lock"),
+  ),
 );
 export const PullRequest = Schema.Struct({
   number: Schema.Int.check(Schema.isGreaterThan(0)),
