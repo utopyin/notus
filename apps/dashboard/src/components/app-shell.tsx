@@ -4,7 +4,7 @@ import {
   IconLayoutDashboardFilled,
   IconLogout,
   IconMailFilled,
-  IconPlugConnected,
+  IconAppsFilled,
   IconMoonFilled,
   IconPlus,
   IconSelector,
@@ -41,12 +41,16 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { authClient } from "../auth-client";
 import { setTheme, useTheme, type Theme } from "../theme";
 import { WorkspaceMark } from "./workspace-mark";
+import { PLATFORMS, slotsFor } from "../platforms";
 import type { Me } from "../server/me";
 import { useWorkspaces } from "../workspaces-collection";
 
@@ -72,11 +76,13 @@ export function AppShell(props: {
   me: Me;
   current: Current | null;
   active?: Active;
+  /** The platform page open under Platforms, when one is. */
+  activePlatform?: string;
   title: string;
   description?: string;
   children: ReactNode;
 }) {
-  const { me, active, title, description, children } = props;
+  const { me, active, activePlatform, title, description, children } = props;
   const router = useRouter();
   // Live rows so a rename or re-slug shows here the moment it is made.
   const workspaces = useWorkspaces(me.workspaces);
@@ -183,12 +189,28 @@ export function AppShell(props: {
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                       tooltip="Platforms"
-                      isActive={active === "platforms"}
+                      isActive={active === "platforms" && activePlatform === undefined}
                       render={<Link to="/$slug/platforms" params={{ slug }} />}
                     >
-                      <IconPlugConnected />
+                      <IconAppsFilled />
                       <span>Platforms</span>
                     </SidebarMenuButton>
+                    {/* Every platform has a page, connected or not. */}
+                    <SidebarMenuSub>
+                      {PLATFORMS.map((platform) => (
+                        <SidebarMenuSubItem key={platform}>
+                          <SidebarMenuSubButton
+                            isActive={activePlatform === platform}
+                            className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground"
+                            render={
+                              <Link to="/$slug/platforms/$platform" params={{ slug, platform }} />
+                            }
+                          >
+                            <span>{slotsFor(platform).name}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
                   </SidebarMenuItem>
                   {isAdmin ? (
                     <>

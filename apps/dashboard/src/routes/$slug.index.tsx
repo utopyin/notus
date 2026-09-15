@@ -1,4 +1,4 @@
-import { IconMailFilled, IconPlugConnected, IconUserFilled } from "@tabler/icons-react";
+import { IconMailFilled, IconAppsFilled, IconUserFilled } from "@tabler/icons-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useWorkspace } from "./$slug";
 
@@ -22,7 +22,7 @@ function Overview() {
     },
     {
       to: "/$slug/platforms" as const,
-      icon: IconPlugConnected,
+      icon: IconAppsFilled,
       label: "Platforms",
       value: view.scopes.length,
       hint: `${view.installations.length} connected`,

@@ -17,10 +17,11 @@ import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as SlugIndexRouteImport } from './routes/$slug.index'
 import { Route as SlugInvitesRouteImport } from './routes/$slug.invites'
 import { Route as SlugMembersRouteImport } from './routes/$slug.members'
-import { Route as SlugPlatformsRouteImport } from './routes/$slug.platforms'
 import { Route as SlugSettingsRouteImport } from './routes/$slug.settings'
 import { Route as AuthSplatRouteImport } from './routes/auth.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as SlugPlatformsIndexRouteImport } from './routes/$slug.platforms.index'
+import { Route as SlugPlatformsPlatformRouteImport } from './routes/$slug.platforms.$platform'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -62,11 +63,6 @@ const SlugMembersRoute = SlugMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => SlugRoute,
 } as any)
-const SlugPlatformsRoute = SlugPlatformsRouteImport.update({
-  id: '/platforms',
-  path: '/platforms',
-  getParentRoute: () => SlugRoute,
-} as any)
 const SlugSettingsRoute = SlugSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -82,6 +78,16 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SlugPlatformsIndexRoute = SlugPlatformsIndexRouteImport.update({
+  id: '/platforms/',
+  path: '/platforms/',
+  getParentRoute: () => SlugRoute,
+} as any)
+const SlugPlatformsPlatformRoute = SlugPlatformsPlatformRouteImport.update({
+  id: '/platforms/$platform',
+  path: '/platforms/$platform',
+  getParentRoute: () => SlugRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -91,11 +97,12 @@ export interface FileRoutesByFullPath {
   '/welcome': typeof WelcomeRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
-  '/$slug/platforms': typeof SlugPlatformsRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/auth/$': typeof AuthSplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
+  '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -104,11 +111,12 @@ export interface FileRoutesByTo {
   '/welcome': typeof WelcomeRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
-  '/$slug/platforms': typeof SlugPlatformsRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/auth/$': typeof AuthSplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/$slug': typeof SlugIndexRoute
+  '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/platforms': typeof SlugPlatformsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -119,11 +127,12 @@ export interface FileRoutesById {
   '/welcome': typeof WelcomeRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
-  '/$slug/platforms': typeof SlugPlatformsRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/auth/$': typeof AuthSplatRoute
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
+  '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -135,11 +144,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/$slug/invites'
     | '/$slug/members'
-    | '/$slug/platforms'
     | '/$slug/settings'
     | '/auth/$'
     | '/invite/$token'
     | '/$slug/'
+    | '/$slug/platforms/$platform'
+    | '/$slug/platforms/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -148,11 +158,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/$slug/invites'
     | '/$slug/members'
-    | '/$slug/platforms'
     | '/$slug/settings'
     | '/auth/$'
     | '/invite/$token'
     | '/$slug'
+    | '/$slug/platforms/$platform'
+    | '/$slug/platforms'
   id:
     | '__root__'
     | '/'
@@ -162,11 +173,12 @@ export interface FileRouteTypes {
     | '/welcome'
     | '/$slug/invites'
     | '/$slug/members'
-    | '/$slug/platforms'
     | '/$slug/settings'
     | '/auth/$'
     | '/invite/$token'
     | '/$slug/'
+    | '/$slug/platforms/$platform'
+    | '/$slug/platforms/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -237,13 +249,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugMembersRouteImport
       parentRoute: typeof SlugRoute
     }
-    '/$slug/platforms': {
-      id: '/$slug/platforms'
-      path: '/platforms'
-      fullPath: '/$slug/platforms'
-      preLoaderRoute: typeof SlugPlatformsRouteImport
-      parentRoute: typeof SlugRoute
-    }
     '/$slug/settings': {
       id: '/$slug/settings'
       path: '/settings'
@@ -265,23 +270,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$slug/platforms/': {
+      id: '/$slug/platforms/'
+      path: '/platforms'
+      fullPath: '/$slug/platforms/'
+      preLoaderRoute: typeof SlugPlatformsIndexRouteImport
+      parentRoute: typeof SlugRoute
+    }
+    '/$slug/platforms/$platform': {
+      id: '/$slug/platforms/$platform'
+      path: '/platforms/$platform'
+      fullPath: '/$slug/platforms/$platform'
+      preLoaderRoute: typeof SlugPlatformsPlatformRouteImport
+      parentRoute: typeof SlugRoute
+    }
   }
 }
 
 interface SlugRouteChildren {
   SlugInvitesRoute: typeof SlugInvitesRoute
   SlugMembersRoute: typeof SlugMembersRoute
-  SlugPlatformsRoute: typeof SlugPlatformsRoute
   SlugSettingsRoute: typeof SlugSettingsRoute
   SlugIndexRoute: typeof SlugIndexRoute
+  SlugPlatformsPlatformRoute: typeof SlugPlatformsPlatformRoute
+  SlugPlatformsIndexRoute: typeof SlugPlatformsIndexRoute
 }
 
 const SlugRouteChildren: SlugRouteChildren = {
   SlugInvitesRoute: SlugInvitesRoute,
   SlugMembersRoute: SlugMembersRoute,
-  SlugPlatformsRoute: SlugPlatformsRoute,
   SlugSettingsRoute: SlugSettingsRoute,
   SlugIndexRoute: SlugIndexRoute,
+  SlugPlatformsPlatformRoute: SlugPlatformsPlatformRoute,
+  SlugPlatformsIndexRoute: SlugPlatformsIndexRoute,
 }
 
 const SlugRouteWithChildren = SlugRoute._addFileChildren(SlugRouteChildren)

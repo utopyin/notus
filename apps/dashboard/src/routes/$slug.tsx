@@ -36,12 +36,24 @@ function Layout() {
   const shell = useMatches({
     select: (matches) => matches.findLast((match) => match.staticData.shell)?.staticData.shell,
   });
+  const activePlatform = useMatches({
+    select: (matches) => {
+      const params: unknown = matches.at(-1)?.params;
+      return typeof params === "object" &&
+        params !== null &&
+        "platform" in params &&
+        typeof params.platform === "string"
+        ? params.platform
+        : undefined;
+    },
+  });
   if (!me) return null;
   return (
     <AppShell
       me={me}
       current={current}
       active={shell?.active}
+      activePlatform={activePlatform}
       title={shell?.title ?? view.workspace.name}
       description={shell?.title ? shell.description : `notus.run/${view.workspace.slug}`}
     >
