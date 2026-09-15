@@ -32,7 +32,14 @@ export interface Installation {
  * Each operation mints its own token with the least permission it needs. No operation ever
  * holds Contents write and Pull requests write together, so no Notus token can merge.
  */
+/** A repository the installation reaches, as an administrator picks it. */
+export interface InstallationRepository {
+  readonly fullName: string;
+  readonly private: boolean;
+}
 export interface Bound {
+  /** Metadata read over the whole installation: the repositories it reaches, archived ones left out. */
+  readonly repositories: Effect.Effect<ReadonlyArray<InstallationRepository>, AppError>;
   /** Contents read and Metadata read: clone and fetch. */
   readonly readToken: (repository: Repository) => Effect.Effect<InstallationToken, AppError>;
   /** Contents write and Metadata read: one push to a notus/ branch. */
@@ -208,21 +215,28 @@ export const layerNoDeps = Layer.effect(
       }),
     );
     const bind = (installationId: string): Bound => {
-      const token = Effect.fn("GitHub.App.token")(
-        function* (input: RepositoryName, permissions: Permissions) {
+      /** Mints a token; scoped to one repository unless the operation needs the whole installation. */
+      const mint = Effect.fn("GitHub.App.token")(
+        function* (permissions: Permissions, input: RepositoryName | null) {
           // The merge endpoint needs both; no Notus token may ever carry both.
           if ("pull_requests" in permissions && permissions.contents !== "read")
             return yield* fail("token", "configuration");
-          const repository = yield* Schema.decodeEffect(RepositoryName)(input).pipe(
-            Effect.mapError(() => fail("token", "configuration")),
-          );
+          const repository =
+            input === null
+              ? null
+              : yield* Schema.decodeEffect(RepositoryName)(input).pipe(
+                  Effect.mapError(() => fail("token", "configuration")),
+                );
           const bearer = yield* jwt();
           const request = yield* HttpClientRequest.post(
             `${endpoint}/app/installations/${installationId}/access_tokens`,
           ).pipe(
             headers,
             HttpClientRequest.bearerToken(bearer),
-            HttpClientRequest.bodyJson({ repositories: [repository.name], permissions }),
+            HttpClientRequest.bodyJson({
+              ...(repository === null ? {} : { repositories: [repository.name] }),
+              permissions,
+            }),
             Effect.mapError(() => fail("token", "configuration")),
           );
           const response = yield* http
@@ -251,6 +265,48 @@ export const layerNoDeps = Layer.effect(
           duration: "15 seconds",
           orElse: () => Effect.fail(fail("token", "transport")),
         }),
+      );
+      const token = (input: RepositoryName, permissions: Permissions) => mint(permissions, input);
+      const RepositoriesResponse = Schema.Struct({
+        repositories: Schema.Array(
+          Schema.Struct({
+            full_name: Schema.NonEmptyString,
+            private: Schema.Boolean,
+            archived: Schema.optionalKey(Schema.Boolean),
+          }),
+        ),
+      });
+      const repositories = Effect.gen(function* () {
+        const grant = yield* mint({ metadata: "read" }, null);
+        const found: Array<InstallationRepository> = [];
+        // GitHub pages at 100; an installation larger than ten pages is not one Notus serves yet.
+        for (let page = 1; page <= 10; page++) {
+          const request = HttpClientRequest.get(
+            `${endpoint}/installation/repositories?per_page=100&page=${page}`,
+          ).pipe(headers, HttpClientRequest.bearerToken(Redacted.value(grant.token)));
+          const response = yield* http
+            .execute(request)
+            .pipe(Effect.mapError(() => fail("token", "transport")));
+          if (response.status !== 200) return yield* fail("token", "rejected", response.status);
+          const body = yield* response.json.pipe(
+            Effect.mapError(() => fail("token", "invalid-response")),
+          );
+          const decoded = yield* Schema.decodeUnknownEffect(RepositoriesResponse)(body).pipe(
+            Effect.mapError(() => fail("token", "invalid-response")),
+          );
+          for (const entry of decoded.repositories)
+            if (entry.archived !== true)
+              found.push({ fullName: entry.full_name, private: entry.private });
+          if (decoded.repositories.length < 100) break;
+        }
+        return found.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      }).pipe(
+        Effect.scoped,
+        Effect.timeoutOrElse({
+          duration: "20 seconds",
+          orElse: () => Effect.fail(fail("token", "transport")),
+        }),
+        Effect.withSpan("GitHub.App.repositories"),
       );
       const createPullRequest = Effect.fn("GitHub.App.createPullRequest")(
         function* (
@@ -453,6 +509,7 @@ export const layerNoDeps = Layer.effect(
           return yield* fail("reaction", "rejected", result.status);
       });
       return {
+        repositories,
         collaboratorRole,
         comment,
         replyToReviewComment,

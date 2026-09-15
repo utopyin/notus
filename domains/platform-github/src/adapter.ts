@@ -1,11 +1,10 @@
 import type { InstallationSurfaces, PlatformAdapter, ReplyHandle } from "@notus/platform/adapter";
-import { CapabilityNotSupportedError } from "@notus/platform/capabilities";
 import { GITHUB_DESCRIPTOR } from "@notus/platform/descriptors/github";
 import { IngressError, InstallationNotFound, SourceError } from "@notus/platform/errors";
 import type { InstallationRef, PlatformId } from "@notus/platform/ids";
 import type { IngressRequest, Normalized } from "@notus/platform/ingress";
 import { InstallError, type PlatformInstalling } from "@notus/platform/installing";
-import { key, Received, ReplyTarget, type Actor } from "@notus/platform/source";
+import { key, Received, ReplyTarget, Scope, type Actor } from "@notus/platform/source";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Redacted from "effect/Redacted";
@@ -213,8 +212,22 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       });
       return {
         scopes: {
-          list: Effect.fail(
-            new CapabilityNotSupportedError({ platform: "github", capability: "scope:list" }),
+          // Every repository the installation reaches is coverable; the App is already "in" it.
+          list: bound.repositories.pipe(
+            Effect.map((repositories) =>
+              repositories.map((repository) => ({
+                id: repository.fullName,
+                label: repository.fullName,
+                member: true,
+                private: repository.private,
+              })),
+            ),
+            Effect.mapError(sourceError),
+            Effect.flatMap((scopes) =>
+              Schema.decodeEffect(Schema.Array(Scope))(scopes).pipe(
+                Effect.mapError(() => new SourceError({ classification: "rejected" })),
+              ),
+            ),
           ),
         },
         conversations: {

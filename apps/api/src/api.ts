@@ -305,7 +305,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       /** From the platform's descriptor, so the dashboard never branches on the platform. */
       readonly name: string;
       readonly icon: string;
-      readonly scopeNoun: string;
+      readonly scopeNoun: { readonly one: string; readonly many: string };
     }
     interface ScopeSummaryRow {
       readonly workspaceId: string;

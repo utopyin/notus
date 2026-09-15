@@ -209,7 +209,7 @@ function InstallationSection(props: {
   };
   const options = available?.filter((c) => c.member && !covered.has(c.id)) ?? [];
   const Mark = marks[installation.icon] ?? IconBrandSlack;
-  const noun = installation.scopeNoun;
+  const { one: noun, many: nouns } = installation.scopeNoun;
   return (
     <section className="flex flex-col gap-3">
       <header className="flex items-center gap-3">
@@ -237,7 +237,7 @@ function InstallationSection(props: {
         ) : null}
       </header>
       {data.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No {noun} covered yet.</p>
+        <p className="text-muted-foreground text-sm">No {nouns} covered yet.</p>
       ) : (
         <ul className="divide-y rounded-lg border">
           {data.map((row) => {
@@ -281,7 +281,7 @@ function InstallationSection(props: {
             }}
           >
             <SelectTrigger id={`scope-${installation.installationId}`} className="w-full">
-              <SelectValue placeholder={`${capitalize(noun)}s the Notus app is in…`} />
+              <SelectValue placeholder={`${capitalize(nouns)} the app can reach…`} />
             </SelectTrigger>
             {/* Sized to its options; the popup's inset plus the item's puts the icon's ink where the trigger's text starts. */}
             <SelectContent
@@ -292,7 +292,7 @@ function InstallationSection(props: {
               {options.length === 0 ? (
                 <div className="text-muted-foreground flex items-center gap-2 py-1 pr-8 pl-1 text-sm">
                   <IconMessageCircleOff className="size-4" />
-                  No {noun}s found
+                  No {nouns} found
                 </div>
               ) : (
                 options.map((c) => (
@@ -309,7 +309,7 @@ function InstallationSection(props: {
             </SelectContent>
           </Select>
           <p className="text-muted-foreground text-xs">
-            Invite the app to a {noun} first if it is missing here.
+            Give the app access to a {noun} first if it is missing here.
           </p>
         </div>
       ) : null}
@@ -325,7 +325,7 @@ function InstallationSection(props: {
           }}
         >
           <p className="text-muted-foreground text-sm">
-            {installation.name} did not list its {noun}s ({listing}); add one by its identifier.
+            {installation.name} did not list its {nouns} ({listing}); add one by its identifier.
           </p>
           <Label htmlFor={`manual-${installation.installationId}`}>{capitalize(noun)}</Label>
           <div className="flex gap-2">

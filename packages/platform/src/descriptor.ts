@@ -16,8 +16,8 @@ export interface PlatformDescriptor<P extends Platform = Platform> {
   /** How the platform is named in the product. */
   readonly name: string;
   readonly icon: PlatformIconKey;
-  /** What a scope is called in this platform: "channel", "repository". */
-  readonly scopeNoun: string;
+  /** What a scope is called in this platform: "channel"/"channels", "repository"/"repositories". */
+  readonly scopeNoun: { readonly one: string; readonly many: string };
   /** How a scope is written for display: "#general", "acme/api". */
   readonly scopeLabel: (scope: Pick<Scope, "id" | "label">) => string;
   /** The platform baseline; an attachment narrows it. */

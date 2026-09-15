@@ -5,7 +5,7 @@ export const SLACK_DESCRIPTOR: PlatformDescriptor<"slack"> = {
   platform: "slack",
   name: "Slack",
   icon: "slack",
-  scopeNoun: "channel",
+  scopeNoun: { one: "channel", many: "channels" },
   scopeLabel: (scope) => `#${scope.label || scope.id}`,
   capabilities: new Capabilities({
     platform: "slack",
