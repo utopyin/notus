@@ -62,7 +62,7 @@ function Platforms() {
               </CardAction>
             </CardHeader>
             <CardContent>
-              <CardDescription>{slots.description}</CardDescription>
+              <CardDescription className="text-pretty">{slots.description}</CardDescription>
             </CardContent>
           </Card>
         );
