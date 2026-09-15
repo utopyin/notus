@@ -274,9 +274,11 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               <span className="text-muted-foreground truncate text-xs">
                 {finishing
                   ? "Connecting your ChatGPT account…"
-                  : chatgpt?.linked
-                    ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
-                    : "Not connected. Runs Codex on the dev box with your subscription."}
+                  : disconnecting === "openai-chatgpt"
+                    ? "Disconnecting…"
+                    : chatgpt?.linked
+                      ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
+                      : "Not connected. Runs Codex on the dev box with your subscription."}
               </span>
             </div>
             {chatgpt?.linked ? (
@@ -342,9 +344,11 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">OpenAI API key</span>
               <span className="text-muted-foreground truncate text-xs">
-                {apiKey?.linked
-                  ? `Linked ${whenOf(apiKey.linkedAt)}`
-                  : "Not connected. Runs the operator on the platform API backend."}
+                {disconnecting === "openai-api"
+                  ? "Disconnecting…"
+                  : apiKey?.linked
+                    ? `Linked ${whenOf(apiKey.linkedAt)}`
+                    : "Not connected. Runs the operator on the platform API backend."}
               </span>
             </div>
             {apiKey?.linked ? (
