@@ -1,6 +1,5 @@
 import { BetterAuth } from "@alchemy.run/better-auth";
 import { CloudflareD1 } from "@alchemy.run/better-auth/CloudflareD1";
-import * as Cloudflare from "alchemy/Cloudflare";
 import {
   genericOAuth,
   slack,
@@ -9,10 +8,13 @@ import {
 } from "better-auth/plugins/generic-oauth";
 import * as Redacted from "effect/Redacted";
 import type { DashboardConfig } from "./config";
+import { SharedDatabase } from "./database";
 
-/** Better Auth's own tables live apart from the Drizzle-managed shared database. */
-export const AuthDb = Cloudflare.D1.Database("AuthDb");
-export const authDatabase = CloudflareD1(AuthDb);
+/**
+ * Better Auth's tables live in the shared database, defined and migrated with the rest of the
+ * account domain (`auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications`).
+ */
+export const authDatabase = CloudflareD1(SharedDatabase);
 
 const slackUserInfo = "https://slack.com/api/openid.connect.userInfo";
 const teamClaim = "https://slack.com/team_id";
@@ -71,11 +73,16 @@ const slackProvider = (credentials: {
 export const makeAuth = (dashboard: DashboardConfig) =>
   BetterAuth({
     id: "Auth",
+    // The account domain's Drizzle migrations own the tables; Better Auth never migrates.
+    migrate: false,
     basePath: "/auth",
     ...(dashboard.origin === null
       ? {}
       : { baseURL: dashboard.origin, trustedOrigins: [dashboard.origin] }),
+    session: { modelName: "auth_sessions" },
+    verification: { modelName: "auth_verifications" },
     user: {
+      modelName: "auth_users",
       additionalFields: {
         slackTeamId: { type: "string", required: false, input: false },
         /** The login GitHub knows the user by; task branches are attributed under it. */
@@ -83,6 +90,7 @@ export const makeAuth = (dashboard: DashboardConfig) =>
       },
     },
     account: {
+      modelName: "auth_accounts",
       // Linking is an explicit action from the account page by a signed-in user, so the second
       // provider's email need not match: Slack and GitHub emails often differ for one person.
       accountLinking: {

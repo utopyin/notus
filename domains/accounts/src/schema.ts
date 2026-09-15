@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /** Canonical users. The profile is a snapshot from the latest dashboard sign-in, for display only. */
 export const users = sqliteTable("account_users", {
@@ -34,3 +34,71 @@ export const logins = sqliteTable("account_logins", {
     .references(() => users.id),
   linkedAt: integer().notNull(),
 });
+
+/**
+ * Better Auth's tables, in the shared database under our names and migrations. Better Auth reads
+ * and writes them through its D1 adapter with these model names and never migrates them itself.
+ * Dates are ISO strings, as its adapter stores them. `account_logins` maps `auth_users.id` to the
+ * canonical user.
+ */
+export const authUsers = sqliteTable("auth_users", {
+  id: text().primaryKey(),
+  name: text().notNull(),
+  email: text().notNull().unique(),
+  emailVerified: integer().notNull(),
+  image: text(),
+  createdAt: text().notNull(),
+  updatedAt: text().notNull(),
+  slackTeamId: text(),
+  githubLogin: text(),
+});
+export const authSessions = sqliteTable(
+  "auth_sessions",
+  {
+    id: text().primaryKey(),
+    expiresAt: text().notNull(),
+    token: text().notNull().unique(),
+    createdAt: text().notNull(),
+    updatedAt: text().notNull(),
+    ipAddress: text(),
+    userAgent: text(),
+    userId: text()
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("auth_sessions_user").on(table.userId)],
+);
+/** One row per provider sign-in, with the provider's tokens; the GitHub row is the box's git login. */
+export const authAccounts = sqliteTable(
+  "auth_accounts",
+  {
+    id: text().primaryKey(),
+    accountId: text().notNull(),
+    providerId: text().notNull(),
+    userId: text()
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    accessToken: text(),
+    refreshToken: text(),
+    idToken: text(),
+    accessTokenExpiresAt: text(),
+    refreshTokenExpiresAt: text(),
+    scope: text(),
+    password: text(),
+    createdAt: text().notNull(),
+    updatedAt: text().notNull(),
+  },
+  (table) => [index("auth_accounts_user").on(table.userId)],
+);
+export const authVerifications = sqliteTable(
+  "auth_verifications",
+  {
+    id: text().primaryKey(),
+    identifier: text().notNull(),
+    value: text().notNull(),
+    expiresAt: text().notNull(),
+    createdAt: text().notNull(),
+    updatedAt: text().notNull(),
+  },
+  (table) => [index("auth_verifications_identifier").on(table.identifier)],
+);

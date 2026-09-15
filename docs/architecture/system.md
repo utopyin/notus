@@ -65,8 +65,7 @@ flowchart LR
   subgraph cf["Cloudflare: one Alchemy stage"]
     dash["Dashboard Worker<br/>TanStack Start"]
     worker["Api Worker<br/>events, auth, installs,<br/>runtime, cron, RPC"]
-    d1[("Shared D1<br/>workspaces, installations,<br/>identities, inbox, routes")]
-    authdb[("AuthDb<br/>Better Auth")]
+    d1[("Shared D1<br/>workspaces, installations,<br/>identities, sign-ins, inbox, routes")]
     task["Task Durable Object<br/>one per task"]
     conn["Connection Durable Objects<br/>userId and agent:userId"]
   end
@@ -83,7 +82,6 @@ flowchart LR
   admin -->|"browser"| dash
   dash -->|"service binding: /auth/* and RPC"| worker
   worker <--> d1
-  worker <--> authdb
   worker -->|"DO RPC"| task
   task -->|"read installation credentials"| d1
   task -->|"reactions and thread replies"| thread
@@ -891,7 +889,7 @@ sequenceDiagram
   actor A as Admin browser
   participant DW as Dashboard Worker
   participant W as Api Worker
-  participant BA as Better Auth on AuthDb
+  participant BA as Better Auth on the shared D1
   participant Id as accounts Identities
   participant WS as workspaces Workspaces
   participant P as Slack or GitHub
@@ -1000,7 +998,7 @@ erDiagram
   INBOX_ROUTES { string key PK "per conversation" string taskId "origin or attached PR" string initiatorId string startMessageKey int initialized }
 ```
 
-`AuthDb` is a separate D1 database that Better Auth owns and migrates: `user` (with `slackTeamId`), `session`, `account` and `verification`.
+Better Auth's tables live in the same shared database under the account domain's schema and migrations: `auth_users` (with `slackTeamId` and `githubLogin`), `auth_sessions`, `auth_accounts` (provider tokens; the GitHub row is the dev box's git login) and `auth_verifications`. Better Auth reaches them through its D1 adapter with those model names and never migrates them itself. Until 2026-09-15 they were a second database, `AuthDb`; it was merged because one product wants one database.
 
 Each Task object has its own SQLite database, and only that object reads it:
 

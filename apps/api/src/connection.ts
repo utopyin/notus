@@ -14,7 +14,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { AuthDb } from "./auth";
 import { credentialKeyConfig, dashboardConfig } from "./config";
 import { cryptoLayer } from "./crypto";
 import { SharedDatabase } from "./database";
@@ -29,18 +28,17 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
   Effect.gen(function* () {
     const host = yield* Cloudflare.DurableObjectState;
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
-    // GitHub sign-ins live in the sign-in database; the user they act as, in the shared one.
+    // GitHub sign-ins and the users they act as both live in the shared database.
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
-    const auth = yield* Cloudflare.D1.QueryDatabase(yield* AuthDb);
     const context = yield* CurrentRuntimeContext;
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
-    return { host, credentialKey, dashboard, shared, auth, context };
+    return { host, credentialKey, dashboard, shared, context };
   }).pipe(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, credentialKey, dashboard, shared, auth, context }) =>
+    Effect.map(({ host, credentialKey, dashboard, shared, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
@@ -51,14 +49,6 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
                 GithubLogins.layer.pipe(
                   Layer.provide([
                     D1.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
-                    // fresh: a second instance for the second binding, not the memoized shared one.
-                    Layer.effect(GithubLogins.AuthDatabase, D1.Service).pipe(
-                      Layer.provide(
-                        Layer.fresh(D1.layer).pipe(
-                          Layer.provide(Layer.effect(D1.Binding, auth.raw)),
-                        ),
-                      ),
-                    ),
                     FetchHttpClient.layer,
                     Layer.succeed(OAuth.Configuration, {
                       clientId: dashboard.github.clientId,

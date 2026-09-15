@@ -1,7 +1,6 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { OAuth } from "@notus/github/oauth";
 import { and, eq, inArray } from "drizzle-orm";
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -11,23 +10,8 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import { ConnectionError } from "./errors";
-import { logins, users } from "./schema";
+import { authAccounts as accounts, logins, users } from "./schema";
 
-/**
- * The sign-in database's account table as Better Auth keeps it: one row per provider sign-in
- * with the provider's tokens. Only the GitHub row is read here, and only its tokens are written.
- */
-const accounts = sqliteTable("account", {
-  id: text().primaryKey(),
-  accountId: text().notNull(),
-  providerId: text().notNull(),
-  userId: text().notNull(),
-  accessToken: text(),
-  refreshToken: text(),
-  accessTokenExpiresAt: text(),
-  refreshTokenExpiresAt: text(),
-  updatedAt: text(),
-});
 const AccountRow = Schema.Struct({
   id: Schema.String,
   accountId: Schema.String,
@@ -51,11 +35,6 @@ export const GithubLogin = Schema.Struct({
   email: Schema.NonEmptyString,
 });
 export interface GithubLogin extends Schema.Schema.Type<typeof GithubLogin> {}
-
-/** The sign-in database, distinct from the shared one the other account tables live in. */
-export class AuthDatabase extends Context.Service<AuthDatabase, D1.Interface>()(
-  "@notus/accounts/github-login/AuthDatabase",
-) {}
 
 export interface Interface {
   /**
@@ -82,7 +61,6 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const shared = yield* D1.Service;
-    const auth = yield* AuthDatabase;
     const http = yield* HttpClient.HttpClient;
     const oauth = yield* OAuth.Configuration;
     const storage = <A, E>(effect: Effect.Effect<A, E>) =>
@@ -112,7 +90,7 @@ export const layerNoDeps = Layer.effect(
       );
       if (signIns.length === 0) return null;
       const [row] = yield* storage(
-        auth.db
+        shared.db
           .select({
             id: accounts.id,
             accountId: accounts.accountId,
@@ -166,7 +144,7 @@ export const layerNoDeps = Layer.effect(
       );
       // Rotation is persisted before the new access token is ever used.
       yield* storage(
-        auth.db
+        shared.db
           .update(accounts)
           .set({
             accessToken: rotated.access,
