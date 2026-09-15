@@ -14,6 +14,7 @@ import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import { authClient, type Provider } from "../auth-client";
 import { queryClient } from "../query";
 import {
@@ -199,7 +200,6 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const [disconnecting, setDisconnecting] = useState<Connection["provider"] | null>(null);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
-  const [copied, setCopied] = useState(false);
   const chatgpt = props.connections.find((c) => c.provider === "openai-chatgpt") ?? null;
   const apiKey = props.connections.find((c) => c.provider === "openai-api") ?? null;
   // A started device login is polled at the issuer's pace until it is linked or expires; the
@@ -235,7 +235,6 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
     const result = await beginChatGpt();
     setRequesting(false);
     if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
-    setCopied(false);
     queryClient.setQueryData(["chatgpt-device-login"], { ok: true, value: result.value });
     setStarting(true);
   };
@@ -314,9 +313,13 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               <button
                 type="button"
                 className="rounded-md px-4 py-3 font-mono text-2xl font-medium tracking-[0.3em] transition-colors hover:bg-accent"
-                title={copied ? "Copied" : "Copy"}
+                title="Copy"
                 onClick={() => {
-                  void navigator.clipboard.writeText(pending.userCode).then(() => setCopied(true));
+                  void navigator.clipboard
+                    .writeText(pending.userCode)
+                    .then(() =>
+                      toast.add({ type: "success", title: "Code copied", timeout: 2000 }),
+                    );
                 }}
               >
                 {pending.userCode}

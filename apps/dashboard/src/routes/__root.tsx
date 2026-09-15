@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
 import { getMe } from "../server/me";
@@ -18,7 +19,9 @@ export const Route = createRootRoute({
   loader: () => getMe(),
   component: () => (
     <TooltipProvider>
-      <Outlet />
+      <Toaster>
+        <Outlet />
+      </Toaster>
     </TooltipProvider>
   ),
   notFoundComponent: () => (
