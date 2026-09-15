@@ -171,4 +171,4 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | Slac
     };
   });
 
-export * as SlackAdapter from "./slack";
+export * as SlackAdapter from "./adapter";

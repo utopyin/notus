@@ -1,7 +1,7 @@
 import { Identities } from "@notus/accounts/identities";
 import { D1 } from "@notus/cloudflare/d1";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
-import { Platforms } from "@notus/platform/registry";
+import { Platforms } from "@notus/platforms/registry";
 import {
   Admission,
   conversationKeyOf,

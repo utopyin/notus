@@ -8,25 +8,25 @@ Status: the dedicated Slack readiness slice is deployed and confirmed, including
 
 Each topic has one canonical home:
 
-| Document                                            | Owns                                                                            |
-| --------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [Product context](CONTEXT.md)                       | Requirements, vocabulary, scope, and open product decisions                     |
-| [Agent instructions](AGENTS.md)                     | Working practices and code style                                                |
-| [Architecture](docs/architecture/CONTEXT.md)        | Tier boundaries, provider separation, and service/Layer conventions             |
-| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, request flows, dev box wire, claims        |
-| [Codebase proposal](docs/plans/codebase.md)         | Package responsibilities and reviewed runtime/data recommendations              |
-| [First tracer](docs/plans/tracer.md)                | End-to-end scenario, runnable increments, and blocking experiments              |
-| [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order |
-| [Devbox slice](docs/plans/devbox.md)                | Opaque provider configuration, base image, and authorized startup validation    |
-| [Operator slice](docs/plans/operator.md)            | Control-plane operator loop, saved connections, broker transport, and its gates |
-| [Repository access](docs/plans/repository.md)       | GitHub App authority, read-only checkout on the dev box, and its limits         |
-| [Dashboard](docs/plans/dashboard.md)                | Sign-in, workspaces and invites, model connections, repositories, instructions  |
-| [Sources](docs/plans/sources.md)                    | The source contract, registered platform adapters, installations and scopes     |
-| [Research](docs/research/README.md)                 | Provider evidence and constraints                                               |
-| [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                   |
-| [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                   |
-| [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup            |
-| [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates              |
+| Document                                            | Owns                                                                              |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [Product context](CONTEXT.md)                       | Requirements, vocabulary, scope, and open product decisions                       |
+| [Agent instructions](AGENTS.md)                     | Working practices and code style                                                  |
+| [Architecture](docs/architecture/CONTEXT.md)        | Tier boundaries, provider separation, and service/Layer conventions               |
+| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, request flows, dev box wire, claims          |
+| [Codebase proposal](docs/plans/codebase.md)         | Package responsibilities and reviewed runtime/data recommendations                |
+| [First tracer](docs/plans/tracer.md)                | End-to-end scenario, runnable increments, and blocking experiments                |
+| [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order   |
+| [Devbox slice](docs/plans/devbox.md)                | Opaque provider configuration, base image, and authorized startup validation      |
+| [Operator slice](docs/plans/operator.md)            | Control-plane operator loop, saved connections, broker transport, and its gates   |
+| [Repository access](docs/plans/repository.md)       | GitHub App authority, read-only checkout on the dev box, and its limits           |
+| [Dashboard](docs/plans/dashboard.md)                | Sign-in, workspaces and invites, model connections, repositories, instructions    |
+| [Platforms](docs/plans/platforms.md)                | The platform contract, registered adapters per platform, installations and scopes |
+| [Research](docs/research/README.md)                 | Provider evidence and constraints                                                 |
+| [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                     |
+| [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                     |
+| [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup              |
+| [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates                |
 
 The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Specialist rounds run Codex on the dev box under the initiator's subscription; the [operator plan](docs/plans/operator.md#specialist-rounds) records how a round is kept alive and signed in. Each requires separate authorization and validation.
 

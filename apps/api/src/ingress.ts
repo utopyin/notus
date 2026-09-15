@@ -1,7 +1,7 @@
 import type { Conflict, IntakeError, Unauthorized } from "@notus/control/errors";
 import type { InstallationRef } from "@notus/platform/ids";
 import type { Platform } from "@notus/platform/platform";
-import { Platforms } from "@notus/platform/registry";
+import { Platforms } from "@notus/platforms/registry";
 import {
   conversationKeyOf,
   type Input,

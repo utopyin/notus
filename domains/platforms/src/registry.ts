@@ -1,16 +1,16 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { InstallationSurfaces, PlatformAdapter } from "./adapter";
-import type { PlatformDescriptor } from "./descriptor";
+import type { InstallationSurfaces, PlatformAdapter } from "@notus/platform/adapter";
+import type { PlatformDescriptor } from "@notus/platform/descriptor";
 import {
   DuplicatePlatformRegistrationError,
   type InstallationNotFound,
   PlatformNotRegisteredError,
-} from "./errors";
-import type { InstallationRef } from "./ids";
-import type { PlatformIngress } from "./ingress";
-import type { Platform } from "./platform";
+} from "@notus/platform/errors";
+import type { InstallationRef } from "@notus/platform/ids";
+import type { PlatformIngress } from "@notus/platform/ingress";
+import type { Platform } from "@notus/platform/platform";
 
 export interface PlatformScope {
   readonly descriptor: PlatformDescriptor;

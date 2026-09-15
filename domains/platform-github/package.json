@@ -1,5 +1,5 @@
 {
-  "name": "@notus/sources",
+  "name": "@notus/platform-github",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,7 +11,6 @@
   "dependencies": {
     "@notus/github": "workspace:*",
     "@notus/platform": "workspace:*",
-    "@notus/slack": "workspace:*",
     "effect": "catalog:"
   }
 }

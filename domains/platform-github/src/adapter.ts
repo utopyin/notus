@@ -194,4 +194,4 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
     };
   });
 
-export * as GithubAdapter from "./github";
+export * as GithubAdapter from "./adapter";

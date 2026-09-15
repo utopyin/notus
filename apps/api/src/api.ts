@@ -3,7 +3,7 @@ import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
-import { Platforms } from "@notus/platform/registry";
+import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
 import type { ChannelSummary } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";

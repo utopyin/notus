@@ -39,8 +39,10 @@
         "@notus/openai": "workspace:*",
         "@notus/operator": "workspace:*",
         "@notus/platform": "workspace:*",
+        "@notus/platform-github": "workspace:*",
+        "@notus/platform-slack": "workspace:*",
+        "@notus/platforms": "workspace:*",
         "@notus/slack": "workspace:*",
-        "@notus/sources": "workspace:*",
         "@notus/stages": "workspace:*",
         "@notus/tasks": "workspace:*",
         "@notus/workspaces": "workspace:*",
@@ -125,12 +127,26 @@
         "effect": "catalog:",
       },
     },
-    "domains/sources": {
-      "name": "@notus/sources",
+    "domains/platform-github": {
+      "name": "@notus/platform-github",
       "dependencies": {
         "@notus/github": "workspace:*",
         "@notus/platform": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
+    "domains/platform-slack": {
+      "name": "@notus/platform-slack",
+      "dependencies": {
+        "@notus/platform": "workspace:*",
         "@notus/slack": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
+    "domains/platforms": {
+      "name": "@notus/platforms",
+      "dependencies": {
+        "@notus/platform": "workspace:*",
         "effect": "catalog:",
       },
     },
@@ -164,6 +180,7 @@
         "@notus/executions": "workspace:*",
         "@notus/operator": "workspace:*",
         "@notus/platform": "workspace:*",
+        "@notus/platforms": "workspace:*",
         "@notus/tasks": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -706,11 +723,15 @@
 
     "@notus/platform": ["@notus/platform@workspace:packages/platform"],
 
+    "@notus/platform-github": ["@notus/platform-github@workspace:domains/platform-github"],
+
+    "@notus/platform-slack": ["@notus/platform-slack@workspace:domains/platform-slack"],
+
+    "@notus/platforms": ["@notus/platforms@workspace:domains/platforms"],
+
     "@notus/scripts": ["@notus/scripts@workspace:scripts"],
 
     "@notus/slack": ["@notus/slack@workspace:packages/slack"],
-
-    "@notus/sources": ["@notus/sources@workspace:domains/sources"],
 
     "@notus/stages": ["@notus/stages@workspace:packages/stages"],
 
