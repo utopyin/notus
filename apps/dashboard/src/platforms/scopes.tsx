@@ -109,10 +109,14 @@ export const Scopes: FC<{
       {data.length === 0 ? (
         <p className="text-muted-foreground text-sm">No {nouns} covered yet.</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="bg-card divide-y rounded-lg border">
           {data.map((scope) => (
             <li key={scopeKey(scope)} className="flex items-center gap-3 px-4 py-3 text-sm">
-              {loading ? <Skeleton className="h-4 w-40" /> : row(scope, byId.get(scope.scope))}
+              {loading ? (
+                <Skeleton className="mr-auto h-4 w-40" />
+              ) : (
+                row(scope, byId.get(scope.scope))
+              )}
               {isAdmin ? (
                 <Button variant="ghost" size="sm" onClick={() => remove(scope)}>
                   <IconTrashFilled className="size-4" />
