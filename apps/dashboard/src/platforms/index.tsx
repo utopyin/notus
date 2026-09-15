@@ -1,9 +1,10 @@
-import { IconBrandGithub, IconBrandSlack } from "@tabler/icons-react";
 import type { FC } from "react";
 import type { WorkspaceView } from "../server/workspaces";
 import { GithubDetails } from "./github/details";
+import { GithubIcon } from "./github/icon";
 import type { Installation } from "./scopes";
 import { SlackDetails } from "./slack/details";
+import { SlackIcon } from "./slack/icon";
 
 export type Platform = WorkspaceView["installations"][number]["platform"];
 export const PLATFORMS: ReadonlyArray<Platform> = ["slack", "github"];
@@ -26,14 +27,14 @@ export interface PlatformSlots {
 const SLOTS: { readonly [P in Platform]: PlatformSlots } = {
   slack: {
     name: "Slack",
-    Mark: IconBrandSlack,
+    Mark: SlackIcon,
     description: "Mention Notus in a channel to start a task; it answers in the thread.",
     installLabel: "Add to Slack",
     Details: SlackDetails,
   },
   github: {
     name: "GitHub",
-    Mark: IconBrandGithub,
+    Mark: GithubIcon,
     description: "Notus opens pull requests here and takes review feedback on them.",
     installLabel: "Install GitHub App",
     Details: GithubDetails,
