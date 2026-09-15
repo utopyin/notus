@@ -166,7 +166,7 @@ export function AppShell(props: {
             <SidebarGroup>
               <SidebarGroupLabel>Workspace</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-0.5">
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
@@ -199,13 +199,14 @@ export function AppShell(props: {
                       <IconAppsFilled />
                       <span>Platforms</span>
                     </SidebarMenuButton>
-                    {/* Every platform has a page, connected or not. */}
-                    <SidebarMenuSub>
+                    {/* Every platform has a page, connected or not. Sub items are sized like the main ones and
+                        span the full width, over the rail drawn down the parent's icon. */}
+                    <SidebarMenuSub className="relative mx-0 mt-0.5 gap-0.5 border-0 px-0 py-0 before:absolute before:inset-y-1 before:left-[15px] before:w-px before:bg-sidebar-border">
                       {PLATFORMS.map((platform) => (
                         <SidebarMenuSubItem key={platform}>
                           <SidebarMenuSubButton
                             isActive={activePlatform === platform}
-                            className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground"
+                            className="relative h-8 w-full translate-x-0 pl-8 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground"
                             render={
                               <Link to="/$slug/platforms/$platform" params={{ slug, platform }} />
                             }
