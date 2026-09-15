@@ -62,15 +62,14 @@ export const exchange = Effect.fn("Slack.OAuth.exchange")(
     readonly redirectUri: string;
   }) {
     const http = yield* HttpClient.HttpClient;
-    const body = new URLSearchParams({
-      client_id: input.clientId,
-      client_secret: Redacted.value(input.clientSecret),
-      code: input.code,
-      redirect_uri: input.redirectUri,
-    });
+    // Form-encoded, as Slack requires; bodyUrlParams sets the content type with the body.
     const request = HttpClientRequest.post("https://slack.com/api/oauth.v2.access").pipe(
-      HttpClientRequest.setHeader("content-type", "application/x-www-form-urlencoded"),
-      HttpClientRequest.bodyText(body.toString()),
+      HttpClientRequest.bodyUrlParams({
+        client_id: input.clientId,
+        client_secret: Redacted.value(input.clientSecret),
+        code: input.code,
+        redirect_uri: input.redirectUri,
+      }),
     );
     const response = yield* http
       .execute(request)
