@@ -196,6 +196,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const [requesting, setRequesting] = useState(false);
   // Between the issuer confirming and the page reloading its connections.
   const [finishing, setFinishing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<Connection["provider"] | null>(null);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -253,9 +254,14 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
     await router.invalidate();
   };
   const disconnect = async (provider: Connection["provider"]) => {
+    setDisconnecting(provider);
     const result = await revokeConnection({ data: { provider } });
-    if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
+    if (!result.ok) {
+      setDisconnecting(null);
+      return setMessage(`That did not work (${result.reason}).`);
+    }
     await router.invalidate();
+    setDisconnecting(null);
   };
   return (
     <section className="flex flex-col gap-3">
@@ -273,9 +279,14 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               </span>
             </div>
             {chatgpt?.linked ? (
-              <Button variant="ghost" size="sm" onClick={() => disconnect("openai-chatgpt")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={disconnecting !== null}
+                onClick={() => disconnect("openai-chatgpt")}
+              >
                 <IconLinkOff className="size-4" />
-                Disconnect
+                {disconnecting === "openai-chatgpt" ? "Disconnecting…" : "Disconnect"}
               </Button>
             ) : pending === null ? (
               <Button
@@ -332,9 +343,14 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               </span>
             </div>
             {apiKey?.linked ? (
-              <Button variant="ghost" size="sm" onClick={() => disconnect("openai-api")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={disconnecting !== null}
+                onClick={() => disconnect("openai-api")}
+              >
                 <IconLinkOff className="size-4" />
-                Disconnect
+                {disconnecting === "openai-api" ? "Disconnecting…" : "Disconnect"}
               </Button>
             ) : null}
           </div>
