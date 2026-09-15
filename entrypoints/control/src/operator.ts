@@ -102,12 +102,12 @@ const settle = Effect.fn("OperatorControl.settle")(function* (now: number) {
 /** Capture the workspace environment once, before the operator decides anything about a box. */
 export const prepare = Effect.fn("OperatorControl.prepare")(function* (
   environment: Environment | null,
-  repository: RepositoryRef | null,
+  repositories: ReadonlyArray<RepositoryRef>,
   now: number,
 ) {
   const provisioning = yield* Provisioning.Service;
   yield* provisioning.capture(environment, now);
-  yield* provisioning.captureRepository(repository, now);
+  yield* provisioning.captureRepositories(repositories, now);
 });
 
 const describe = (status: ProvisioningStatus): DevboxResult => {
@@ -130,6 +130,11 @@ const RunParams = Schema.Struct({
   cwd: Schema.optionalKey(WorkspacePath),
   purpose: Schema.String,
 });
+const CheckoutParams = Schema.Struct({
+  purpose: Schema.String,
+  repository: Schema.optionalKey(Schema.String),
+});
+const fullNameOf = (repository: RepositoryRef) => `${repository.owner}/${repository.name}`;
 const checkoutPath = (repository: RepositoryRef) => `/workspaces/${repository.name}`;
 const checkoutTimeoutMs = 300_000;
 const encodePush = Schema.encodeEffect(PushOutcome);
@@ -227,8 +232,14 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     return yield* failed("no dev box exists for this task; create one first");
   if (onBox && status !== null && status.phase === "blocked")
     return yield* failed(`the dev box is blocked (${status.blockedReason ?? "unknown"})`);
-  if (name !== "run_command" && (yield* provisioning.repository.pipe(Effect.orDie)) === null)
-    return yield* failed("no repository is configured for this task");
+  if (name !== "run_command" && (yield* provisioning.repository.pipe(Effect.orDie)) === null) {
+    const candidates = yield* provisioning.candidates.pipe(Effect.orDie);
+    return yield* failed(
+      candidates.length === 0
+        ? "the workspace covers no repository, so this task has none"
+        : `no repository is chosen for this task yet; check out one of ${candidates.map(fullNameOf).join(", ")}`,
+    );
+  }
   const rows = yield* commands.ofStep(stepId).pipe(Effect.orDie);
   const command = rows.find((row) => row.callId === call.id);
   if (!command) return yield* failed("the command was rejected before it was queued");
@@ -311,7 +322,26 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
       }
       if (!toolNames.has(call.name) || call.name === "create_devbox") continue;
       const status = yield* provisioning.current;
+      // Checking out is where the task's repository is settled: the only candidate, or the named one.
+      if (call.name === "checkout_repository" && (yield* provisioning.repository) === null) {
+        const params = yield* Schema.decodeUnknownEffect(CheckoutParams)(call.params).pipe(
+          Effect.option,
+        );
+        const candidates = yield* provisioning.candidates;
+        const wanted =
+          params._tag === "Some" && params.value.repository !== undefined
+            ? params.value.repository
+            : candidates.length === 1
+              ? fullNameOf(candidates[0]!)
+              : null;
+        if (wanted !== null) yield* provisioning.selectRepository(wanted);
+      }
       const repository = yield* provisioning.repository;
+      // The default branch is whatever the clone landed on.
+      const defaultBranch =
+        (yield* commands.snapshot).find(
+          (row) => row.status === "done" && row.result?.checkout !== undefined,
+        )?.result?.checkout?.branch ?? null;
       if (
         call.name !== "create_pull_request" &&
         (status === null || status.resourceId === null || status.phase === "blocked")
@@ -335,7 +365,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         const branch = yield* Schema.decodeEffect(TaskBranchPolicy)(
           branchOf(repository, params.value.slug),
         ).pipe(Effect.option);
-        if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
+        if (branch._tag === "None" || branch.value === defaultBranch) continue;
         spec = {
           kind: "push",
           repository,
@@ -353,7 +383,9 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         const branch = yield* Schema.decodeEffect(TaskBranchPolicy)(
           branchOf(repository, params.value.slug),
         ).pipe(Effect.option);
-        if (branch._tag === "None" || branch.value === repository.defaultBranch) continue;
+        // A pull request needs the checkout's default branch as its base.
+        if (branch._tag === "None" || defaultBranch === null || branch.value === defaultBranch)
+          continue;
         const owner = (yield* state.snapshot).task;
         if (!owner) continue;
         // The marker lets PR feedback find this task; the task still confirms before routing.
@@ -362,6 +394,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           kind: "pull-request",
           repository,
           branch: branch.value,
+          base: defaultBranch,
           title: params.value.title,
           body: `${params.value.body.slice(0, 60_000 - marker.length)}${marker}`,
           timeoutMs: 60_000,
@@ -515,6 +548,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
   history.sort((left, right) => left.at - right.at);
   const devbox = yield* provisioning.current;
   const repository = yield* provisioning.repository;
+  const candidates = yield* provisioning.candidates;
   const commands = yield* Commands.Service;
   const checkedOut = (yield* commands.snapshot).find(
     (row) => row.status === "done" && row.result?.checkout !== undefined,
@@ -525,10 +559,11 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     devbox: devbox
       ? { phase: devbox.phase, resourceId: devbox.resourceId, lastReadyAt: devbox.lastReadyAt }
       : null,
+    repositories: candidates.map(fullNameOf),
     repository: repository
       ? {
-          fullName: `${repository.owner}/${repository.name}`,
-          defaultBranch: repository.defaultBranch,
+          fullName: fullNameOf(repository),
+          defaultBranch: checkedOut?.result?.checkout?.branch ?? null,
           branchPrefix: repository.branchPrefix,
           checkoutPath: checkedOut?.result?.checkout?.path ?? null,
         }

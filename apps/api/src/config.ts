@@ -104,27 +104,23 @@ export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
 const RepositoryName = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/),
 );
-export const repositoryConfig = Effect.gen(function* () {
+/**
+ * Dev-stage seeds for the fixture workspace: a covered repository and the fixture user's GitHub
+ * login. Tasks take their repositories from the workspace's covered scopes, never from here.
+ */
+export const fixtureRepositoryConfig = Effect.gen(function* () {
   const fullName = yield* Config.option(Config.schema(RepositoryName, "NOTUS_FIXTURE_REPOSITORY"));
-  if (Option.isNone(fullName)) return null;
-  const [owner, name] = fullName.value.split("/");
-  const login = yield* Config.schema(
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/)),
-    "NOTUS_FIXTURE_GITHUB_LOGIN",
+  const login = yield* Config.option(
+    Config.schema(
+      Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/)),
+      "NOTUS_FIXTURE_GITHUB_LOGIN",
+    ),
   );
   return {
-    owner: owner ?? "",
-    name: name ?? "",
-    defaultBranch: yield* Config.schema(
-      Schema.NonEmptyString,
-      "NOTUS_FIXTURE_REPOSITORY_BRANCH",
-    ).pipe(Config.withDefault("main")),
-    // Git refs are case-sensitive; keep branch namespaces predictable.
-    branchPrefix: login.toLowerCase(),
+    fullName: Option.getOrNull(fullName),
+    githubLogin: Option.getOrNull(login),
   };
 });
-
-/** Signs GitHub webhook deliveries. Absent means the GitHub ingress route does not exist. */
 /**
  * Dashboard sign-in: the Slack app's and the GitHub App's OAuth clients, and the dashboard's
  * public origin once known. A provider without credentials is simply not offered.

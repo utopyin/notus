@@ -117,9 +117,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               )
             : null;
           const mint = (repository: RepositoryRef, kind: "checkout" | "push") =>
-            githubLayer && github
+            githubLayer
               ? GithubApp.Service.pipe(
-                  Effect.flatMap((app) => app.forInstallation(github.installationId)),
+                  Effect.flatMap((app) => app.forInstallation(repository.installationId)),
                   Effect.flatMap((app) =>
                     kind === "checkout" ? app.readToken(repository) : app.pushToken(repository),
                   ),
@@ -199,15 +199,24 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             readonly id: string;
             readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" }>;
           }) =>
-            githubLayer && github
+            githubLayer
               ? GithubApp.Service.pipe(
-                  Effect.flatMap((app) => app.forInstallation(github.installationId)),
                   Effect.flatMap((app) =>
-                    app.createPullRequest(command.spec.repository, {
-                      branch: command.spec.branch,
-                      title: command.spec.title,
-                      body: command.spec.body,
-                    }),
+                    app.forInstallation(command.spec.repository.installationId),
+                  ),
+                  Effect.flatMap((app) =>
+                    app.createPullRequest(
+                      {
+                        owner: command.spec.repository.owner,
+                        name: command.spec.repository.name,
+                        defaultBranch: command.spec.base,
+                      },
+                      {
+                        branch: command.spec.branch,
+                        title: command.spec.title,
+                        body: command.spec.body,
+                      },
+                    ),
                   ),
                   Effect.provide(githubLayer),
                   Effect.map((pull) => ({
@@ -224,7 +233,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                       // The conversation this task opened, so feedback there can attach to it.
                       source: {
                         platform: "github" as const,
-                        installationId: InstallationId.make(github.installationId),
+                        installationId: InstallationId.make(command.spec.repository.installationId),
                         scope: PlatformId.make(
                           `${command.spec.repository.owner}/${command.spec.repository.name}`,
                         ),
@@ -499,7 +508,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ),
             prepareEnvironment: (
               environment: Environment | null,
-              repository: RepositoryRef | null,
+              repositories: ReadonlyArray<RepositoryRef>,
             ) =>
               gate(
                 Effect.gen(function* () {
@@ -509,7 +518,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   if (!task || task.closedAt !== null)
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
                   if (task.mode === "operator") {
-                    yield* OperatorControl.prepare(environment, repository, now).pipe(
+                    yield* OperatorControl.prepare(environment, repositories, now).pipe(
                       Effect.provideContext(services),
                     );
                   } else if (task.mode === "readiness") {

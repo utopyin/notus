@@ -1,4 +1,5 @@
 import { Identities } from "@notus/accounts/identities";
+import { RepositoryRef } from "@notus/executions/types";
 import { D1 } from "@notus/cloudflare/d1";
 import { InstallationId, type InstallationRef, PlatformId } from "@notus/platform/ids";
 import { Platforms } from "@notus/platforms/registry";
@@ -34,6 +35,14 @@ import {
 export interface Interface {
   /** The workspace that installed a platform, or null when nobody asked for its events. */
   readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, IntakeError>;
+  /**
+   * The repositories a task started by this initiator may work in: the workspace's covered GitHub
+   * repositories, each reached through its installation, with branches under the initiator's login.
+   */
+  readonly repositories: (
+    workspaceId: string,
+    initiatorId: string,
+  ) => Effect.Effect<ReadonlyArray<RepositoryRef>, IntakeError>;
   /** Whether the workspace covers the source's scope; ingress asks before spending provider calls. */
   readonly covers: (workspaceId: string, source: Source) => Effect.Effect<boolean, IntakeError>;
   readonly admit: (input: Input) => Effect.Effect<Receipt, IntakeError | Conflict | Unauthorized>;
@@ -337,6 +346,23 @@ export const layerNoDeps = Layer.effect(
     const workspaceOf = Effect.fn("Inbox.workspaceOf")(function* (ref: InstallationRef) {
       return yield* access.workspaceOf(ref).pipe(storageError("workspaceOf"));
     });
+    const repositories = Effect.fn("Inbox.repositories")(function* (
+      workspaceId: string,
+      initiatorId: string,
+    ) {
+      const covered = yield* access.repositories(workspaceId).pipe(storageError("repositories"));
+      const login = yield* identities.githubLogin(initiatorId).pipe(storageError("repositories"));
+      // Without a GitHub login to attribute to, branches live under a neutral namespace.
+      const branchPrefix = login?.toLowerCase() ?? "notus";
+      return yield* Schema.decodeEffect(Schema.Array(RepositoryRef))(
+        covered.flatMap((repository) => {
+          const [owner, name] = repository.fullName.split("/");
+          return owner && name
+            ? [{ owner, name, installationId: repository.installationId, branchPrefix }]
+            : [];
+        }),
+      ).pipe(storageError("repositories"));
+    });
     const covers = Effect.fn("Inbox.covers")(function* (workspaceId: string, source: Source) {
       return yield* access.authorizeSource(workspaceId, source).pipe(
         Effect.as(true),
@@ -373,6 +399,7 @@ export const layerNoDeps = Layer.effect(
       // Only host administrator code calls this. Identity conflicts stop before access is granted.
       yield* identities.seedFixture({
         userId: fixture.canonicalUserId,
+        ...(fixture.githubLogin === undefined ? {} : { githubLogin: fixture.githubLogin }),
         actor: {
           platform: "slack",
           installationId: InstallationId.make(fixture.teamId),
@@ -404,6 +431,7 @@ export const layerNoDeps = Layer.effect(
     }, storageError("snapshot"));
     return Service.of({
       workspaceOf,
+      repositories,
       covers,
       admit,
       routeOf,

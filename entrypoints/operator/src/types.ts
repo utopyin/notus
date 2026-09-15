@@ -24,11 +24,13 @@ export const Briefing = Schema.Struct({
       lastReadyAt: Schema.NullOr(Millis),
     }),
   ),
-  /** The task's target repository as owner/name, or null when the workspace configured none. */
+  /** The repositories the workspace covers, as owner/name; the task works in one of them. */
+  repositories: Schema.Array(Schema.NonEmptyString),
+  /** The repository the task works in, once chosen; the default branch is known once checked out. */
   repository: Schema.NullOr(
     Schema.Struct({
       fullName: Schema.NonEmptyString,
-      defaultBranch: Schema.NonEmptyString,
+      defaultBranch: Schema.NullOr(Schema.NonEmptyString),
       branchPrefix: Schema.NonEmptyString,
       checkoutPath: Schema.NullOr(Schema.NonEmptyString),
     }),

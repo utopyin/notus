@@ -64,7 +64,7 @@ const gitEnv = (credential: string | null) =>
         GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${btoa(`x-access-token:${credential}`)}`,
       };
 
-/** Clone at the default branch, or report an existing checkout, then read HEAD. */
+/** Clone the remote's default branch, or report an existing checkout, then read the branch and HEAD. */
 const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout" }>) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
@@ -72,8 +72,9 @@ const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout"
     "set -eu",
     `path=${quote(spec.path)}`,
     `if [ -d "$path/.git" ]; then echo "existing checkout" >&2; else`,
-    `  git clone --quiet --branch ${quote(spec.repository.defaultBranch)} --single-branch --depth 50 ${quote(url)} "$path"`,
+    `  git clone --quiet --single-branch --depth 50 ${quote(url)} "$path"`,
     "fi",
+    `git -C "$path" rev-parse --abbrev-ref HEAD`,
     `git -C "$path" rev-parse HEAD`,
   ].join("\n");
 };
@@ -138,7 +139,8 @@ const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => 
     // Commit only new changes. A commit left by an earlier failed push is still published, so a
     // retry after a transient failure works instead of stopping at "nothing to commit".
     `if ! git diff --cached --quiet; then git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}; fi`,
-    `base=$(git rev-parse --verify --quiet ${quote(`refs/remotes/origin/${spec.repository.defaultBranch}`)} || true)`,
+    // The clone's remote HEAD is the default branch; a push that adds nothing to it publishes nothing.
+    `base=$(git rev-parse --verify --quiet refs/remotes/origin/HEAD || true)`,
     `if [ -n "$base" ] && [ "$(git rev-parse HEAD)" = "$base" ]; then echo "nothing to publish" >&2; exit 4; fi`,
     `git push --quiet ${quote(url)} ${quote(`HEAD:refs/heads/${spec.branch}`)}`,
     "git rev-parse HEAD",
@@ -262,10 +264,13 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
       if (spec.kind === "specialist")
         return exit === 0 ? { ...base, specialist: { report: stdout.text } } : result;
       if (spec.kind === "shell" || exit !== 0) return result;
-      const headSha = stdout.text.trim().split("\n").at(-1) ?? "";
+      const lines = stdout.text.trim().split("\n");
+      const headSha = lines.at(-1) ?? "";
       if (!/^[0-9a-f]{40}$/.test(headSha)) return result;
+      // The checkout script prints the branch before HEAD.
+      const branch = lines.at(-2) ?? "";
       return spec.kind === "checkout"
-        ? { ...base, checkout: { path: spec.path, branch: spec.repository.defaultBranch, headSha } }
+        ? { ...base, checkout: { path: spec.path, branch, headSha } }
         : { ...base, push: { branch: spec.branch, headSha } };
     }),
   ).pipe(

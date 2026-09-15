@@ -7,6 +7,8 @@ export const users = sqliteTable("account_users", {
   email: text(),
   image: text(),
   updatedAt: integer(),
+  /** The login GitHub knows the user by, once they signed in with it; task branches live under it. */
+  githubLogin: text(),
 });
 
 /** Administrator-provisioned fixture identities, not OAuth ownership evidence. */

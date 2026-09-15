@@ -78,6 +78,8 @@ export const makeAuth = (dashboard: DashboardConfig) =>
     user: {
       additionalFields: {
         slackTeamId: { type: "string", required: false, input: false },
+        /** The login GitHub knows the user by; task branches are attributed under it. */
+        githubLogin: { type: "string", required: false, input: false },
       },
     },
     account: {
@@ -100,6 +102,7 @@ export const makeAuth = (dashboard: DashboardConfig) =>
               // empty. GitHub's no-reply address stands in; it is unique and not used for mail.
               mapProfileToUser: (profile) => ({
                 email: profile.email ?? `${profile.id}+${profile.login}@users.noreply.github.com`,
+                githubLogin: profile.login,
               }),
             },
           },

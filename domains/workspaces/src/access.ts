@@ -1,7 +1,7 @@
 import { D1 } from "@notus/cloudflare/d1";
 import type { InstallationRef } from "@notus/platform/ids";
 import { key, Source } from "@notus/platform/source";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -14,6 +14,13 @@ import { Fixture, StartGrant } from "./types";
 export interface Interface {
   /** The workspace that installed a platform, if any; events from anywhere else are nobody's. */
   readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, AccessError>;
+  /** The GitHub repositories the workspace covers, with the installation each is reached through. */
+  readonly repositories: (
+    workspaceId: string,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly installationId: string; readonly fullName: string }>,
+    AccessError
+  >;
   readonly authorizeSource: (
     workspaceId: string,
     source: Source,
@@ -50,6 +57,17 @@ export const layerNoDeps = Layer.effect(
         return rows[0]?.workspaceId ?? null;
       },
       Effect.mapError((cause) => new AccessError({ operation: "workspaceOf", cause })),
+    );
+    const repositories = Effect.fn("Access.repositories")(
+      function* (workspaceId: string) {
+        const rows = yield* store.db
+          .select()
+          .from(scopes)
+          .where(and(eq(scopes.workspaceId, workspaceId), eq(scopes.platform, "github")))
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))));
+        return rows.map((row) => ({ installationId: row.installationId, fullName: row.scope }));
+      },
+      Effect.mapError((cause) => new AccessError({ operation: "repositories", cause })),
     );
     const authorizeSource = Effect.fn("Access.authorizeSource")(function* (
       workspaceId: string,
@@ -133,7 +151,7 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new AccessError({ operation: "seedFixture", cause })),
     );
-    return Service.of({ workspaceOf, authorizeSource, authorizeStart, seedFixture });
+    return Service.of({ workspaceOf, repositories, authorizeSource, authorizeStart, seedFixture });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

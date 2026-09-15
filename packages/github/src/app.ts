@@ -41,9 +41,9 @@ export interface Bound {
   /** Metadata read over the whole installation: the repositories it reaches, archived ones left out. */
   readonly repositories: Effect.Effect<ReadonlyArray<InstallationRepository>, AppError>;
   /** Contents read and Metadata read: clone and fetch. */
-  readonly readToken: (repository: Repository) => Effect.Effect<InstallationToken, AppError>;
+  readonly readToken: (repository: RepositoryName) => Effect.Effect<InstallationToken, AppError>;
   /** Contents write and Metadata read: one push to a notus/ branch. */
-  readonly pushToken: (repository: Repository) => Effect.Effect<InstallationToken, AppError>;
+  readonly pushToken: (repository: RepositoryName) => Effect.Effect<InstallationToken, AppError>;
   /** Pull requests write and Metadata read, executed here: open a pull request for a notus/ branch. */
   readonly createPullRequest: (
     repository: Repository,

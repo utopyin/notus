@@ -8,6 +8,8 @@ export const Fixture = Schema.Struct({
   teamId: Schema.NonEmptyString,
   channelId: Schema.NonEmptyString,
   externalUserId: Schema.NonEmptyString,
+  /** The fixture user's GitHub login; its tasks push under this branch namespace. */
+  githubLogin: Schema.optionalKey(Schema.NonEmptyString),
   slack: Schema.optionalKey(
     Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
   ),

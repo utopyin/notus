@@ -20,6 +20,8 @@ export interface Interface {
    * sign-in; otherwise the sign-in's own ID becomes a canonical user. Never remaps an identity.
    */
   readonly adopt: (login: Login) => Effect.Effect<string, IdentityError>;
+  /** The GitHub login a user is known by, from sign-in or the fixture seed; null when neither gave one. */
+  readonly githubLogin: (userId: string) => Effect.Effect<string | null, IdentityError>;
   /** Display profiles of canonical users, for member lists. Users never seen signing in are absent. */
   readonly profiles: (
     userIds: ReadonlyArray<string>,
@@ -51,12 +53,13 @@ export const layerNoDeps = Layer.effect(
       const fixture = yield* Schema.decodeEffect(Fixture)(value).pipe(
         Effect.mapError((cause) => new IdentityError({ operation: "seedFixture", cause })),
       );
-      const { actor, userId } = fixture;
+      const { actor, userId, githubLogin } = fixture;
       const identityKey = key(actor.platform, actor.installationId, actor.externalId);
       // Never silently remap an existing identity. Concurrent seeds reload the winner.
       yield* store
         .batch([
-          sql`INSERT INTO account_users (id) VALUES (${userId}) ON CONFLICT DO NOTHING`,
+          sql`INSERT INTO account_users (id, githubLogin) VALUES (${userId}, ${githubLogin ?? null})
+          ON CONFLICT(id) DO UPDATE SET githubLogin = COALESCE(githubLogin, excluded.githubLogin)`,
           sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
           VALUES (${identityKey}, ${actor.platform}, ${actor.installationId}, ${actor.externalId}, ${userId}, 'admin-fixture')
           ON CONFLICT DO NOTHING`,
@@ -97,7 +100,8 @@ export const layerNoDeps = Layer.effect(
         // The latest sign-in's profile is what member lists show.
         yield* store.batch([
           sql`UPDATE account_users SET name = ${login.profile.name}, email = ${login.profile.email},
-          image = ${login.profile.image}, updatedAt = ${login.now} WHERE id = ${owner}`,
+          image = ${login.profile.image}, githubLogin = COALESCE(${login.profile.githubLogin}, githubLogin),
+          updatedAt = ${login.now} WHERE id = ${owner}`,
         ]);
         for (const actor of login.actors)
           yield* store.batch([
@@ -110,6 +114,16 @@ export const layerNoDeps = Layer.effect(
       Effect.mapError((cause) => new IdentityError({ operation: "adopt", cause })),
     );
     const UserRow = createSelectSchema(users);
+    const githubLogin = Effect.fn("Identities.githubLogin")(
+      function* (userId: string) {
+        const rows = yield* store.db
+          .select({ githubLogin: users.githubLogin })
+          .from(users)
+          .where(eq(users.id, userId));
+        return rows[0]?.githubLogin ?? null;
+      },
+      Effect.mapError((cause) => new IdentityError({ operation: "githubLogin", cause })),
+    );
     const profiles = Effect.fn("Identities.profiles")(
       function* (userIds: ReadonlyArray<string>) {
         const result = new Map<string, Profile>();
@@ -121,12 +135,17 @@ export const layerNoDeps = Layer.effect(
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(UserRow))));
         for (const row of rows)
           if (row.name !== null && row.email !== null)
-            result.set(row.id, { name: row.name, email: row.email, image: row.image });
+            result.set(row.id, {
+              name: row.name,
+              email: row.email,
+              image: row.image,
+              githubLogin: row.githubLogin,
+            });
         return result;
       },
       Effect.mapError((cause) => new IdentityError({ operation: "profiles", cause })),
     );
-    return Service.of({ resolve, seedFixture, adopt, profiles });
+    return Service.of({ resolve, seedFixture, adopt, githubLogin, profiles });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

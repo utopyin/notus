@@ -30,7 +30,7 @@ import {
   dashboardConfig,
   deploymentConfig,
   githubConfig,
-  repositoryConfig,
+  fixtureRepositoryConfig,
   runtimeConfig,
   webhookConfig,
 } from "./config";
@@ -53,7 +53,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
   Effect.gen(function* () {
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
-    const repository = yield* repositoryConfig.pipe(Effect.orDie);
+    const fixtureRepository = yield* fixtureRepositoryConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
@@ -91,11 +91,14 @@ export default class Api extends Cloudflare.Worker<Api>()(
           yield* inbox.seedFixture({
             ...config,
             slack: { botToken: Redacted.value(config.token), botUserId: config.botUserId },
-            ...(github && repository
+            ...(fixtureRepository.githubLogin
+              ? { githubLogin: fixtureRepository.githubLogin }
+              : {}),
+            ...(github && fixtureRepository.fullName
               ? {
                   github: {
                     installationId: github.installationId,
-                    fullName: `${repository.owner}/${repository.name}`,
+                    fullName: fixtureRepository.fullName,
                   },
                 }
               : {}),
@@ -113,9 +116,14 @@ export default class Api extends Cloudflare.Worker<Api>()(
             if (!result.ok) return yield* Effect.fail("task_admission_rejected");
             if (result.needsEnvironment) {
               const environment = yield* environments.get(command.reservation.workspaceId);
+              // What the workspace covers now; the task keeps this list and chooses from it.
+              const repositories = yield* inbox.repositories(
+                command.reservation.workspaceId,
+                command.reservation.initiatorId,
+              );
               const prepared = yield* task.prepareEnvironment(
                 Option.getOrNull(environment),
-                repository,
+                repositories,
               );
               if (!prepared.ok) return yield* Effect.fail("task_configuration_rejected");
             }
@@ -239,6 +247,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 name: session.user.name,
                 email: session.user.email,
                 image: session.user.image ?? null,
+                githubLogin: session.user.githubLogin ?? null,
               },
               now,
             }),

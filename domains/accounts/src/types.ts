@@ -1,7 +1,12 @@
 import { Actor } from "@notus/platform/source";
 import * as Schema from "effect/Schema";
 
-export const Fixture = Schema.Struct({ actor: Actor, userId: Schema.NonEmptyString });
+export const Fixture = Schema.Struct({
+  actor: Actor,
+  userId: Schema.NonEmptyString,
+  /** The fixture user's GitHub login, so its tasks push under a real branch namespace. */
+  githubLogin: Schema.optionalKey(Schema.NonEmptyString),
+});
 export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
 
 /** A dashboard sign-in and the identities its providers verified. */
@@ -9,6 +14,8 @@ export const Profile = Schema.Struct({
   name: Schema.String,
   email: Schema.String,
   image: Schema.NullOr(Schema.String),
+  /** Known once the user signed in with GitHub; a Slack-only sign-in leaves the stored one alone. */
+  githubLogin: Schema.NullOr(Schema.String),
 });
 export interface Profile extends Schema.Schema.Type<typeof Profile> {}
 export const Login = Schema.Struct({

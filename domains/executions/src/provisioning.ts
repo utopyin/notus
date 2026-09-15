@@ -157,22 +157,43 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
     return existing ? yield* Schema.decodeEffect(Environment)(existing.environment) : null;
   }).pipe(Effect.withSpan("Provisioning.captured"));
-  const captureRepository = Effect.fn("Provisioning.captureRepository")(function* (
-    input: RepositoryRef | null,
+  const Candidates = Schema.Array(RepositoryRef);
+  const captureRepositories = Effect.fn("Provisioning.captureRepositories")(function* (
+    input: ReadonlyArray<RepositoryRef>,
     now: number,
   ) {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
-    if (existing) return yield* Schema.decodeEffect(RepositoryRef)(existing.repository);
-    if (input === null) return null;
-    const repository = yield* decodeInput(RepositoryRef, input);
-    yield* db.insert(repositories).values({ singleton: 1, repository, capturedAt: now });
-    return repository;
+    if (existing) return yield* Schema.decodeEffect(Candidates)(existing.candidates);
+    const candidates = yield* decodeInput(Candidates, input);
+    // One candidate needs no choice.
+    yield* db.insert(repositories).values({
+      singleton: 1,
+      candidates,
+      repository: candidates.length === 1 ? candidates[0] : null,
+      capturedAt: now,
+    });
+    return candidates;
   });
+  const candidates = Effect.gen(function* () {
+    const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
+    return existing ? yield* Schema.decodeEffect(Candidates)(existing.candidates) : [];
+  }).pipe(Effect.withSpan("Provisioning.candidates"));
   const repository = Effect.gen(function* () {
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
-    return existing ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository) : null;
+    return existing?.repository
+      ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository)
+      : null;
   }).pipe(Effect.withSpan("Provisioning.repository"));
+  /** Picks a candidate by "owner/name"; the choice is final, a second call returns the first. */
+  const selectRepository = Effect.fn("Provisioning.selectRepository")(function* (fullName: string) {
+    const chosen = yield* repository;
+    if (chosen) return chosen;
+    const found = (yield* candidates).find((c) => `${c.owner}/${c.name}` === fullName);
+    if (!found) return null;
+    yield* db.update(repositories).set({ repository: found }).where(eq(repositories.singleton, 1));
+    return found;
+  });
   const fresh = (params: Initialize, bootstrap: Bootstrap, now: number): ProvisioningState => ({
     bootstrap,
     environment: params.environment,
@@ -699,8 +720,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     initialize,
     capture,
     captured,
-    captureRepository,
+    captureRepositories,
+    candidates,
     repository,
+    selectRepository,
     get,
     current,
     claim,
@@ -738,11 +761,15 @@ export interface Interface {
     now: number,
   ) => Effect.Effect<Environment | null, ProvisioningFailure>;
   readonly captured: Effect.Effect<Environment | null, ProvisioningFailure>;
-  readonly captureRepository: (
-    repository: RepositoryRef | null,
+  readonly captureRepositories: (
+    repositories: ReadonlyArray<RepositoryRef>,
     now: number,
-  ) => Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
+  ) => Effect.Effect<ReadonlyArray<RepositoryRef>, ProvisioningFailure>;
+  readonly candidates: Effect.Effect<ReadonlyArray<RepositoryRef>, ProvisioningFailure>;
   readonly repository: Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
+  readonly selectRepository: (
+    fullName: string,
+  ) => Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
   readonly get: (
     attemptId: string,
   ) => Effect.Effect<ProvisioningStatus | null, ProvisioningFailure>;
@@ -797,10 +824,14 @@ export const layerNoDeps = Layer.effect(
         atomic((q) => q.capture(environment, now)),
       ),
       captured: atomic((q) => q.captured),
-      captureRepository: Effect.fn("Provisioning.captureRepositoryAtomic")((repository, now) =>
-        atomic((q) => q.captureRepository(repository, now)),
+      captureRepositories: Effect.fn("Provisioning.captureRepositoriesAtomic")(
+        (repositories, now) => atomic((q) => q.captureRepositories(repositories, now)),
       ),
+      candidates: atomic((q) => q.candidates),
       repository: atomic((q) => q.repository),
+      selectRepository: Effect.fn("Provisioning.selectRepositoryAtomic")((fullName) =>
+        atomic((q) => q.selectRepository(fullName)),
+      ),
       get: Effect.fn("Provisioning.getAtomic")((id) => atomic((q) => q.get(id))),
       current: atomic((q) => q.current),
       claim: Effect.fn("Provisioning.claimAtomic")((now) => atomic((q) => q.claim(now))),

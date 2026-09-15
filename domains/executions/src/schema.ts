@@ -233,10 +233,14 @@ export const polls = sqliteTable("execution_polls", {
   polledAt: integer().notNull(),
 });
 
-/** The repository the task targets, captured once at admission from workspace configuration. */
+/**
+ * The repositories the workspace covered when the task was admitted, and the one the task works
+ * in once chosen: the only candidate, or the operator's pick at checkout.
+ */
 export const repositories = sqliteTable("execution_repository", {
   singleton: integer().primaryKey().$type<1>(),
-  repository: text({ mode: "json" }).$type<RepositoryRef>().notNull(),
+  candidates: text({ mode: "json" }).$type<ReadonlyArray<RepositoryRef>>().notNull(),
+  repository: text({ mode: "json" }).$type<RepositoryRef>(),
   capturedAt: integer().notNull(),
 });
 

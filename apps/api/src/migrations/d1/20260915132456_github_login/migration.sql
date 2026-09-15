@@ -1,0 +1,1 @@
+ALTER TABLE `account_users` ADD `githubLogin` text;

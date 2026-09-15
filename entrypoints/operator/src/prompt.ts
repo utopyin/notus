@@ -13,8 +13,14 @@ const instructions = (briefing: Briefing): string => {
         }).`;
   const repository =
     briefing.repository === null
-      ? "No repository is configured for this task."
-      : `The task's repository is ${briefing.repository.fullName} (default branch ${briefing.repository.defaultBranch}; task branches are named ${briefing.repository.branchPrefix}/<slug>)${
+      ? briefing.repositories.length === 0
+        ? "The workspace covers no repository, so no repository work is possible for this task."
+        : `The workspace covers ${briefing.repositories.join(", ")}; name one when checking out.`
+      : `The task's repository is ${briefing.repository.fullName} (${
+          briefing.repository.defaultBranch === null
+            ? "default branch known once checked out"
+            : `default branch ${briefing.repository.defaultBranch}`
+        }; task branches are named ${briefing.repository.branchPrefix}/<slug>)${
           briefing.repository.checkoutPath === null
             ? "; it is not checked out on the dev box yet."
             : `, checked out at ${briefing.repository.checkoutPath}.`

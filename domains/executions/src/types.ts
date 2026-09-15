@@ -202,11 +202,15 @@ export const WorkspacePath = Schema.String.check(
   Schema.isPattern(/^\/workspaces(\/[A-Za-z0-9._-]{1,100})?$/),
 );
 const Timeout = Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 }));
-/** The repository a task targets, captured when the task is admitted. */
+/**
+ * A repository a task may work in: one the workspace covers through a GitHub installation. The
+ * default branch is whatever the clone lands on; nothing configures it.
+ */
 export const RepositoryRef = Schema.Struct({
   owner: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
   name: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
-  defaultBranch: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._/-]{1,200}$/)),
+  /** The App installation that reaches it; every token for it is minted there. */
+  installationId: Schema.String.check(Schema.isPattern(/^\d{1,20}$/)),
   /** The initiator's login; every branch the task pushes lives under it. */
   branchPrefix: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,38}$/)),
 });
@@ -267,6 +271,8 @@ export const CommandSpec = Schema.Union([
     kind: Schema.Literal("pull-request"),
     repository: RepositoryRef,
     branch: TaskBranch,
+    /** The repository's default branch, as the checkout reported it. */
+    base: TaskBranch,
     title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
     body: Schema.String.check(Schema.isMaxLength(60_000)),
     timeoutMs: Timeout,

@@ -61,9 +61,15 @@ export interface CheckoutOutcome extends Schema.Schema.Type<typeof CheckoutOutco
 
 export const CheckoutRepository = Tool.make("checkout_repository", {
   description:
-    "Clone this task's repository, at its default branch, onto the dev box under /workspaces and return the checkout path and HEAD commit. Read-only: nothing can be pushed. Requires an existing dev box. Calling it again returns the existing checkout.",
+    "Clone the task's repository, at its default branch, onto the dev box under /workspaces and return the checkout path, the branch and the HEAD commit. Read-only: nothing can be pushed. Requires an existing dev box. When the workspace covers several repositories, name the one to work in; the choice is final for this task. Calling it again returns the existing checkout.",
   parameters: Schema.Struct({
     purpose: Schema.String.annotate({ description: "Why the task needs the repository now." }),
+    repository: Schema.optionalKey(
+      Schema.String.annotate({
+        description:
+          "owner/name of the repository to work in; required only when several are covered.",
+      }),
+    ),
   }),
   success: CheckoutOutcome,
 });
