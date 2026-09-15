@@ -31,7 +31,6 @@ function Platforms() {
       {PLATFORMS.map((platform) => {
         const slots = slotsFor(platform);
         const installation = view.installations.find((i) => i.platform === platform) ?? null;
-        const scopes = view.scopes.filter((s) => s.platform === platform).length;
         const to = {
           to: "/$slug/platforms/$platform" as const,
           params: { slug: current.slug, platform },
@@ -66,12 +65,7 @@ function Platforms() {
             <CardContent>
               <CardDescription>{slots.description}</CardDescription>
             </CardContent>
-            <CardFooter className="items-end justify-between px-4 py-2">
-              <span className="text-muted-foreground text-xs">
-                {installation
-                  ? `${scopes} ${scopes === 1 ? installation.scopeNoun.one : installation.scopeNoun.many} covered`
-                  : ""}
-              </span>
+            <CardFooter className="justify-end border-0 bg-transparent p-0 px-4">
               <Button variant="outline" size="sm" className="relative" render={<Link {...to} />}>
                 <IconSettingsFilled className="size-4" />
                 Configure
