@@ -194,6 +194,8 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const [message, setMessage] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  // Between the issuer confirming and the page reloading its connections.
+  const [finishing, setFinishing] = useState(false);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -207,10 +209,12 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
       queryFn: async () => {
         const result = await pollChatGpt();
         if (result.ok && result.value.state !== "pending") {
+          setFinishing(result.value.state === "linked");
           setStarting(false);
           if (result.value.state === "expired")
             setMessage("The code expired before it was used; start again.");
           await router.invalidate();
+          setFinishing(false);
         }
         return result;
       },
@@ -277,11 +281,15 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={starting || requesting}
+                disabled={starting || requesting || finishing}
                 onClick={connectChatGpt}
               >
                 <IconLink className="size-4" />
-                {requesting ? "Requesting a code…" : "Sign in with ChatGPT"}
+                {finishing
+                  ? "Connecting…"
+                  : requesting
+                    ? "Requesting a code…"
+                    : "Sign in with ChatGPT"}
               </Button>
             ) : null}
           </div>
