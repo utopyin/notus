@@ -1,8 +1,8 @@
-import { GithubAdapter } from "@notus/github/adapter";
+import { GithubAdapter } from "@notus/sources/github";
 import { App as GithubApp } from "@notus/github/app";
-import { SlackAdapter } from "@notus/slack/adapter";
+import { SlackAdapter } from "@notus/sources/slack";
 import { Slack } from "@notus/slack/service";
-import { Platforms } from "@notus/sources/registry";
+import { Platforms } from "@notus/platform/registry";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";

@@ -1,8 +1,8 @@
-import type { Admission } from "@notus/sources/source";
+import type { Admission } from "@notus/platform/source";
 import { Attempts } from "@notus/executions/attempts";
 import type { Outcome } from "@notus/executions/schema";
 import type { Observation } from "@notus/executions/types";
-import { Platforms } from "@notus/sources/registry";
+import { Platforms } from "@notus/platform/registry";
 import { State } from "@notus/tasks/state";
 import type { DeliveryClaim, DeliveryOutcome } from "@notus/tasks/types";
 import * as Clock from "effect/Clock";

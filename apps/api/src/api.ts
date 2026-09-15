@@ -1,10 +1,10 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
-import { InstallationId, PlatformId } from "@notus/sources/ids";
-import { Platform } from "@notus/sources/platform";
-import { Platforms } from "@notus/sources/registry";
-import type { Actor } from "@notus/sources/source";
+import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { Platform } from "@notus/platform/platform";
+import { Platforms } from "@notus/platform/registry";
+import type { Actor } from "@notus/platform/source";
 import type { ChannelSummary } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";

@@ -1,13 +1,13 @@
 import type { Conflict, IntakeError, Unauthorized } from "@notus/control/errors";
-import type { InstallationRef } from "@notus/sources/ids";
-import type { Platform } from "@notus/sources/platform";
-import { Platforms } from "@notus/sources/registry";
+import type { InstallationRef } from "@notus/platform/ids";
+import type { Platform } from "@notus/platform/platform";
+import { Platforms } from "@notus/platform/registry";
 import {
   conversationKeyOf,
   type Input,
   type Reservation,
   type Source,
-} from "@notus/sources/source";
+} from "@notus/platform/source";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";

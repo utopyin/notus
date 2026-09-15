@@ -1,15 +1,15 @@
-import type { InstallationSurfaces, PlatformAdapter, ReplyHandle } from "@notus/sources/adapter";
-import { SLACK_DESCRIPTOR } from "@notus/sources/descriptors/slack";
-import { IngressError, InstallationNotFound, SourceError } from "@notus/sources/errors";
-import type { InstallationRef } from "@notus/sources/ids";
-import type { IngressRequest, Normalized } from "@notus/sources/ingress";
-import { key, Received, ReplyTarget, Scope, Source } from "@notus/sources/source";
+import type { InstallationSurfaces, PlatformAdapter, ReplyHandle } from "@notus/platform/adapter";
+import { SLACK_DESCRIPTOR } from "@notus/platform/descriptors/slack";
+import { IngressError, InstallationNotFound, SourceError } from "@notus/platform/errors";
+import type { InstallationRef } from "@notus/platform/ids";
+import type { IngressRequest, Normalized } from "@notus/platform/ingress";
+import { key, Received, ReplyTarget, Scope, Source } from "@notus/platform/source";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as Events from "./events";
-import { Slack } from "./service";
+import * as Events from "@notus/slack/events";
+import { Slack } from "@notus/slack/service";
 
 /** The one team this deployment is installed in, until installations are workspace data. */
 export class Configuration extends Context.Service<
@@ -171,4 +171,4 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | Slac
     };
   });
 
-export * as SlackAdapter from "./adapter";
+export * as SlackAdapter from "./slack";

@@ -1,6 +1,6 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { InstallationId, PlatformId } from "@notus/sources/ids";
-import type { Admission, Source } from "@notus/sources/source";
+import { InstallationId, PlatformId } from "@notus/platform/ids";
+import type { Admission, Source } from "@notus/platform/source";
 import * as Control from "@notus/control/task";
 import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";

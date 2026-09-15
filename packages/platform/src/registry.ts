@@ -29,12 +29,12 @@ export interface Interface {
     ref: InstallationRef,
   ) => Effect.Effect<InstallationPort, PlatformNotRegisteredError | InstallationNotFound>;
 }
-export class Service extends Context.Service<Service, Interface>()("@notus/sources/Platforms") {}
+export class Service extends Context.Service<Service, Interface>()("@notus/platform/Platforms") {}
 
 type AdapterSet = ReadonlyMap<Platform, PlatformAdapter>;
 /** Reachable only through `layerAdapters`, never yielded directly. */
 class PlatformAdapters extends Context.Service<PlatformAdapters, AdapterSet>()(
-  "@notus/sources/PlatformAdapters",
+  "@notus/platform/PlatformAdapters",
 ) {}
 
 export const layerNoDeps = Layer.effect(

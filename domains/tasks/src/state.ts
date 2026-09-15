@@ -1,5 +1,5 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { Admission, Source, key } from "@notus/sources/source";
+import { Admission, Source, key } from "@notus/platform/source";
 import { digest } from "@notus/executions/types";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import * as Context from "effect/Context";

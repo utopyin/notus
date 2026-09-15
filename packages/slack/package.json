@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@distilled.cloud/slack": "1.0.0-rc.9",
-    "@notus/sources": "workspace:*",
     "effect": "catalog:"
   }
 }

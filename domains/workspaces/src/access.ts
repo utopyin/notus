@@ -1,5 +1,5 @@
 import { D1 } from "@notus/cloudflare/d1";
-import { key, Source } from "@notus/sources/source";
+import { key, Source } from "@notus/platform/source";
 import { eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";

@@ -1,4 +1,4 @@
-import { Input, ReplyTarget, Reservation, Source } from "@notus/sources/source";
+import { Input, ReplyTarget, Reservation, Source } from "@notus/platform/source";
 import { Mode } from "@notus/executions/types";
 import * as Schema from "effect/Schema";
 

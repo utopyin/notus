@@ -9,6 +9,9 @@
     "check:types": "tsc --noEmit"
   },
   "dependencies": {
+    "@notus/github": "workspace:*",
+    "@notus/platform": "workspace:*",
+    "@notus/slack": "workspace:*",
     "effect": "catalog:"
   }
 }

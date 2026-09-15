@@ -12,7 +12,7 @@
     "@notus/cloudflare": "workspace:*",
     "@notus/contracts": "workspace:*",
     "@notus/openai": "workspace:*",
-    "@notus/sources": "workspace:*",
+    "@notus/platform": "workspace:*",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   }

@@ -1,4 +1,4 @@
-import { key, type Admission, type Source } from "@notus/sources/source";
+import { key, type Admission, type Source } from "@notus/platform/source";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";

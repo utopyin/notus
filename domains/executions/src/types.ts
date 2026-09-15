@@ -1,4 +1,4 @@
-import { Source } from "@notus/sources/source";
+import { Source } from "@notus/platform/source";
 import { Environment } from "@notus/workspaces/types";
 import * as Schema from "effect/Schema";
 

@@ -1,18 +1,18 @@
-import type { InstallationSurfaces, PlatformAdapter, ReplyHandle } from "@notus/sources/adapter";
-import { CapabilityNotSupportedError } from "@notus/sources/capabilities";
-import { GITHUB_DESCRIPTOR } from "@notus/sources/descriptors/github";
-import { IngressError, InstallationNotFound, SourceError } from "@notus/sources/errors";
-import type { InstallationRef, PlatformId } from "@notus/sources/ids";
-import type { IngressRequest, Normalized } from "@notus/sources/ingress";
-import { key, Received, ReplyTarget, type Actor } from "@notus/sources/source";
+import type { InstallationSurfaces, PlatformAdapter, ReplyHandle } from "@notus/platform/adapter";
+import { CapabilityNotSupportedError } from "@notus/platform/capabilities";
+import { GITHUB_DESCRIPTOR } from "@notus/platform/descriptors/github";
+import { IngressError, InstallationNotFound, SourceError } from "@notus/platform/errors";
+import type { InstallationRef, PlatformId } from "@notus/platform/ids";
+import type { IngressRequest, Normalized } from "@notus/platform/ingress";
+import { key, Received, ReplyTarget, type Actor } from "@notus/platform/source";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import { App } from "./app";
-import type { AppError } from "./errors";
-import { Role } from "./app";
-import { Webhooks } from "./webhooks";
+import { App } from "@notus/github/app";
+import type { AppError } from "@notus/github/errors";
+import { Role } from "@notus/github/app";
+import { Webhooks } from "@notus/github/webhooks";
 
 /** The one App installation this deployment answers for, until installations are workspace data. */
 export class Configuration extends Context.Service<
@@ -194,4 +194,4 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
     };
   });
 
-export * as GithubAdapter from "./adapter";
+export * as GithubAdapter from "./github";

@@ -9,7 +9,6 @@
     "check:types": "tsc --noEmit"
   },
   "dependencies": {
-    "@notus/sources": "workspace:*",
     "effect": "catalog:"
   }
 }

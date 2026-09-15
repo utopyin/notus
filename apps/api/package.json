@@ -21,6 +21,7 @@
     "@notus/namespace": "workspace:*",
     "@notus/openai": "workspace:*",
     "@notus/operator": "workspace:*",
+    "@notus/platform": "workspace:*",
     "@notus/slack": "workspace:*",
     "@notus/sources": "workspace:*",
     "@notus/stages": "workspace:*",

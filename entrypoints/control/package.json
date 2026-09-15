@@ -14,7 +14,7 @@
     "@notus/contracts": "workspace:*",
     "@notus/executions": "workspace:*",
     "@notus/operator": "workspace:*",
-    "@notus/sources": "workspace:*",
+    "@notus/platform": "workspace:*",
     "@notus/tasks": "workspace:*",
     "@notus/workspaces": "workspace:*",
     "drizzle-orm": "catalog:",
