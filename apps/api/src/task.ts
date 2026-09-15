@@ -1,5 +1,6 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import type { Admission, Source } from "@notus/contracts/source";
+import { InstallationId, PlatformId } from "@notus/sources/ids";
+import type { Admission, Source } from "@notus/sources/source";
 import * as Control from "@notus/control/task";
 import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";
@@ -15,8 +16,6 @@ import { Provisioning } from "@notus/executions/provisioning";
 import { Steps, type StepOutcome } from "@notus/executions/steps";
 import type { CommandSpec, Observation, RepositoryRef } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
-import { Slack } from "@notus/slack/service";
-import { Sources } from "@notus/tasks/sources";
 import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -42,6 +41,7 @@ import {
 import { Connection, agentConnectionId } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
+import { platformsLayer } from "./platforms";
 import migrations from "./migrations/task/migrations";
 
 export class Task extends Cloudflare.DurableObject<Task>()(
@@ -70,29 +70,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         const attemptsLayer = Attempts.layer.pipe(Layer.provide(database));
         const provisioningLayer = Provisioning.layer.pipe(Layer.provide(database));
         const stepsLayer = Steps.layer.pipe(Layer.provide(database));
-        // Replies to pull request feedback need the App; without one they fail closed as unsupported.
-        const githubServiceLayer = github
-          ? GithubApp.layer.pipe(
-              Layer.provide([
-                Layer.succeed(GithubApp.Configuration, github),
-                FetchHttpClient.layer,
-              ]),
-            )
-          : GithubApp.disabled;
         const commandsLayer = Commands.layer.pipe(Layer.provide(database));
-        const sourcesLayer = Sources.layer.pipe(
-          Layer.provide([
-            Layer.succeed(Sources.ConfigurationService, {
-              ...config,
-              ...(github ? { githubInstallationId: github.installationId } : {}),
-            }),
-            githubServiceLayer,
-            Layer.succeed(Slack.Configuration, {
-              token: config.token,
-              allowedChannel: config.channelId,
-            }),
-          ]),
-        );
+        // Deliveries reach their platform through the registry; this host never verifies webhooks.
+        const sourcesLayer = platformsLayer(config, github, null);
         const services = yield* Layer.build(
           Layer.merge(
             Layer.merge(stateLayer, sourcesLayer),
@@ -201,7 +181,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
           readonly id: string;
           readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" }>;
         }) =>
-          githubLayer
+          githubLayer && github
             ? GithubApp.Service.pipe(
                 Effect.flatMap((app) =>
                   app.createPullRequest(command.spec.repository, {
@@ -218,7 +198,20 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   durationMs: 0,
                   timedOut: false,
                   truncated: false,
-                  pullRequest: pull,
+                  pullRequest: {
+                    number: pull.number,
+                    url: pull.url,
+                    branch: pull.branch,
+                    // The conversation this task opened, so feedback there can attach to it.
+                    source: {
+                      platform: "github" as const,
+                      installationId: InstallationId.make(github.installationId),
+                      scope: PlatformId.make(
+                        `${command.spec.repository.owner}/${command.spec.repository.name}`,
+                      ),
+                      conversation: PlatformId.make(String(pull.number)),
+                    },
+                  },
                 })),
                 Effect.catch((error) =>
                   Effect.succeed({
@@ -511,7 +504,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               }),
             ).pipe(Effect.orElseSucceed(() => ({ ok: false as const }))),
           /** Confirms this task opened the pull request and records it as an attached source. */
-          attachPullRequest: (source: Source) =>
+          attachConversation: (source: Source) =>
             gate(
               Effect.gen(function* () {
                 const now = yield* Clock.currentTimeMillis;

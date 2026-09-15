@@ -1,8 +1,8 @@
-import type { Admission } from "@notus/contracts/source";
+import type { Admission } from "@notus/sources/source";
 import { Attempts } from "@notus/executions/attempts";
 import type { Outcome } from "@notus/executions/schema";
 import type { Observation } from "@notus/executions/types";
-import { Sources } from "@notus/tasks/sources";
+import { Platforms } from "@notus/sources/registry";
 import { State } from "@notus/tasks/state";
 import type { DeliveryClaim, DeliveryOutcome } from "@notus/tasks/types";
 import * as Clock from "effect/Clock";
@@ -11,10 +11,11 @@ import * as Effect from "effect/Effect";
 /** Provider work only. The host owns short local gates and durable wakes. */
 export const deliver = Effect.fn("Control.deliver")(function* (
   claim: DeliveryClaim,
-): Effect.fn.Return<DeliveryOutcome, never, Sources.Service> {
-  const sources = yield* Sources.Service;
+): Effect.fn.Return<DeliveryOutcome, never, Platforms.Service> {
+  const platforms = yield* Platforms.Service;
   return yield* Effect.gen(function* () {
-    const handle = yield* sources.resolveReply(claim.target);
+    const port = yield* platforms.forInstallation(claim.target.source);
+    const handle = yield* port.conversations.resolveReply(claim.target);
     if (claim.kind === "answer" && claim.text === null) {
       return { _tag: "Rejected", code: "missing_answer" } as const;
     }
@@ -25,6 +26,9 @@ export const deliver = Effect.fn("Control.deliver")(function* (
   }).pipe(
     Effect.catch((error) =>
       Effect.gen(function* () {
+        // An unregistered platform or unknown installation is a rejection like any other.
+        if (error._tag !== "Sources.SourceError")
+          return { _tag: "Rejected", code: "provider_rejected" } as const;
         switch (error.classification) {
           case "rate-limited":
             return {

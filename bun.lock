@@ -39,6 +39,7 @@
         "@notus/openai": "workspace:*",
         "@notus/operator": "workspace:*",
         "@notus/slack": "workspace:*",
+        "@notus/sources": "workspace:*",
         "@notus/stages": "workspace:*",
         "@notus/tasks": "workspace:*",
         "@notus/workspaces": "workspace:*",
@@ -106,6 +107,7 @@
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/openai": "workspace:*",
+        "@notus/sources": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
@@ -116,6 +118,7 @@
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/namespace": "workspace:*",
+        "@notus/sources": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -127,8 +130,7 @@
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/executions": "workspace:*",
-        "@notus/github": "workspace:*",
-        "@notus/slack": "workspace:*",
+        "@notus/sources": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
@@ -138,6 +140,7 @@
       "dependencies": {
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/sources": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
@@ -150,7 +153,7 @@
         "@notus/contracts": "workspace:*",
         "@notus/executions": "workspace:*",
         "@notus/operator": "workspace:*",
-        "@notus/slack": "workspace:*",
+        "@notus/sources": "workspace:*",
         "@notus/tasks": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -182,6 +185,7 @@
     "packages/github": {
       "name": "@notus/github",
       "dependencies": {
+        "@notus/sources": "workspace:*",
         "effect": "catalog:",
       },
     },
@@ -212,6 +216,13 @@
       "name": "@notus/slack",
       "dependencies": {
         "@distilled.cloud/slack": "1.0.0-rc.9",
+        "@notus/sources": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
+    "packages/sources": {
+      "name": "@notus/sources",
+      "dependencies": {
         "effect": "catalog:",
       },
     },
@@ -688,6 +699,8 @@
     "@notus/scripts": ["@notus/scripts@workspace:scripts"],
 
     "@notus/slack": ["@notus/slack@workspace:packages/slack"],
+
+    "@notus/sources": ["@notus/sources@workspace:packages/sources"],
 
     "@notus/stages": ["@notus/stages@workspace:packages/stages"],
 

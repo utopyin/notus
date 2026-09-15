@@ -33,16 +33,16 @@ Start without domain-to-domain implementation imports. A justified one-way depen
 
 Each capability exposes its default through the [canonical service namespace](../architecture/CONTEXT.md#services-and-layers). The implementation module remains inside that domain and imports the provider package.
 
-| Capability                | Default implementation            | Provider package                |
-| ------------------------- | --------------------------------- | ------------------------------- |
-| `executions/devbox`       | `devbox/namespace`                | `@notus/namespace`              |
-| `executions/sessions`     | `sessions/herdr`                  | `@notus/herdr`                  |
-| `executions/plan-review`  | `plan-review/plannotator`         | `@notus/plannotator`            |
-| `tasks/sources`           | `sources/slack`, `sources/github` | `@notus/slack`, `@notus/github` |
-| `accounts/connections`    | `connections`                     | `@notus/openai`                 |
-| `workspaces/repositories` | `repositories/github` (planned)   | `@notus/github`                 |
-| `tasks/store`             | `store/cloudflare`                | `@notus/cloudflare`             |
-| `tasks/artifacts`         | `artifacts/r2`                    | `@notus/cloudflare`             |
+| Capability                | Default implementation                          | Provider package                |
+| ------------------------- | ----------------------------------------------- | ------------------------------- |
+| `executions/devbox`       | `devbox/namespace`                              | `@notus/namespace`              |
+| `executions/sessions`     | `sessions/herdr`                                | `@notus/herdr`                  |
+| `executions/plan-review`  | `plan-review/plannotator`                       | `@notus/plannotator`            |
+| `sources` (registry)      | `@notus/slack/adapter`, `@notus/github/adapter` | `@notus/slack`, `@notus/github` |
+| `accounts/connections`    | `connections`                                   | `@notus/openai`                 |
+| `workspaces/repositories` | `repositories/github` (planned)                 | `@notus/github`                 |
+| `tasks/store`             | `store/cloudflare`                              | `@notus/cloudflare`             |
+| `tasks/artifacts`         | `artifacts/r2`                                  | `@notus/cloudflare`             |
 
 Reuse Effect's neutral `LanguageModel` for inference. `@notus/openai` exposes the subscription-backend `LanguageModel` layer over a caller-supplied `HttpClient`; `apps/api` supplies the broker transport, so the model layer never sees a token. Connection storage and refresh policy stay in `accounts/connections`.
 

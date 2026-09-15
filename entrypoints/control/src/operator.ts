@@ -1,4 +1,4 @@
-import { key, type Admission, type Source } from "@notus/contracts/source";
+import { key, type Admission, type Source } from "@notus/sources/source";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
@@ -24,6 +24,7 @@ import { State } from "@notus/tasks/state";
 import type { Environment } from "@notus/workspaces/types";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { acceptOutcome } from "./task";
 
@@ -429,43 +430,21 @@ const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: n
   return count;
 });
 
-const PullAddress = Schema.fromJsonString(
-  Schema.Tuple([
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
-    Schema.String.check(Schema.isPattern(/^[1-9]\d{0,9}$/)),
-  ]),
-);
-
 /**
- * Confirms this task opened the pull request before any feedback routes to it. A marker in the
- * PR body is only a hint: without a completed pull-request action for that number, nothing attaches.
+ * Confirms this task opened the conversation before any feedback routes to it. A marker in a
+ * pull request body is only a hint: without a completed action that opened exactly this
+ * conversation, nothing attaches.
  */
 export const attach = Effect.fn("OperatorControl.attach")(function* (source: Source, now: number) {
   const state = yield* State.Service;
-  const provisioning = yield* Provisioning.Service;
   const commands = yield* Commands.Service;
-  if (source.kind !== "github") return null;
-  const address = yield* Schema.decodeEffect(PullAddress)(source.conversationId).pipe(
-    Effect.option,
-  );
-  if (address._tag === "None") return null;
-  const [owner, name, number] = address.value;
-  const repository = yield* provisioning.repository;
   const task = (yield* state.snapshot).task;
-  if (
-    !repository ||
-    !task ||
-    task.closedAt !== null ||
-    repository.owner !== owner ||
-    repository.name !== name
-  )
-    return null;
+  if (!task || task.closedAt !== null) return null;
   const opened = (yield* commands.snapshot).find(
     (row) =>
-      row.spec.kind === "pull-request" &&
       row.status === "done" &&
-      row.result?.pullRequest?.number === Number(number),
+      row.result?.pullRequest !== undefined &&
+      Equal.equals(row.result.pullRequest.source, source),
   );
   if (!opened) return null;
   yield* state.attach(source, now);
@@ -474,7 +453,7 @@ export const attach = Effect.fn("OperatorControl.attach")(function* (source: Sou
     taskId: task.id,
     workspaceId: task.reservation.workspaceId,
     initiatorId: task.reservation.initiatorId,
-    startInputId: key("pull-request", source.conversationId),
+    startInputId: key("pull-request", source.scope, source.conversation),
     startAt: `${Math.floor(opened.updatedAt / 1000)}.000000`,
   };
 });
@@ -515,7 +494,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     if (row.id === current.id || row.createdAt > current.createdAt) continue;
     history.push({
       role: "user",
-      via: row.input.actor.kind,
+      via: row.input.actor.platform,
       actor: row.input.actor.externalId,
       text: row.input.text,
       at: row.createdAt,
@@ -527,7 +506,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
       continue;
     history.push({
       role: "assistant",
-      via: input.input.actor.kind,
+      via: input.input.actor.platform,
       actor: null,
       text: row.text,
       at: row.createdAt,
@@ -557,7 +536,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     history,
     current: {
       role: "user",
-      via: current.input.actor.kind,
+      via: current.input.actor.platform,
       actor: current.input.actor.externalId,
       text: current.input.text,
       at: current.createdAt,

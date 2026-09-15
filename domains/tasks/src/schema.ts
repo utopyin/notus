@@ -1,4 +1,4 @@
-import { Input, Reservation } from "@notus/contracts/source";
+import { Input, Reservation } from "@notus/sources/source";
 import { Mode } from "@notus/executions/types";
 import { sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";

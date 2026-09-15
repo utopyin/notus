@@ -1,5 +1,5 @@
 import { D1 } from "@notus/cloudflare/d1";
-import { key, Source } from "@notus/contracts/source";
+import { key, Source } from "@notus/sources/source";
 import { eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";
@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { AccessError, Denied } from "./errors";
 import { channels, memberships } from "./schema";
-import { Conversation, Fixture, PullConversation, StartGrant } from "./types";
+import { Fixture, StartGrant } from "./types";
 
 export interface Interface {
   readonly authorizeSource: (
@@ -39,20 +39,11 @@ export const layerNoDeps = Layer.effect(
       const source = yield* Schema.decodeEffect(Source)(value).pipe(
         Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
       );
-      // Slack sources are allowed channels; GitHub sources are pull requests in allowed repositories.
-      const channelId =
-        source.kind === "github"
-          ? yield* Schema.decodeEffect(PullConversation)(source.conversationId).pipe(
-              Effect.map(([owner, name]) => `${owner}/${name}`),
-              Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
-            )
-          : (yield* Schema.decodeEffect(Conversation)(source.conversationId).pipe(
-              Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
-            ))[0];
+      // A workspace allows scopes: Slack channels and GitHub repositories share one table for now.
       const rows = yield* store.db
         .select()
         .from(channels)
-        .where(eq(channels.key, key(workspaceId, source.installationId, channelId)))
+        .where(eq(channels.key, key(workspaceId, source.installationId, source.scope)))
         .pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ChannelRow))),
           Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),

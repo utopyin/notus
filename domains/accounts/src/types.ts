@@ -1,4 +1,4 @@
-import { Actor } from "@notus/contracts/source";
+import { Actor } from "@notus/sources/source";
 import * as Schema from "effect/Schema";
 
 export const Fixture = Schema.Struct({ actor: Actor, userId: Schema.NonEmptyString });

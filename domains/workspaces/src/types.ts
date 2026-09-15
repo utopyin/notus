@@ -32,20 +32,6 @@ export const StartGrant = Schema.Struct({
 });
 export interface StartGrant extends Schema.Schema.Type<typeof StartGrant> {}
 
-/** GitHub adapter's opaque pull request conversation encoding: owner, repository, number. */
-export const PullConversation = Schema.fromJsonString(
-  Schema.Tuple([
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
-    Schema.String.check(Schema.isPattern(/^[1-9]\d{0,9}$/)),
-  ]),
-);
-
-/** Slack adapter's opaque conversation encoding. Timestamps are never floating-point values. */
-export const Conversation = Schema.fromJsonString(
-  Schema.Tuple([Schema.NonEmptyString, Schema.String.check(Schema.isPattern(/^\d+\.\d{6}$/))]),
-);
-
 export const Role = Schema.Literals(["admin", "member"]);
 export type Role = typeof Role.Type;
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));

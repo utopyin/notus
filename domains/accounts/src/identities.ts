@@ -1,5 +1,5 @@
 import { D1 } from "@notus/cloudflare/d1";
-import { Actor, key } from "@notus/contracts/source";
+import { Actor, key } from "@notus/sources/source";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";
@@ -40,7 +40,7 @@ export const layerNoDeps = Layer.effect(
         const rows = yield* store.db
           .select()
           .from(identities)
-          .where(eq(identities.key, key(actor.kind, actor.installationId, actor.externalId)));
+          .where(eq(identities.key, key(actor.platform, actor.installationId, actor.externalId)));
         const decoded = yield* Schema.decodeEffect(Schema.Array(Row))(rows);
         return Option.fromNullishOr(decoded[0]?.userId);
       },
@@ -52,13 +52,13 @@ export const layerNoDeps = Layer.effect(
         Effect.mapError((cause) => new IdentityError({ operation: "seedFixture", cause })),
       );
       const { actor, userId } = fixture;
-      const identityKey = key(actor.kind, actor.installationId, actor.externalId);
+      const identityKey = key(actor.platform, actor.installationId, actor.externalId);
       // Never silently remap an existing identity. Concurrent seeds reload the winner.
       yield* store
         .batch([
           sql`INSERT INTO account_users (id) VALUES (${userId}) ON CONFLICT DO NOTHING`,
           sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
-          VALUES (${identityKey}, ${actor.kind}, ${actor.installationId}, ${actor.externalId}, ${userId}, 'admin-fixture')
+          VALUES (${identityKey}, ${actor.platform}, ${actor.installationId}, ${actor.externalId}, ${userId}, 'admin-fixture')
           ON CONFLICT DO NOTHING`,
         ])
         .pipe(Effect.mapError((cause) => new IdentityError({ operation: "seedFixture", cause })));
@@ -102,7 +102,7 @@ export const layerNoDeps = Layer.effect(
         for (const actor of login.actors)
           yield* store.batch([
             sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
-            VALUES (${key(actor.kind, actor.installationId, actor.externalId)}, ${actor.kind}, ${actor.installationId}, ${actor.externalId}, ${owner}, 'oauth')
+            VALUES (${key(actor.platform, actor.installationId, actor.externalId)}, ${actor.platform}, ${actor.installationId}, ${actor.externalId}, ${owner}, 'oauth')
             ON CONFLICT DO NOTHING`,
           ]);
         return owner;

@@ -1,8 +1,11 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
-import type { Actor } from "@notus/contracts/source";
-import { Slack } from "@notus/slack/service";
+import { InstallationId, PlatformId } from "@notus/sources/ids";
+import { Platform } from "@notus/sources/platform";
+import { Platforms } from "@notus/sources/registry";
+import type { Actor } from "@notus/sources/source";
+import type { ChannelSummary } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import { Workspaces } from "@notus/workspaces/workspaces";
@@ -13,13 +16,11 @@ import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type * as Schema from "effect/Schema";
+import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 import { hostnames, zone } from "@notus/stages/hosts";
 import * as Callback from "./callback";
-import { App as GithubApp } from "@notus/github/app";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { authDatabase, makeAuth } from "./auth";
 import {
   dashboardConfig,
@@ -29,12 +30,12 @@ import {
   runtimeConfig,
   webhookConfig,
 } from "./config";
-import * as GithubHook from "./github";
+import * as Ingress from "./ingress";
+import { platformsLayer } from "./platforms";
 import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import { SharedDatabase } from "./database";
-import { handler } from "./http";
 import { Task } from "./task";
 
 export default class Api extends Cloudflare.Worker<Api>()(
@@ -54,11 +55,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     // Sign-in for the dashboard. Sessions are validated here, never trusted from the dashboard.
     const auth = yield* makeAuth(dashboard);
-    const githubApp = github
-      ? GithubApp.layer.pipe(
-          Layer.provide([Layer.succeed(GithubApp.Configuration, github), FetchHttpClient.layer]),
-        )
-      : GithubApp.disabled;
+    // Every source goes through the registry: ingress, delivery and the dashboard's scope lists.
+    const platforms = platformsLayer(config, github, webhookSecret);
     const tasks = yield* Task;
     const connections = yield* Connection;
     const database = yield* SharedDatabase;
@@ -70,7 +68,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
     const inboxLayer = Layer.merge(Inbox.layer, Environments.layer).pipe(
-      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
+      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer, platforms]),
     );
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
       Effect.scoped(
@@ -135,59 +133,52 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Effect.provideService(RuntimeContext, runtime),
       Effect.orElseSucceed(() => HttpServerResponse.empty({ status: 503 })),
     );
-    const slack = handler(
-      config,
-      (input) => withInbox((inbox) => inbox.admit(input)),
-      execution.waitUntil(drain),
-    );
-    // GitHub ingress dependencies: one tagged failure, with the runtime context provided up front.
-    const ingress = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    // Ingress dependencies: one tagged failure, with the runtime context provided up front.
+    const failing = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
-        Effect.mapError(() => new GithubHook.IngressFailure({})),
+        Effect.mapError(() => new Ingress.IngressFailure({})),
         Effect.provideService(RuntimeContext, runtime),
       );
-    const githubHook =
-      github && repository && webhookSecret
-        ? GithubHook.handler({
-            workspaceId: config.workspaceId,
-            installationId: github.installationId,
-            repository: { owner: repository.owner, name: repository.name },
-            secret: webhookSecret,
-            role: (login) =>
-              ingress(
-                GithubApp.Service.pipe(
-                  Effect.flatMap((app) => app.collaboratorRole(repository, login)),
-                  Effect.provide(githubApp),
-                ),
-              ),
-            routeOf: (conversationKey) =>
-              ingress(withInbox((inbox) => inbox.routeOf(conversationKey))),
-            confirm: (taskId, source) =>
-              ingress(
-                tasks
-                  .getByName(taskId)
-                  .attachPullRequest(source)
-                  .pipe(Effect.map((result) => (result.ok ? result.value : null))),
-              ),
-            attach: (route) => ingress(withInbox((inbox) => inbox.attach(route))),
-            admit: (input) => ingress(withInbox((inbox) => inbox.admit(input)).pipe(Effect.asVoid)),
-            kick: ingress(execution.waitUntil(drain)),
-          })
-        : null;
-    // Dashboard services: workspace administration, identity adoption and the Slack channel list.
-    const dashboardLayer = Layer.mergeAll(
-      Workspaces.layer,
-      Identities.layer,
-      Slack.layer.pipe(
-        Layer.provide(
-          Layer.succeed(Slack.Configuration, {
-            token: config.token,
-            allowedChannel: config.channelId,
-          }),
+    const ingressDependencies: Ingress.Dependencies = {
+      // Until installations are workspace data, the fixture's are the only ones anybody asked for.
+      workspaceOf: (ref) =>
+        (ref.platform === "slack" && ref.installationId === config.teamId) ||
+        (ref.platform === "github" &&
+          github !== null &&
+          ref.installationId === github.installationId)
+          ? config.workspaceId
+          : null,
+      routeOf: (conversationKey) => failing(withInbox((inbox) => inbox.routeOf(conversationKey))),
+      confirm: (taskId, source) =>
+        failing(
+          tasks
+            .getByName(taskId)
+            .attachConversation(source)
+            .pipe(Effect.map((result) => (result.ok ? result.value : null))),
         ),
-      ),
-    ).pipe(Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]));
-    type DashboardDeps = Workspaces.Service | Identities.Service | Slack.Service;
+      attach: (route) => failing(withInbox((inbox) => inbox.attach(route))),
+      admit: (input) =>
+        withInbox((inbox) => inbox.admit(input)).pipe(
+          Effect.mapError((error) =>
+            error._tag === "Control.Unauthorized" ||
+            error._tag === "Control.Conflict" ||
+            error._tag === "Control.IntakeError"
+              ? error
+              : new Ingress.IngressFailure({}),
+          ),
+          Effect.provideService(RuntimeContext, runtime),
+        ),
+      kick: failing(execution.waitUntil(drain)),
+    };
+    const ingress = {
+      slack: Ingress.handler("slack", ingressDependencies).pipe(Effect.provide(platforms)),
+      github: Ingress.handler("github", ingressDependencies).pipe(Effect.provide(platforms)),
+    };
+    // Dashboard services: workspace administration, identity adoption and the platforms' scope lists.
+    const dashboardLayer = Layer.mergeAll(Workspaces.layer, Identities.layer, platforms).pipe(
+      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
+    );
+    type DashboardDeps = Workspaces.Service | Identities.Service | Platforms.Service;
     /**
      * Resolves the signed-in dashboard user from the forwarded cookie: the Better Auth session,
      * its linked provider accounts as verified identities, and the canonical Notus user those
@@ -203,12 +194,16 @@ export default class Api extends Cloudflare.Worker<Api>()(
         for (const account of accounts) {
           if (account.providerId === "slack" && session.user.slackTeamId)
             actors.push({
-              kind: "slack",
-              installationId: session.user.slackTeamId,
-              externalId: account.accountId,
+              platform: "slack",
+              installationId: InstallationId.make(session.user.slackTeamId),
+              externalId: PlatformId.make(account.accountId),
             });
           if (account.providerId === "github")
-            actors.push({ kind: "github", installationId: "oauth", externalId: account.accountId });
+            actors.push({
+              platform: "github",
+              installationId: InstallationId.make("oauth"),
+              externalId: PlatformId.make(account.accountId),
+            });
         }
         const now = yield* Clock.currentTimeMillis;
         const userId = yield* Identities.Service.pipe(
@@ -292,10 +287,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
       fetch: Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const path = new URL(request.url, "https://notus.invalid").pathname;
-        if (path === "/github/events")
-          return yield* githubHook ?? Effect.succeed(HttpServerResponse.empty({ status: 404 }));
+        if (request.method === "GET" && path === "/health") return HttpServerResponse.text("ok");
+        // Every platform's deliveries arrive at /<platform>/events.
+        const events = /^\/([a-z]+)\/events$/.exec(path)?.[1];
+        if (events !== undefined && Schema.is(Platform)(events)) return yield* ingress[events];
         if (path === "/auth" || path.startsWith("/auth/")) return yield* auth.fetch;
-        return yield* path.startsWith("/runtime/") ? callback : slack;
+        if (path.startsWith("/runtime/")) return yield* callback;
+        return HttpServerResponse.empty({ status: 404 });
       }),
       // Binding RPC only. No fetch route exposes task state or seed authority.
       snapshot: (taskId: string) => tasks.getByName(taskId).snapshot(),
@@ -452,9 +450,23 @@ export default class Api extends Cloudflare.Worker<Api>()(
       /** The installed Slack team's channels, for admins picking what a workspace listens to. */
       dashboardSlackChannels: (cookie: string) =>
         authorized(cookie, () =>
-          Slack.Service.pipe(
-            Effect.flatMap((slack) => slack.listChannels),
-            Effect.map((channels) => ({ teamId: config.teamId, channels })),
+          Platforms.Service.pipe(
+            Effect.flatMap((platforms) =>
+              platforms.forInstallation({
+                platform: "slack",
+                installationId: InstallationId.make(config.teamId),
+              }),
+            ),
+            Effect.flatMap((port) => port.scopes.list),
+            Effect.map((scopes) => ({
+              teamId: config.teamId,
+              channels: scopes.map((scope): ChannelSummary => ({
+                id: scope.id,
+                name: scope.label,
+                isMember: scope.member,
+                isPrivate: scope.private,
+              })),
+            })),
           ),
         ),
       // Status only: no method here returns or accepts provider tokens.

@@ -1,8 +1,16 @@
 import { Identities } from "@notus/accounts/identities";
 import { D1 } from "@notus/cloudflare/d1";
-import { Admission, Input, key, Reservation, Source } from "@notus/contracts/source";
+import { InstallationId, PlatformId } from "@notus/sources/ids";
+import { Platforms } from "@notus/sources/registry";
+import {
+  Admission,
+  conversationKeyOf,
+  Input,
+  key,
+  Reservation,
+  Source,
+} from "@notus/sources/source";
 import { Access } from "@notus/workspaces/access";
-import { Conversation, PullConversation } from "@notus/workspaces/types";
 import { eq, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -48,19 +56,10 @@ export class Service extends Context.Service<Service, Interface>()(
 // This limits one Worker pass's SQL/RPC budget, never accepted work or retry count.
 const passSize = 25;
 const leaseMs = 60_000;
-const Timestamp = Schema.String.check(Schema.isPattern(/^\d+\.\d{6}$/));
 const inputJson = Schema.fromJsonString(Input);
 const sourceJson = Schema.fromJsonString(Source);
 const storageError = (operation: string) =>
   Effect.mapError((cause: unknown) => new IntakeError({ operation, cause }));
-/** Must match admit's server-side derivation exactly: routes are keyed by it. */
-export const githubConversationKey = Effect.fn("Inbox.githubConversationKey")(function* (
-  workspaceId: string,
-  source: Source,
-) {
-  const [owner, name, number] = yield* Schema.decodeEffect(PullConversation)(source.conversationId);
-  return key(workspaceId, "github", source.installationId, owner, name, number);
-});
 const precedes = (left: string, right: string) =>
   BigInt(left.replace(".", "")) < BigInt(right.replace(".", ""));
 
@@ -71,6 +70,7 @@ export const layerNoDeps = Layer.effect(
     const crypto = yield* Crypto.Crypto;
     const identities = yield* Identities.Service;
     const access = yield* Access.Service;
+    const platforms = yield* Platforms.Service;
     const findRoute = Effect.fn("Inbox.findRoute")(function* (conversationKey: string) {
       const rows = yield* store.db.select().from(routes).where(eq(routes.key, conversationKey));
       return (yield* Schema.decodeUnknownEffect(Schema.Array(RouteRow))(rows))[0];
@@ -79,82 +79,46 @@ export const layerNoDeps = Layer.effect(
     const admit = Effect.fn("Inbox.admit")(function* (value: Input) {
       const decoded = yield* Schema.decodeEffect(Input)(value).pipe(storageError("decodeInput"));
       const source = decoded.target.source;
-      yield* Schema.decodeEffect(Timestamp)(decoded.occurredAt).pipe(
-        storageError("decodeTimestamp"),
-      );
       if (
         decoded.actor.installationId !== source.installationId ||
-        decoded.actor.kind !== source.kind
+        decoded.actor.platform !== source.platform
       ) {
         return yield* new IntakeError({
           operation: "decodeInput",
-          cause: "Actor installation or kind mismatch",
+          cause: "Actor installation or platform mismatch",
         });
       }
-      let messageKey: string;
-      let conversationKey: string;
-      let rootTs: string;
-      if (source.kind === "github") {
-        if (decoded.startIntent)
-          return yield* new IntakeError({
-            operation: "decodeInput",
-            cause: "Pull request feedback never starts a task",
-          });
-        const [owner, name, number] = yield* Schema.decodeEffect(PullConversation)(
-          source.conversationId,
-        ).pipe(storageError("decodeConversation"));
-        conversationKey = key(
-          decoded.workspaceId,
-          "github",
-          source.installationId,
-          owner,
-          name,
-          number,
-        );
-        messageKey = key(
-          decoded.workspaceId,
-          "github",
-          source.installationId,
-          owner,
-          name,
-          number,
-          decoded.target.targetId,
-        );
-        rootTs = "";
-      } else {
-        const [channelId, root] = yield* Schema.decodeEffect(Conversation)(
-          source.conversationId,
-        ).pipe(storageError("decodeConversation"));
-        if (decoded.target.targetId !== decoded.occurredAt) {
-          return yield* new IntakeError({
-            operation: "decodeInput",
-            cause: "Slack message target mismatch",
-          });
-        }
-        messageKey = key(
-          decoded.workspaceId,
-          source.kind,
-          source.installationId,
-          channelId,
-          decoded.target.targetId,
-        );
-        conversationKey = key(
-          decoded.workspaceId,
-          source.kind,
-          source.installationId,
-          channelId,
-          root,
-        );
-        rootTs = root;
-      }
+      // Starting is a platform capability, not something a caller asserts.
+      const { descriptor } = yield* platforms
+        .forPlatform(source.platform)
+        .pipe(storageError("resolvePlatform"));
+      if (decoded.startIntent && !descriptor.capabilities.has("input:start"))
+        return yield* new IntakeError({
+          operation: "decodeInput",
+          cause: "Inputs from this platform never start a task",
+        });
       // Never trust caller-supplied dedupe keys to partition tenant data.
+      const conversationKey = conversationKeyOf(decoded.workspaceId, source);
+      const messageKey = key(
+        decoded.workspaceId,
+        source.platform,
+        source.installationId,
+        source.scope,
+        source.conversation,
+        decoded.target.target,
+      );
       const input: Input = {
         ...decoded,
         messageKey,
         conversationKey,
         inputId: key("input", messageKey),
       };
-      const eventKey = key(input.workspaceId, source.kind, source.installationId, input.eventId);
+      const eventKey = key(
+        input.workspaceId,
+        source.platform,
+        source.installationId,
+        input.eventId,
+      );
       yield* access.authorizeSource(input.workspaceId, source).pipe(
         Effect.catchTag("Workspaces.Denied", (error) =>
           Effect.fail(new Unauthorized({ workspaceId: input.workspaceId, reason: error.reason })),
@@ -196,7 +160,7 @@ export const layerNoDeps = Layer.effect(
               // Thread participation needs no start authority. Retain mentions just like
               // ordinary replies while reservation is pending; drain applies startAt.
               // Source authorization above still applies, and storage failures still fail.
-              return input.occurredAt !== rootTs ? Effect.succeed(null) : Effect.fail(error);
+              return input.root ? Effect.fail(error) : Effect.succeed(null);
             }),
           );
         }
@@ -210,13 +174,14 @@ export const layerNoDeps = Layer.effect(
       // Envelope identity and start intent are deliberately absent from message identity.
       const fingerprint = key(
         input.workspaceId,
-        input.actor.kind,
+        input.actor.platform,
         input.actor.installationId,
         input.actor.externalId,
-        source.kind,
+        source.platform,
         source.installationId,
-        source.conversationId,
-        input.target.targetId,
+        source.scope,
+        source.conversation,
+        input.target.target,
         input.text,
         input.occurredAt,
       );
@@ -321,7 +286,6 @@ export const layerNoDeps = Layer.effect(
             result.deferred++;
             return;
           }
-          yield* Schema.decodeEffect(Timestamp)(route.startAt);
           if (precedes(input.occurredAt, route.startAt)) {
             yield* store.batch([
               sql`UPDATE inbox_messages SET state = 'context', token = NULL, lastError = NULL WHERE ${fence}`,
@@ -373,7 +337,6 @@ export const layerNoDeps = Layer.effect(
       const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
         storageError("decodeRoute"),
       );
-      yield* Schema.decodeEffect(Timestamp)(route.startAt).pipe(storageError("decodeRoute"));
       const source = yield* Schema.encodeEffect(sourceJson)(route.source).pipe(
         storageError("encodeRoute"),
       );
@@ -397,9 +360,9 @@ export const layerNoDeps = Layer.effect(
       yield* identities.seedFixture({
         userId: fixture.canonicalUserId,
         actor: {
-          kind: "slack",
-          installationId: fixture.teamId,
-          externalId: fixture.externalUserId,
+          platform: "slack",
+          installationId: InstallationId.make(fixture.teamId),
+          externalId: PlatformId.make(fixture.externalUserId),
         },
       });
       yield* access.seedFixture({

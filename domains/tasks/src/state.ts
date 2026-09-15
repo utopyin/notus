@@ -1,5 +1,5 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { Admission, Source, key } from "@notus/contracts/source";
+import { Admission, Source, key } from "@notus/sources/source";
 import { digest } from "@notus/executions/types";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import * as Context from "effect/Context";
@@ -158,7 +158,7 @@ export const layerNoDeps = Layer.effect(
             reservation.conversationKey !== input.conversationKey ||
             !Equal.equals(reservation.source, input.target.source) ||
             input.actor.installationId !== reservation.source.installationId ||
-            input.actor.kind !== reservation.source.kind
+            input.actor.platform !== reservation.source.platform
           ) {
             return yield* new Conflict({
               message: "Input and reservation disagree about workspace or source",
@@ -210,9 +210,10 @@ export const layerNoDeps = Layer.effect(
               // An attached source routes through its own conversation but never changes the owner.
               const attachedId = key(
                 "attached",
-                reservation.source.kind,
+                reservation.source.platform,
                 reservation.source.installationId,
-                reservation.source.conversationId,
+                reservation.source.scope,
+                reservation.source.conversation,
               );
               const [attached] = yield* tx.select().from(sources).where(eq(sources.id, attachedId));
               if (
@@ -291,7 +292,13 @@ export const layerNoDeps = Layer.effect(
           const task = yield* Schema.decodeEffect(TaskRow)(stored);
           if (task.closedAt !== null) return yield* new Conflict({ message: "Task is closed" });
           if (Equal.equals(task.reservation.source, source)) return task.originSourceId;
-          const id = key("attached", source.kind, source.installationId, source.conversationId);
+          const id = key(
+            "attached",
+            source.platform,
+            source.installationId,
+            source.scope,
+            source.conversation,
+          );
           yield* tx
             .insert(sources)
             .values({

@@ -1,4 +1,4 @@
-import { key, type Admission } from "@notus/contracts/source";
+import { key, type Admission } from "@notus/sources/source";
 import { Provisioning } from "@notus/executions/provisioning";
 import { digest, type ProvisioningStatus } from "@notus/executions/types";
 import { State } from "@notus/tasks/state";

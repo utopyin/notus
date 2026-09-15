@@ -1,3 +1,4 @@
+import { Source } from "@notus/sources/source";
 import { Environment } from "@notus/workspaces/types";
 import * as Schema from "effect/Schema";
 
@@ -309,6 +310,8 @@ export const CommandResult = Schema.Struct({
       number: Schema.Int.check(Schema.isGreaterThan(0)),
       url: Schema.String.check(Schema.isPattern(/^https:\/\/github\.com\/[^\s]+$/)),
       branch: TaskBranch,
+      /** The conversation Notus opened; feedback there may attach to this task. */
+      source: Source,
     }),
   ),
 });
