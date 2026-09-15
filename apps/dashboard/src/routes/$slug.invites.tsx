@@ -95,7 +95,7 @@ function Invites() {
       <div className="flex items-center">
         <Button
           variant="outline"
-          className="rounded-r-none"
+          className="rounded-r-none border-r-0"
           disabled={creating}
           onClick={() => create("member")}
         >
@@ -107,7 +107,7 @@ function Invites() {
             render={
               <Button
                 variant="outline"
-                className="-ml-px rounded-l-none px-2"
+                className="rounded-l-none px-2"
                 disabled={creating}
                 aria-label="More invite options"
               >
