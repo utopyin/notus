@@ -112,14 +112,7 @@ export const Scopes: FC<{
         <ul className="divide-y rounded-lg border">
           {data.map((scope) => (
             <li key={scopeKey(scope)} className="flex items-center gap-3 px-4 py-3 text-sm">
-              {loading ? (
-                <div className="flex flex-1 flex-col gap-1">
-                  <Skeleton className="h-4 w-32" />
-                  <span className="text-muted-foreground font-mono text-xs">{scope.scope}</span>
-                </div>
-              ) : (
-                row(scope, byId.get(scope.scope))
-              )}
+              {loading ? <Skeleton className="h-4 w-40" /> : row(scope, byId.get(scope.scope))}
               {isAdmin ? (
                 <Button variant="ghost" size="sm" onClick={() => remove(scope)}>
                   <IconTrashFilled className="size-4" />

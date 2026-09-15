@@ -66,11 +66,12 @@ function PlatformPage() {
   };
   return (
     <>
+      {/* Sized like the shell's page header, which this page replaces. */}
       <header className="flex items-center gap-3">
-        <slots.Mark className="text-muted-foreground size-6" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <h2 className="font-medium">{slots.name}</h2>
-          <span className="text-muted-foreground truncate text-xs">
+        <slots.Mark className="text-muted-foreground size-7" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h1 className="text-xl font-medium tracking-tight">{slots.name}</h1>
+          <span className="text-muted-foreground truncate text-sm">
             {installation ? `Connected · ${installation.label}` : "Not connected"}
           </span>
         </div>

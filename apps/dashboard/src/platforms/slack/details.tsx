@@ -3,18 +3,15 @@ import type { FC } from "react";
 import { Scopes, type Installation } from "../scopes";
 import type { WorkspaceView } from "../../server/workspaces";
 
-/** A Slack channel: hash or lock, the name, and the ID underneath. */
-const Channel: FC<{ id: string; name: string; isPrivate: boolean }> = ({ id, name, isPrivate }) => (
+/** A Slack channel: hash or lock, then the name. */
+const Channel: FC<{ name: string; isPrivate: boolean }> = ({ name, isPrivate }) => (
   <>
     {isPrivate ? (
       <IconLockFilled className="text-muted-foreground size-4 shrink-0" />
     ) : (
       <IconHash className="text-muted-foreground size-4 shrink-0" />
     )}
-    <div className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className="truncate leading-4 font-medium">{name}</span>
-      <span className="text-muted-foreground font-mono text-xs">{id}</span>
-    </div>
+    <span className="min-w-0 flex-1 truncate leading-4">{name}</span>
   </>
 );
 
@@ -29,7 +26,6 @@ export const SlackDetails: FC<{
     isAdmin={isAdmin}
     row={(scope, info) => (
       <Channel
-        id={scope.scope}
         name={info?.label ?? scope.label ?? scope.scope}
         isPrivate={info?.private ?? false}
       />
