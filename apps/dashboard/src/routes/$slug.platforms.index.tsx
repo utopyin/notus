@@ -1,12 +1,10 @@
-import { IconSettingsFilled } from "@tabler/icons-react";
+import { IconChevronRight } from "@tabler/icons-react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardAction,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -40,10 +38,11 @@ function Platforms() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <slots.Mark className="text-muted-foreground size-5" />
-                {/* The whole card is the link; the button below is the same destination for the pointer. */}
+                {/* The whole card is the link; the chevron just says so. */}
                 <Link {...to} className="after:absolute after:inset-0 after:rounded-xl">
                   {slots.name}
                 </Link>
+                <IconChevronRight className="text-muted-foreground/60 size-3.5" />
               </CardTitle>
               {/* Connection state: a dot beside the identity the platform knows us by. */}
               <CardAction className="text-muted-foreground flex items-center gap-1.5 text-xs">
@@ -65,12 +64,6 @@ function Platforms() {
             <CardContent>
               <CardDescription>{slots.description}</CardDescription>
             </CardContent>
-            <CardFooter className="justify-end border-0 bg-transparent p-0 px-4 pb-4">
-              <Button variant="outline" size="sm" className="relative" render={<Link {...to} />}>
-                <IconSettingsFilled className="size-4" />
-                Configure
-              </Button>
-            </CardFooter>
           </Card>
         );
       })}
