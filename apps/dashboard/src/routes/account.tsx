@@ -341,12 +341,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
                 value={key}
                 onChange={(event) => setKey(event.target.value)}
               />
-              <Button
-                type="submit"
-                size="sm"
-                variant="outline"
-                disabled={linkingKey || !key.trim()}
-              >
+              <Button type="submit" variant="outline" disabled={linkingKey || !key.trim()}>
                 <IconLink className="size-4" />
                 Connect
               </Button>
