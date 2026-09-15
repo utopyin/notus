@@ -195,6 +195,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const [starting, setStarting] = useState(false);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
+  const [copied, setCopied] = useState(false);
   const chatgpt = props.connections.find((c) => c.provider === "openai-chatgpt") ?? null;
   const apiKey = props.connections.find((c) => c.provider === "openai-api") ?? null;
   // A started device login is polled at the issuer's pace until it is linked or expires; the
@@ -226,6 +227,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
     setMessage(null);
     const result = await beginChatGpt();
     if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
+    setCopied(false);
     queryClient.setQueryData(["chatgpt-device-login"], { ok: true, value: result.value });
     setStarting(true);
   };
@@ -259,7 +261,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               <span className="font-medium">ChatGPT</span>
               <span className="text-muted-foreground truncate text-xs">
                 {chatgpt?.linked
-                  ? `Account ${chatgpt.accountId ?? "unknown"} · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
+                  ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
                   : "Not connected. Runs Codex on the dev box with your subscription."}
               </span>
             </div>
@@ -276,22 +278,32 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
             ) : null}
           </div>
           {pending ? (
-            <div className="flex flex-col gap-2 rounded-md border px-3 py-2">
-              <p className="text-muted-foreground text-xs">
-                Open the verification page and enter this one-time code. It expires at{" "}
-                {whenOf(pending.expiresAt)}; this page keeps checking.
+            <div className="flex flex-col items-center gap-4 rounded-lg px-4 py-6 ring-1 ring-foreground/10">
+              <p className="text-muted-foreground text-center text-sm text-pretty">
+                Open the verification page and enter this one-time code. It expires in{" "}
+                {Math.max(1, Math.ceil((pending.expiresAt - Date.now()) / 60_000))} minutes.
               </p>
-              <div className="flex items-center gap-3">
-                <code className="text-lg font-medium tracking-widest">{pending.userCode}</code>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  render={<a href={pending.verificationUrl} target="_blank" rel="noreferrer" />}
-                >
-                  <IconExternalLink className="size-4" />
-                  Open verification page
-                </Button>
-              </div>
+              {/* The code is the thing to carry over; clicking it copies it. */}
+              <button
+                type="button"
+                className="rounded-md px-4 py-3 font-mono text-2xl font-medium tracking-[0.3em] transition-colors hover:bg-accent"
+                title={copied ? "Copied" : "Copy"}
+                onClick={() => {
+                  void navigator.clipboard.writeText(pending.userCode).then(() => setCopied(true));
+                }}
+              >
+                {pending.userCode}
+              </button>
+              <span className="text-muted-foreground -mt-3 text-xs">
+                {copied ? "Copied to the clipboard" : "Click the code to copy it"}
+              </span>
+              <Button
+                variant="outline"
+                render={<a href={pending.verificationUrl} target="_blank" rel="noreferrer" />}
+              >
+                <IconExternalLink className="size-4" />
+                Open verification page
+              </Button>
             </div>
           ) : null}
         </li>
