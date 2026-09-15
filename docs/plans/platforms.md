@@ -30,7 +30,7 @@ Platform-specific data that the neutral half cannot hold lives in a tagged pocke
 
 Two workspace-owned tables replace `workspace_channels`:
 
-- `workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt)`, keyed on `(platform, installationId)`: an installation belongs to one workspace.
+- `workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt)`, keyed on `(platform, installationId)`: an installation belongs to one workspace, the one whose administrator last completed the platform's consent; installing it elsewhere moves it and drops the previous holder's scopes through it.
 - `workspace_scopes (key, workspaceId, platform, installationId, scope, label)`: the channels and repositories a workspace listens in and works on.
 
 `Access.workspaceOf(ref)` names the workspace an installation belongs to and `Access.authorizeSource` is one lookup on `(workspace, platform, installation, scope)`. Ingress resolves the workspace from `(platform, installationId)` before normalizing and refuses uncovered scopes before asking the adapter about the actor, so no provider call is spent on a repository nobody enabled. The Worker's `SLACK_TEAM_ID`, `SLACK_CHANNEL_ID` and `GITHUB_APP_INSTALLATION_ID` stop being routing configuration; the dev stage keeps them as fixture seeds that insert one installation and one source per platform. The adapters still accept only the configured installation until the install flows of increment three store a token per installation.

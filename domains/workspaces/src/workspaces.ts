@@ -97,7 +97,10 @@ export interface Interface {
     nonce: string,
     now: number,
   ) => Effect.Effect<InstallIntent, WorkspaceError>;
-  /** Records a confirmed installation; "conflict" when another workspace holds it. */
+  /**
+   * Records a confirmed installation. Completing the platform's consent proves authority over the
+   * team or account, so an installation another workspace held moves here, scopes and all.
+   */
   readonly install: (
     intent: InstallIntent,
     installed: {
@@ -554,9 +557,16 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
           storage("install"),
         );
-      // An installation belongs to one workspace; reinstalling in the same one refreshes it.
-      if (existing[0] && existing[0].workspaceId !== intent.workspaceId)
-        return yield* fail("install", "conflict");
+      // An installation belongs to one workspace: the one whose admin last installed it. The
+      // previous holder's scopes through it are dropped with it.
+      const previous = existing[0]?.workspaceId;
+      if (previous !== undefined && previous !== intent.workspaceId)
+        yield* store
+          .batch([
+            sql`DELETE FROM workspace_scopes WHERE workspaceId = ${previous}
+            AND platform = ${intent.platform} AND installationId = ${installed.installationId}`,
+          ])
+          .pipe(storage("install"));
       const credential = yield* Schema.encodeEffect(credentialJson)(installed.credential).pipe(
         Effect.mapError(() => fail("install", "invalid-input")),
       );
@@ -564,7 +574,7 @@ export const layerNoDeps = Layer.effect(
         .batch([
           sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt, credential)
           VALUES (${installationKey}, ${intent.workspaceId}, ${intent.platform}, ${installed.installationId}, ${installed.label}, ${intent.userId}, ${now}, ${credential})
-          ON CONFLICT(key) DO UPDATE SET label = excluded.label, installedBy = excluded.installedBy, installedAt = excluded.installedAt, credential = excluded.credential`,
+          ON CONFLICT(key) DO UPDATE SET workspaceId = excluded.workspaceId, label = excluded.label, installedBy = excluded.installedBy, installedAt = excluded.installedAt, credential = excluded.credential`,
         ])
         .pipe(storage("install"));
       const rows = yield* store.db
