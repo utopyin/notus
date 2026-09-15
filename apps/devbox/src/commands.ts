@@ -64,16 +64,41 @@ const gitEnv = (credential: string | null) =>
         GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${btoa(`x-access-token:${credential}`)}`,
       };
 
-/** Clone the remote's default branch, or report an existing checkout, then read the branch and HEAD. */
+/**
+ * Clone the remote's default branch or a pull request's head branch, or switch an existing
+ * checkout to it, then print the default branch, the branch and HEAD. A pull request's head
+ * branch is the branch at the same commit as its pull ref; only branches of this repository
+ * qualify, so a fork's pull request has none.
+ */
 const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout" }>) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+  const pull = spec.pullRequest;
   return [
     "set -eu",
     `path=${quote(spec.path)}`,
-    `if [ -d "$path/.git" ]; then echo "existing checkout" >&2; else`,
-    `  git clone --quiet --single-branch --depth 50 ${quote(url)} "$path"`,
+    `url=${quote(url)}`,
+    `default=$(git ls-remote --symref "$url" HEAD | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2; exit }')`,
+    `[ -n "$default" ] || { echo "the remote reports no default branch" >&2; exit 3; }`,
+    ...(pull === undefined
+      ? [`branch="$default"`]
+      : [
+          `sha=$(git ls-remote "$url" ${quote(`refs/pull/${pull}/head`)} | cut -f1)`,
+          `[ -n "$sha" ] || { echo "pull request #${pull} was not found in this repository" >&2; exit 3; }`,
+          `branch=$(git ls-remote --heads "$url" | awk -v sha="$sha" '$1 == sha { sub("refs/heads/", "", $2); print $2; exit }')`,
+          `[ -n "$branch" ] || { echo "the head branch of pull request #${pull} is not in this repository" >&2; exit 3; }`,
+        ]),
+    `if [ -d "$path/.git" ]; then`,
+    `  echo "existing checkout" >&2`,
+    // Only a different branch moves the checkout; a repeat lands where it is, local commits intact.
+    `  if [ "$(git -C "$path" rev-parse --abbrev-ref HEAD)" != "$branch" ]; then`,
+    `    git -C "$path" fetch --quiet --depth 50 "$url" "refs/heads/$branch:refs/remotes/origin/$branch"`,
+    `    git -C "$path" checkout --quiet -B "$branch" "refs/remotes/origin/$branch"`,
+    "  fi",
+    "else",
+    `  git clone --quiet --single-branch --branch "$branch" --depth 50 "$url" "$path"`,
     "fi",
+    `echo "$default"`,
     `git -C "$path" rev-parse --abbrev-ref HEAD`,
     `git -C "$path" rev-parse HEAD`,
   ].join("\n");
@@ -139,8 +164,9 @@ const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => 
     // Commit only new changes. A commit left by an earlier failed push is still published, so a
     // retry after a transient failure works instead of stopping at "nothing to commit".
     `if ! git diff --cached --quiet; then git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}; fi`,
-    // The clone's remote HEAD is the default branch; a push that adds nothing to it publishes nothing.
-    `base=$(git rev-parse --verify --quiet refs/remotes/origin/HEAD || true)`,
+    // Nothing to publish when HEAD is what the remote branch already has, or, for a branch that
+    // is new to the remote, what the default branch has.
+    `base=$(git rev-parse --verify --quiet ${quote(`refs/remotes/origin/${spec.branch}`)} || git rev-parse --verify --quiet refs/remotes/origin/HEAD || true)`,
     `if [ -n "$base" ] && [ "$(git rev-parse HEAD)" = "$base" ]; then echo "nothing to publish" >&2; exit 4; fi`,
     `git push --quiet ${quote(url)} ${quote(`HEAD:refs/heads/${spec.branch}`)}`,
     "git rev-parse HEAD",
@@ -267,10 +293,19 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
       const lines = stdout.text.trim().split("\n");
       const headSha = lines.at(-1) ?? "";
       if (!/^[0-9a-f]{40}$/.test(headSha)) return result;
-      // The checkout script prints the branch before HEAD.
+      // The checkout script prints the default branch, then the branch, then HEAD.
       const branch = lines.at(-2) ?? "";
+      const defaultBranch = lines.at(-3) ?? "";
       return spec.kind === "checkout"
-        ? { ...base, checkout: { path: spec.path, branch, headSha } }
+        ? {
+            ...base,
+            checkout: {
+              path: spec.path,
+              branch,
+              headSha,
+              ...(defaultBranch === "" ? {} : { defaultBranch }),
+            },
+          }
         : { ...base, push: { branch: spec.branch, headSha } };
     }),
   ).pipe(

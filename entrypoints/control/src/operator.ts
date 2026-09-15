@@ -6,6 +6,7 @@ import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps
 import {
   digest,
   WorkspacePath,
+  type CommandResult,
   type CommandSpec,
   type ProvisioningStatus,
   type RepositoryRef,
@@ -133,7 +134,22 @@ const RunParams = Schema.Struct({
 const CheckoutParams = Schema.Struct({
   purpose: Schema.String,
   repository: Schema.optionalKey(Schema.String),
+  pullRequest: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
 });
+type Checkout = NonNullable<CommandResult["checkout"]>;
+/** The checkout the box is on now: the last one that succeeded. */
+const latestCheckout = (
+  rows: ReadonlyArray<{
+    readonly status: string;
+    readonly result?: { readonly checkout?: Checkout } | null;
+  }>,
+) => {
+  let found: Checkout | null = null;
+  for (const row of rows) {
+    if (row.status === "done" && row.result?.checkout) found = row.result.checkout;
+  }
+  return found;
+};
 const fullNameOf = (repository: RepositoryRef) => `${repository.owner}/${repository.name}`;
 const checkoutPath = (repository: RepositoryRef) => `/workspaces/${repository.name}`;
 const checkoutTimeoutMs = 300_000;
@@ -214,7 +230,7 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
   const failed = (error: string): Effect.Effect<Evaluation> => {
     const encoded: Effect.Effect<Schema.Json, Schema.SchemaError> =
       name === "checkout_repository"
-        ? encodeCheckout({ path: null, branch: null, headSha: null, error })
+        ? encodeCheckout({ path: null, branch: null, defaultBranch: null, headSha: null, error })
         : name === "push_branch"
           ? encodePush({ branch: null, headSha: null, newCommit: null, error })
           : name === "create_pull_request"
@@ -248,7 +264,13 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     if (name === "checkout_repository") {
       const done = command.result.checkout;
       if (!done) return yield* failed(`checkout failed${stderr}`);
-      const encoded = yield* encodeCheckout({ ...done, error: null }).pipe(Effect.orDie);
+      const encoded = yield* encodeCheckout({
+        path: done.path,
+        branch: done.branch,
+        defaultBranch: done.defaultBranch ?? done.branch,
+        headSha: done.headSha,
+        error: null,
+      }).pipe(Effect.orDie);
       return { _tag: "Resolved", result: encoded, isFailure: false };
     }
     if (name === "push_branch") {
@@ -322,26 +344,25 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
       }
       if (!toolNames.has(call.name) || call.name === "create_devbox") continue;
       const status = yield* provisioning.current;
+      const checkoutParams =
+        call.name === "checkout_repository"
+          ? yield* Schema.decodeUnknownEffect(CheckoutParams)(call.params).pipe(Effect.option)
+          : ({ _tag: "None" } as const);
       // Checking out is where the task's repository is settled: the only candidate, or the named one.
       if (call.name === "checkout_repository" && (yield* provisioning.repository) === null) {
-        const params = yield* Schema.decodeUnknownEffect(CheckoutParams)(call.params).pipe(
-          Effect.option,
-        );
         const candidates = yield* provisioning.candidates;
         const wanted =
-          params._tag === "Some" && params.value.repository !== undefined
-            ? params.value.repository
+          checkoutParams._tag === "Some" && checkoutParams.value.repository !== undefined
+            ? checkoutParams.value.repository
             : candidates.length === 1
               ? fullNameOf(candidates[0]!)
               : null;
         if (wanted !== null) yield* provisioning.selectRepository(wanted);
       }
       const repository = yield* provisioning.repository;
-      // The default branch is whatever the clone landed on.
-      const defaultBranch =
-        (yield* commands.snapshot).find(
-          (row) => row.status === "done" && row.result?.checkout !== undefined,
-        )?.result?.checkout?.branch ?? null;
+      // The default branch as the checkout reported it; older runtimes only reported where they landed.
+      const checkedOut = latestCheckout(yield* commands.snapshot);
+      const defaultBranch = checkedOut?.defaultBranch ?? checkedOut?.branch ?? null;
       if (
         call.name !== "create_pull_request" &&
         (status === null || status.resourceId === null || status.phase === "blocked")
@@ -350,10 +371,13 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
       let spec: CommandSpec;
       if (call.name === "checkout_repository") {
         if (repository === null) continue;
+        const pullRequest =
+          checkoutParams._tag === "Some" ? checkoutParams.value.pullRequest : undefined;
         spec = {
           kind: "checkout",
           repository,
           path: checkoutPath(repository),
+          ...(pullRequest === undefined ? {} : { pullRequest }),
           timeoutMs: checkoutTimeoutMs,
         };
       } else if (call.name === "push_branch") {
@@ -550,9 +574,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
   const repository = yield* provisioning.repository;
   const candidates = yield* provisioning.candidates;
   const commands = yield* Commands.Service;
-  const checkedOut = (yield* commands.snapshot).find(
-    (row) => row.status === "done" && row.result?.checkout !== undefined,
-  );
+  const checkedOut = latestCheckout(yield* commands.snapshot);
   return Briefing.make({
     taskId: task.id,
     initiatorId: task.reservation.initiatorId,
@@ -563,9 +585,10 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
     repository: repository
       ? {
           fullName: fullNameOf(repository),
-          defaultBranch: checkedOut?.result?.checkout?.branch ?? null,
+          branch: checkedOut?.branch ?? null,
+          defaultBranch: checkedOut?.defaultBranch ?? checkedOut?.branch ?? null,
           branchPrefix: repository.branchPrefix,
-          checkoutPath: checkedOut?.result?.checkout?.path ?? null,
+          checkoutPath: checkedOut?.path ?? null,
         }
       : null,
     history,

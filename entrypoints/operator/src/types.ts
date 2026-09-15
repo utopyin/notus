@@ -30,6 +30,8 @@ export const Briefing = Schema.Struct({
   repository: Schema.NullOr(
     Schema.Struct({
       fullName: Schema.NonEmptyString,
+      /** The branch the checkout is on; the default branch unless a pull request was checked out. */
+      branch: Schema.NullOr(Schema.NonEmptyString),
       defaultBranch: Schema.NullOr(Schema.NonEmptyString),
       branchPrefix: Schema.NonEmptyString,
       checkoutPath: Schema.NullOr(Schema.NonEmptyString),

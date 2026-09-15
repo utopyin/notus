@@ -54,6 +54,7 @@ export const RunCommand = Tool.make("run_command", {
 export const CheckoutOutcome = Schema.Struct({
   path: Schema.NullOr(Schema.String),
   branch: Schema.NullOr(Schema.String),
+  defaultBranch: Schema.NullOr(Schema.String),
   headSha: Schema.NullOr(Schema.String),
   error: Schema.NullOr(Schema.String),
 });
@@ -61,13 +62,19 @@ export interface CheckoutOutcome extends Schema.Schema.Type<typeof CheckoutOutco
 
 export const CheckoutRepository = Tool.make("checkout_repository", {
   description:
-    "Clone the task's repository, at its default branch, onto the dev box under /workspaces and return the checkout path, the branch and the HEAD commit. Read-only: nothing can be pushed. Requires an existing dev box. When the workspace covers several repositories, name the one to work in; the choice is final for this task. Calling it again returns the existing checkout.",
+    "Clone the task's repository onto the dev box under /workspaces and return the checkout path, the branch, the default branch and the HEAD commit. The checkout lands on the default branch, or on a pull request's head branch when pullRequest is given: that is how to continue work on an existing pull request, which push_branch to that same branch then updates. Read-only: nothing can be pushed. Requires an existing dev box. When the workspace covers several repositories, name the one to work in; the choice is final for this task. Calling it again switches the existing checkout to the requested branch.",
   parameters: Schema.Struct({
     purpose: Schema.String.annotate({ description: "Why the task needs the repository now." }),
     repository: Schema.optionalKey(
       Schema.String.annotate({
         description:
           "owner/name of the repository to work in; required only when several are covered.",
+      }),
+    ),
+    pullRequest: Schema.optionalKey(
+      Schema.Int.annotate({
+        description:
+          "Number of a pull request in this repository to continue: the checkout lands on its head branch.",
       }),
     ),
   }),
@@ -90,7 +97,7 @@ const Slug = Schema.String.annotate({
 
 export const PushBranch = Tool.make("push_branch", {
   description:
-    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Requires a checkout with changes. newCommit is false when there was nothing new to commit, meaning the branch did not change. Nothing is merged.",
+    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Pushing to the branch of a checked-out pull request updates that pull request. Requires a checkout with changes. newCommit is false when there was nothing new to commit, meaning the branch did not change. Nothing is merged.",
   parameters: Schema.Struct({
     slug: Slug,
     message: Schema.String.annotate({ description: "Commit message summarizing the change." }),

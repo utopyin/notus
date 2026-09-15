@@ -204,7 +204,7 @@ export const WorkspacePath = Schema.String.check(
 const Timeout = Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 }));
 /**
  * A repository a task may work in: one the workspace covers through a GitHub installation. The
- * default branch is whatever the clone lands on; nothing configures it.
+ * default branch is whatever the remote reports; nothing configures it.
  */
 export const RepositoryRef = Schema.Struct({
   owner: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
@@ -248,6 +248,8 @@ export const CommandSpec = Schema.Union([
     kind: Schema.Literal("checkout"),
     repository: RepositoryRef,
     path: WorkspacePath,
+    /** Land on this pull request's head branch instead of the default branch. */
+    pullRequest: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
     timeoutMs: Timeout,
   }),
   Schema.Struct({
@@ -297,6 +299,8 @@ export const CommandResult = Schema.Struct({
       path: WorkspacePath,
       branch: Schema.NonEmptyString,
       headSha: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+      /** The remote's default branch; absent from results of runtimes before image v11. */
+      defaultBranch: Schema.optionalKey(Schema.NonEmptyString),
     }),
   ),
   /** Present for successful pushes only. */
