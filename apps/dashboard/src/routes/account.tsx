@@ -107,7 +107,7 @@ function Account() {
     >
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Identities</h2>
-        <ul className="bg-card divide-y rounded-lg border">
+        <ul className="bg-card divide-y divide-foreground/10 rounded-lg ring-1 ring-foreground/10">
           {providers.map((provider) => {
             const account = linked(provider.id);
             return (
@@ -153,7 +153,7 @@ function Account() {
       <ModelConnections connections={connections} />
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Sessions</h2>
-        <ul className="bg-card divide-y rounded-lg border">
+        <ul className="bg-card divide-y divide-foreground/10 rounded-lg ring-1 ring-foreground/10">
           {sessions.map((session) => (
             <li key={session.id} className="flex items-center gap-3 px-4 py-3 text-sm">
               <IconDeviceLaptop className="text-muted-foreground size-5" />
@@ -251,7 +251,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   return (
     <section className="flex flex-col gap-3">
       <h2 className="font-medium">Model connections</h2>
-      <ul className="bg-card divide-y rounded-lg border">
+      <ul className="bg-card divide-y divide-foreground/10 rounded-lg ring-1 ring-foreground/10">
         <li className="flex flex-col gap-3 px-4 py-3 text-sm">
           <div className="flex items-center gap-3">
             <IconBrandOpenai className="text-muted-foreground size-5" />

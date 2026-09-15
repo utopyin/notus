@@ -41,7 +41,7 @@ function Overview() {
   ];
   return (
     <>
-      <dl className="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-3">
+      <dl className="grid gap-px overflow-hidden rounded-lg bg-foreground/10 ring-1 ring-foreground/10 sm:grid-cols-3">
         {items.map((item) => (
           <Link
             key={item.label}

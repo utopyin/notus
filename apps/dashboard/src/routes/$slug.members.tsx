@@ -56,7 +56,7 @@ function Members() {
   };
   return (
     <>
-      <ul className="bg-card divide-y rounded-lg border">
+      <ul className="bg-card divide-y divide-foreground/10 rounded-lg ring-1 ring-foreground/10">
         {view.members.map((member) => {
           const name = member.name ?? "Not signed in yet";
           const you = member.userId === me.user.id;

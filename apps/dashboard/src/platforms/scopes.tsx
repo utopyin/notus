@@ -109,7 +109,7 @@ export const Scopes: FC<{
       {data.length === 0 ? (
         <p className="text-muted-foreground text-sm">No {nouns} covered yet.</p>
       ) : (
-        <ul className="bg-card divide-y rounded-lg border">
+        <ul className="bg-card divide-y divide-foreground/10 rounded-lg ring-1 ring-foreground/10">
           {data.map((scope) => (
             <li key={scopeKey(scope)} className="flex items-center gap-3 px-4 py-3 text-sm">
               {loading ? (
