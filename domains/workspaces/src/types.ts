@@ -11,27 +11,6 @@ export const Environment = Schema.Struct({
 });
 export interface Environment extends Schema.Schema.Type<typeof Environment> {}
 
-export const Fixture = Schema.Struct({
-  workspaceId: Schema.NonEmptyString,
-  userId: Schema.NonEmptyString,
-  teamId: Schema.NonEmptyString,
-  channelId: Schema.NonEmptyString,
-  /** The fixture team's bot, so the seeded installation can act like an installed one. */
-  slack: Schema.optionalKey(
-    Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
-  ),
-  /** An administrator-allowed repository whose pull request conversations may attach to tasks. */
-  github: Schema.optionalKey(
-    Schema.Struct({
-      installationId: Schema.NonEmptyString,
-      fullName: Schema.String.check(
-        Schema.isPattern(/^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/),
-      ),
-    }),
-  ),
-});
-export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
-
 export const StartGrant = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   initiatorId: Schema.NonEmptyString,

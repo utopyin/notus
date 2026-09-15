@@ -13,14 +13,8 @@ export const deploymentConfig = Effect.gen(function* () {
   const mode = yield* Config.schema(Mode, "NOTUS_MODE").pipe(Config.withDefault("simulation"));
   return {
     mode,
-    workspaceId: yield* Config.schema(Schema.NonEmptyString, "NOTUS_WORKSPACE_ID"),
-    teamId: yield* Config.schema(Schema.NonEmptyString, "SLACK_TEAM_ID"),
-    channelId: yield* Config.schema(Schema.NonEmptyString, "SLACK_CHANNEL_ID"),
-    botUserId: yield* Config.schema(Schema.NonEmptyString, "SLACK_BOT_USER_ID"),
-    canonicalUserId: yield* Config.schema(Schema.NonEmptyString, "NOTUS_FIXTURE_USER_ID"),
-    externalUserId: yield* Config.schema(Schema.NonEmptyString, "NOTUS_FIXTURE_SLACK_USER_ID"),
+    /** The Slack app's signing secret: one app, installed per workspace from the dashboard. */
     signingSecret: yield* Config.redacted("SLACK_SIGNING_SECRET"),
-    token: yield* Config.redacted("SLACK_BOT_TOKEN"),
     simulationDelayMs: 2_000,
     claimTtlMs: 60_000,
   };
@@ -73,11 +67,14 @@ export type OperatorConfig = Effect.Success<typeof operatorConfig>;
  * user, linked once; rotation afterwards lives in the Connection object, never in this value.
  */
 export const fixtureConnection = Effect.gen(function* () {
+  // The one user whose connections are seeded, until the dashboard's connection flows exist.
+  const userId = yield* Config.option(Config.string("NOTUS_FIXTURE_USER_ID"));
   const login = yield* Config.option(Config.redacted("NOTUS_FIXTURE_CHATGPT_OAUTH"));
   const apiKey = yield* Config.option(Config.redacted("NOTUS_FIXTURE_OPENAI_API_KEY"));
   // The ChatGPT login dev box agents run under. Separate from the operator's model connection.
   const agentLogin = yield* Config.option(Config.redacted("NOTUS_FIXTURE_AGENT_LOGIN"));
   return {
+    userId: Option.getOrNull(userId),
     login: Option.getOrNull(login),
     apiKey: Option.getOrNull(apiKey),
     agentLogin: Option.getOrNull(agentLogin),
@@ -85,42 +82,20 @@ export const fixtureConnection = Effect.gen(function* () {
 });
 
 /**
- * The dedicated GitHub App and the fixture repository. Read by the Task host only when the
- * runtime claims a checkout; the key never reaches prompts, storage or the dev box.
+ * The dedicated GitHub App. Installations are workspace data; the key never reaches prompts,
+ * storage or the dev box.
  */
 // Numeric identifiers may arrive as numbers or strings depending on how the value was packed.
 const Identifier = Schema.Union([Schema.String, Schema.Int]);
 export const githubConfig = Effect.gen(function* () {
   const appId = yield* Config.option(Config.schema(Identifier, "GITHUB_APP_ID"));
   if (Option.isNone(appId)) return null;
-  const installationId = yield* Config.schema(Identifier, "GITHUB_APP_INSTALLATION_ID");
   return {
     appId: String(appId.value),
-    installationId: String(installationId),
     privateKey: yield* Config.redacted("GITHUB_APP_PRIVATE_KEY"),
   };
 });
 export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
-const RepositoryName = Schema.String.check(
-  Schema.isPattern(/^[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}$/),
-);
-/**
- * Dev-stage seeds for the fixture workspace: a covered repository and the fixture user's GitHub
- * login. Tasks take their repositories from the workspace's covered scopes, never from here.
- */
-export const fixtureRepositoryConfig = Effect.gen(function* () {
-  const fullName = yield* Config.option(Config.schema(RepositoryName, "NOTUS_FIXTURE_REPOSITORY"));
-  const login = yield* Config.option(
-    Config.schema(
-      Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/)),
-      "NOTUS_FIXTURE_GITHUB_LOGIN",
-    ),
-  );
-  return {
-    fullName: Option.getOrNull(fullName),
-    githubLogin: Option.getOrNull(login),
-  };
-});
 /**
  * Dashboard sign-in: the Slack app's and the GitHub App's OAuth clients, and the dashboard's
  * public origin once known. A provider without credentials is simply not offered.

@@ -12,7 +12,6 @@ import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
 import * as Install from "./install";
-import * as Redacted from "effect/Redacted";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
@@ -30,7 +29,6 @@ import {
   dashboardConfig,
   deploymentConfig,
   githubConfig,
-  fixtureRepositoryConfig,
   runtimeConfig,
   webhookConfig,
 } from "./config";
@@ -53,7 +51,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
   Effect.gen(function* () {
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
-    const fixtureRepository = yield* fixtureRepositoryConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
@@ -88,21 +85,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Effect.scoped(
         Effect.gen(function* () {
           const inbox = yield* Inbox.Service;
-          yield* inbox.seedFixture({
-            ...config,
-            slack: { botToken: Redacted.value(config.token), botUserId: config.botUserId },
-            ...(fixtureRepository.githubLogin
-              ? { githubLogin: fixtureRepository.githubLogin }
-              : {}),
-            ...(github && fixtureRepository.fullName
-              ? {
-                  github: {
-                    installationId: github.installationId,
-                    fullName: fixtureRepository.fullName,
-                  },
-                }
-              : {}),
-          });
           return yield* run(inbox);
         }).pipe(Effect.provide(inboxLayer)),
       );
@@ -584,12 +566,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
       // Status only: no method here returns or accepts provider tokens.
       connectionStatus: (userId: string) => connections.getByName(userId).status(userId),
       revokeConnection: (userId: string) => connections.getByName(userId).revoke(userId),
-      inboxSnapshot: () => withInbox((inbox) => inbox.snapshot(config.workspaceId)),
-      configureEnvironment: (provider: string, environment: Schema.Json) =>
+      inboxSnapshot: (workspaceId: string) => withInbox((inbox) => inbox.snapshot(workspaceId)),
+      configureEnvironment: (workspaceId: string, provider: string, environment: Schema.Json) =>
         withInbox(() =>
           Effect.gen(function* () {
             const environments = yield* Environments.Service;
-            const stored = yield* environments.set(config.workspaceId, provider, environment);
+            const stored = yield* environments.set(workspaceId, provider, environment);
             return {
               workspaceId: stored.workspaceId,
               provider: stored.provider,

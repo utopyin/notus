@@ -7,13 +7,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { FixtureConflict, IdentityError } from "./errors";
+import { IdentityError } from "./errors";
 import { identities, logins, users } from "./schema";
-import { Fixture, Login, Profile } from "./types";
+import { Login, Profile } from "./types";
 
 export interface Interface {
   readonly resolve: (actor: Actor) => Effect.Effect<Option.Option<string>, IdentityError>;
-  readonly seedFixture: (fixture: Fixture) => Effect.Effect<void, IdentityError | FixtureConflict>;
   /**
    * The canonical user a dashboard sign-in acts as, recording the sign-in's verified identities.
    * An identity already held by another user (an administrator fixture) adopts that user for the
@@ -49,27 +48,6 @@ export const layerNoDeps = Layer.effect(
       Effect.mapError((cause) => new IdentityError({ operation: "resolve", cause })),
     );
 
-    const seedFixture = Effect.fn("Identities.seedFixture")(function* (value: Fixture) {
-      const fixture = yield* Schema.decodeEffect(Fixture)(value).pipe(
-        Effect.mapError((cause) => new IdentityError({ operation: "seedFixture", cause })),
-      );
-      const { actor, userId, githubLogin } = fixture;
-      const identityKey = key(actor.platform, actor.installationId, actor.externalId);
-      // Never silently remap an existing identity. Concurrent seeds reload the winner.
-      yield* store
-        .batch([
-          sql`INSERT INTO account_users (id, githubLogin) VALUES (${userId}, ${githubLogin ?? null})
-          ON CONFLICT(id) DO UPDATE SET githubLogin = COALESCE(githubLogin, excluded.githubLogin)`,
-          sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
-          VALUES (${identityKey}, ${actor.platform}, ${actor.installationId}, ${actor.externalId}, ${userId}, 'admin-fixture')
-          ON CONFLICT DO NOTHING`,
-        ])
-        .pipe(Effect.mapError((cause) => new IdentityError({ operation: "seedFixture", cause })));
-      const resolved = yield* resolve(actor);
-      if (Option.isNone(resolved) || resolved.value !== userId) {
-        return yield* new FixtureConflict({ identityKey });
-      }
-    });
     const LoginRow = createSelectSchema(logins);
     const adopt = Effect.fn("Identities.adopt")(
       function* (value: Login) {
@@ -145,7 +123,7 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new IdentityError({ operation: "profiles", cause })),
     );
-    return Service.of({ resolve, seedFixture, adopt, githubLogin, profiles });
+    return Service.of({ resolve, adopt, githubLogin, profiles });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

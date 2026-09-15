@@ -1,7 +1,7 @@
 import { Identities } from "@notus/accounts/identities";
 import { RepositoryRef } from "@notus/executions/types";
 import { D1 } from "@notus/cloudflare/d1";
-import { InstallationId, type InstallationRef, PlatformId } from "@notus/platform/ids";
+import type { InstallationRef } from "@notus/platform/ids";
 import { Platforms } from "@notus/platforms/registry";
 import {
   Admission,
@@ -22,15 +22,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Conflict, IntakeError, Unauthorized } from "./errors";
 import { envelopes, messages, routes } from "./schema";
-import {
-  DrainResult,
-  EnvelopeRow,
-  Fixture,
-  MessageRow,
-  Receipt,
-  RouteRow,
-  Snapshot,
-} from "./types";
+import { DrainResult, EnvelopeRow, MessageRow, Receipt, RouteRow, Snapshot } from "./types";
 
 export interface Interface {
   /** The workspace that installed a platform, or null when nobody asked for its events. */
@@ -59,7 +51,6 @@ export interface Interface {
   readonly drain: <E>(
     forward: (admission: Admission) => Effect.Effect<void, E>,
   ) => Effect.Effect<DrainResult, IntakeError>;
-  readonly seedFixture: (fixture: Fixture) => Effect.Effect<void, IntakeError>;
   readonly snapshot: (workspaceId: string) => Effect.Effect<Snapshot, IntakeError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
@@ -394,28 +385,6 @@ export const layerNoDeps = Layer.effect(
         return yield* new Conflict({ key: route.conversationKey });
     });
 
-    const seedFixture = Effect.fn("Inbox.seedFixture")(function* (value: Fixture) {
-      const fixture = yield* Schema.decodeEffect(Fixture)(value);
-      // Only host administrator code calls this. Identity conflicts stop before access is granted.
-      yield* identities.seedFixture({
-        userId: fixture.canonicalUserId,
-        ...(fixture.githubLogin === undefined ? {} : { githubLogin: fixture.githubLogin }),
-        actor: {
-          platform: "slack",
-          installationId: InstallationId.make(fixture.teamId),
-          externalId: PlatformId.make(fixture.externalUserId),
-        },
-      });
-      yield* access.seedFixture({
-        workspaceId: fixture.workspaceId,
-        userId: fixture.canonicalUserId,
-        teamId: fixture.teamId,
-        channelId: fixture.channelId,
-        ...(fixture.slack === undefined ? {} : { slack: fixture.slack }),
-        ...(fixture.github === undefined ? {} : { github: fixture.github }),
-      });
-    }, storageError("seedFixture"));
-
     const snapshot = Effect.fn("Inbox.snapshot")(function* (workspaceId: string) {
       return yield* Schema.decodeUnknownEffect(Snapshot)({
         messages: yield* store.db
@@ -437,7 +406,6 @@ export const layerNoDeps = Layer.effect(
       routeOf,
       attach,
       drain,
-      seedFixture,
       snapshot,
     });
   }),

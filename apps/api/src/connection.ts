@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { deploymentConfig, fixtureConnection, operatorConfig } from "./config";
+import { fixtureConnection, operatorConfig } from "./config";
 import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/connection/migrations";
 
@@ -29,16 +29,15 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
   "Connection",
   Effect.gen(function* () {
     const host = yield* Cloudflare.DurableObjectState;
-    const config = yield* deploymentConfig.pipe(Effect.orDie);
     const fixture = yield* fixtureConnection.pipe(Effect.orDie);
     const operator = yield* operatorConfig.pipe(Effect.orDie);
     const context = yield* CurrentRuntimeContext;
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
-    return { host, config, fixture, operator, context };
+    return { host, fixture, operator, context };
   }).pipe(
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, config, fixture, operator, context }) =>
+    Effect.map(({ host, fixture, operator, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         const services = yield* Layer.build(
@@ -64,7 +63,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
          * secret, only while unlinked, and never the same seed twice. Revoking blocks re-seeding.
          */
         const seed = Effect.fn("Connection.seed")(function* (userId: string) {
-          if (userId === agentConnectionId(config.canonicalUserId)) {
+          if (fixture.userId !== null && userId === agentConnectionId(fixture.userId)) {
             if (fixture.agentLogin === null) return;
             const status = yield* connections.status(userId);
             if (status.linked) return;
@@ -87,7 +86,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
             });
             return;
           }
-          if (userId !== config.canonicalUserId) return;
+          if (fixture.userId === null || userId !== fixture.userId) return;
           const status = yield* connections.status(userId);
           if (status.linked) return;
           if (operator.provider === "openai-api") {

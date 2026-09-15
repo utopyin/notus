@@ -4,12 +4,6 @@ export class IdentityError extends Schema.TaggedError<IdentityError>()("Accounts
   operation: Schema.String,
   cause: Schema.Defect(),
 }) {}
-export class FixtureConflict extends Schema.TaggedError<FixtureConflict>()(
-  "Accounts.FixtureConflict",
-  {
-    identityKey: Schema.String,
-  },
-) {}
 /** Deliberately excludes causes and payloads, which may contain bearer material. */
 export class ConnectionError extends Schema.TaggedError<ConnectionError>()(
   "Accounts.ConnectionError",

@@ -1,14 +1,6 @@
 import { Actor } from "@notus/platform/source";
 import * as Schema from "effect/Schema";
 
-export const Fixture = Schema.Struct({
-  actor: Actor,
-  userId: Schema.NonEmptyString,
-  /** The fixture user's GitHub login, so its tasks push under a real branch namespace. */
-  githubLogin: Schema.optionalKey(Schema.NonEmptyString),
-});
-export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
-
 /** A dashboard sign-in and the identities its providers verified. */
 export const Profile = Schema.Struct({
   name: Schema.String,

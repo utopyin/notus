@@ -2,23 +2,6 @@ import * as Schema from "effect/Schema";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import { envelopes, messages, routes } from "./schema";
 
-export const Fixture = Schema.Struct({
-  workspaceId: Schema.NonEmptyString,
-  canonicalUserId: Schema.NonEmptyString,
-  teamId: Schema.NonEmptyString,
-  channelId: Schema.NonEmptyString,
-  externalUserId: Schema.NonEmptyString,
-  /** The fixture user's GitHub login; its tasks push under this branch namespace. */
-  githubLogin: Schema.optionalKey(Schema.NonEmptyString),
-  slack: Schema.optionalKey(
-    Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
-  ),
-  github: Schema.optionalKey(
-    Schema.Struct({ installationId: Schema.NonEmptyString, fullName: Schema.NonEmptyString }),
-  ),
-});
-export interface Fixture extends Schema.Schema.Type<typeof Fixture> {}
-
 export const Receipt = Schema.Struct({
   eventKey: Schema.String,
   messageKey: Schema.String,
