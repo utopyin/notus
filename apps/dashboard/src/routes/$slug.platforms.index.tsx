@@ -46,21 +46,32 @@ function Platforms() {
                   {slots.name}
                 </Link>
               </CardTitle>
-              <CardDescription>{slots.description}</CardDescription>
-              <CardAction className="text-muted-foreground text-xs">
+              {/* Connection state: a dot beside the identity the platform knows us by. */}
+              <CardAction className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                <span
+                  aria-hidden
+                  className={
+                    installation
+                      ? "size-1.5 rounded-full bg-emerald-500"
+                      : "size-1.5 rounded-full bg-muted-foreground/40"
+                  }
+                />
                 {installation
-                  ? `Connected · ${installation.label}`
+                  ? installation.label
                   : view.installable.includes(platform)
                     ? "Not connected"
                     : "Unavailable"}
               </CardAction>
             </CardHeader>
-            <CardContent className="text-muted-foreground text-xs">
-              {installation
-                ? `${scopes} ${scopes === 1 ? installation.scopeNoun.one : installation.scopeNoun.many} covered`
-                : " "}
+            <CardContent>
+              <CardDescription>{slots.description}</CardDescription>
             </CardContent>
-            <CardFooter className="justify-end">
+            <CardFooter className="items-end justify-between px-4 py-2">
+              <span className="text-muted-foreground text-xs">
+                {installation
+                  ? `${scopes} ${scopes === 1 ? installation.scopeNoun.one : installation.scopeNoun.many} covered`
+                  : ""}
+              </span>
               <Button variant="outline" size="sm" className="relative" render={<Link {...to} />}>
                 <IconSettingsFilled className="size-4" />
                 Configure
