@@ -1,5 +1,6 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Sqlite } from "@notus/cloudflare/sqlite";
+import { Sealed } from "@notus/cloudflare/sealed";
 import { Credentials } from "@notus/workspaces/credentials";
 import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
@@ -35,13 +36,14 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as Redacted from "effect/Redacted";
 import * as Broker from "./broker";
 import {
+  credentialKeyConfig,
   deploymentConfig,
   githubConfig,
   operatorConfig,
   providerConfig,
   runtimeConfig,
 } from "./config";
-import { Connection, agentConnectionId } from "./connection";
+import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import { platformsLayer } from "./platforms";
@@ -58,18 +60,41 @@ export class Task extends Cloudflare.DurableObject<Task>()(
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
     const operator = yield* operatorConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
+    const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
     // Model requests leave this object only through the initiator's Connection object.
     const connections = yield* Connection;
     // Deliveries act for an installation, whose credential the shared database holds.
     const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
     const context = yield* CurrentRuntimeContext;
     if (!context) return yield* Effect.die("Task initialization requires Alchemy RuntimeContext");
-    return { host, config, runtime, provider, operator, github, connections, shared, context };
+    return {
+      host,
+      config,
+      runtime,
+      provider,
+      operator,
+      github,
+      connections,
+      shared,
+      credentialKey,
+      context,
+    };
   }).pipe(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
     // Alchemy runs this inner initialization with its RuntimeContext.
     Effect.map(
-      ({ host, config, runtime, provider, operator, github, connections, shared, context }) =>
+      ({
+        host,
+        config,
+        runtime,
+        provider,
+        operator,
+        github,
+        connections,
+        shared,
+        credentialKey,
+        context,
+      }) =>
         Effect.gen(function* () {
           const db = yield* Drizzle.DurableObject({ migrations });
           const database = Sqlite.layer(db);
@@ -87,7 +112,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             githubAppSlug: null,
           }).pipe(
             Layer.provide(
-              Credentials.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
+              Credentials.layer.pipe(
+                Layer.provide([Layer.effect(D1.Binding, shared.raw), Sealed.layer(credentialKey)]),
+              ),
             ),
           );
           const services = yield* Layer.build(
@@ -172,8 +199,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 ),
               ).pipe(Effect.orElseSucceed(() => null));
               if (initiatorId === null) return Option.none<string>();
-              const id = agentConnectionId(initiatorId);
-              const login = yield* connections.getByName(id).agentLogin(id, lifetimeMs);
+              const login = yield* connections
+                .getByName(initiatorId)
+                .agentLogin(initiatorId, lifetimeMs);
               if (!login.ok) {
                 yield* Effect.logWarning(`task.agent_login_failed ${login.reason}`);
                 return Option.none<string>();

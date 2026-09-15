@@ -1,4 +1,5 @@
 import { D1 } from "@notus/cloudflare/d1";
+import { Sealed } from "@notus/cloudflare/sealed";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
 import { key } from "@notus/platform/source";
@@ -162,6 +163,7 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const store = yield* D1.Service;
     const crypto = yield* Crypto.Crypto;
+    const sealed = yield* Sealed.Service;
     const storage =
       (operation: string) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -568,6 +570,7 @@ export const layerNoDeps = Layer.effect(
           ])
           .pipe(storage("install"));
       const credential = yield* Schema.encodeEffect(credentialJson)(installed.credential).pipe(
+        Effect.flatMap((json) => sealed.seal(json)),
         Effect.mapError(() => fail("install", "invalid-input")),
       );
       yield* store

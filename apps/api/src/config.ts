@@ -62,24 +62,8 @@ export const operatorConfig = Effect.gen(function* () {
 });
 export type OperatorConfig = Effect.Success<typeof operatorConfig>;
 
-/**
- * Read only by the Connection host. An explicit administrator-supplied login for the fixture
- * user, linked once; rotation afterwards lives in the Connection object, never in this value.
- */
-export const fixtureConnection = Effect.gen(function* () {
-  // The one user whose connections are seeded, until the dashboard's connection flows exist.
-  const userId = yield* Config.option(Config.string("NOTUS_FIXTURE_USER_ID"));
-  const login = yield* Config.option(Config.redacted("NOTUS_FIXTURE_CHATGPT_OAUTH"));
-  const apiKey = yield* Config.option(Config.redacted("NOTUS_FIXTURE_OPENAI_API_KEY"));
-  // The ChatGPT login dev box agents run under. Separate from the operator's model connection.
-  const agentLogin = yield* Config.option(Config.redacted("NOTUS_FIXTURE_AGENT_LOGIN"));
-  return {
-    userId: Option.getOrNull(userId),
-    login: Option.getOrNull(login),
-    apiKey: Option.getOrNull(apiKey),
-    agentLogin: Option.getOrNull(agentLogin),
-  };
-});
+/** Seals every credential at rest: model logins and platform installations. 32 bytes, base64. */
+export const credentialKeyConfig = Config.redacted("NOTUS_CREDENTIAL_KEY");
 
 /**
  * The dedicated GitHub App. Installations are workspace data; the key never reaches prompts,

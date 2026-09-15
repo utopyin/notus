@@ -1,15 +1,29 @@
 import {
   IconBrandGithub,
+  IconBrandOpenai,
   IconBrandSlack,
   IconDeviceLaptop,
+  IconExternalLink,
+  IconKeyFilled,
   IconLinkOff,
   IconLink,
 } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { authClient, type Provider } from "../auth-client";
+import { queryClient } from "../query";
+import {
+  beginChatGpt,
+  getConnections,
+  linkApiKey,
+  pollChatGpt,
+  revokeConnection,
+  type Connection,
+} from "../server/connections";
 import { getSessions } from "../server/me";
 
 const root = getRouteApi("__root__");
@@ -19,7 +33,8 @@ export const Route = createFileRoute("/account")({
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
     if (!parent.loaderData) throw redirect({ to: "/sign-in" });
-    return { sessions: await getSessions() };
+    const [sessions, connections] = await Promise.all([getSessions(), getConnections()]);
+    return { sessions, connections };
   },
   component: Account,
 });
@@ -55,7 +70,7 @@ const clientOf = (userAgent: string | null | undefined) => {
 function Account() {
   const me = root.useLoaderData();
   const router = useRouter();
-  const { sessions } = Route.useLoaderData();
+  const { sessions, connections } = Route.useLoaderData();
   const [message, setMessage] = useState<string | null>(null);
   const [linking, setLinking] = useState<Provider | null>(null);
   if (!me) return null;
@@ -135,6 +150,7 @@ function Account() {
         </ul>
         {message ? <p className="text-destructive text-sm">{message}</p> : null}
       </section>
+      <ModelConnections connections={connections} />
       <section className="flex flex-col gap-3">
         <h2 className="font-medium">Sessions</h2>
         <ul className="divide-y rounded-lg border">
@@ -162,5 +178,171 @@ function Account() {
         </ul>
       </section>
     </AppShell>
+  );
+}
+
+const whenOf = (millis: number | null) =>
+  millis === null ? null : new Date(millis).toLocaleString();
+
+/**
+ * The user's own model accounts. A ChatGPT subscription serves Codex on the dev box and the
+ * operator on the subscription backend; a platform API key serves the operator on the API backend.
+ * Nothing here ever shows a token: status, the account, when it was linked or rotated.
+ */
+function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
+  const router = useRouter();
+  const [message, setMessage] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [key, setKey] = useState("");
+  const [linkingKey, setLinkingKey] = useState(false);
+  const chatgpt = props.connections.find((c) => c.provider === "openai-chatgpt") ?? null;
+  const apiKey = props.connections.find((c) => c.provider === "openai-api") ?? null;
+  // A started device login is polled at the issuer's pace until it is linked or expires; the
+  // outcome is handled where it arrives, in the poll itself, never in render.
+  const device = useQuery(
+    {
+      queryKey: ["chatgpt-device-login"],
+      queryFn: async () => {
+        const result = await pollChatGpt();
+        if (result.ok && result.value.state !== "pending") {
+          setStarting(false);
+          if (result.value.state === "expired")
+            setMessage("The code expired before it was used; start again.");
+          await router.invalidate();
+        }
+        return result;
+      },
+      enabled: starting,
+      refetchInterval: (query) => {
+        const data = query.state.data;
+        return data?.ok && data.value.state === "pending" ? data.value.interval * 1000 : false;
+      },
+    },
+    queryClient,
+  );
+  const pending =
+    starting && device.data?.ok && device.data.value.state === "pending" ? device.data.value : null;
+  const connectChatGpt = async () => {
+    setMessage(null);
+    const result = await beginChatGpt();
+    if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
+    queryClient.setQueryData(["chatgpt-device-login"], { ok: true, value: result.value });
+    setStarting(true);
+  };
+  const connectKey = async () => {
+    setMessage(null);
+    setLinkingKey(true);
+    const result = await linkApiKey({ data: { key } });
+    setLinkingKey(false);
+    if (!result.ok)
+      return setMessage(
+        result.reason === "invalid-input"
+          ? "That does not look like a platform API key."
+          : `That did not work (${result.reason}).`,
+      );
+    setKey("");
+    await router.invalidate();
+  };
+  const disconnect = async (provider: Connection["provider"]) => {
+    const result = await revokeConnection({ data: { provider } });
+    if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
+    await router.invalidate();
+  };
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-medium">Model connections</h2>
+      <ul className="bg-card divide-y rounded-lg border">
+        <li className="flex flex-col gap-3 px-4 py-3 text-sm">
+          <div className="flex items-center gap-3">
+            <IconBrandOpenai className="text-muted-foreground size-5" />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="font-medium">ChatGPT</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {chatgpt?.linked
+                  ? `Account ${chatgpt.accountId ?? "unknown"} · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
+                  : "Not connected. Runs Codex on the dev box with your subscription."}
+              </span>
+            </div>
+            {chatgpt?.linked ? (
+              <Button variant="ghost" size="sm" onClick={() => disconnect("openai-chatgpt")}>
+                <IconLinkOff className="size-4" />
+                Disconnect
+              </Button>
+            ) : pending === null ? (
+              <Button size="sm" variant="outline" disabled={starting} onClick={connectChatGpt}>
+                <IconLink className="size-4" />
+                Sign in with ChatGPT
+              </Button>
+            ) : null}
+          </div>
+          {pending ? (
+            <div className="flex flex-col gap-2 rounded-md border px-3 py-2">
+              <p className="text-muted-foreground text-xs">
+                Open the verification page and enter this one-time code. It expires at{" "}
+                {whenOf(pending.expiresAt)}; this page keeps checking.
+              </p>
+              <div className="flex items-center gap-3">
+                <code className="text-lg font-medium tracking-widest">{pending.userCode}</code>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  render={<a href={pending.verificationUrl} target="_blank" rel="noreferrer" />}
+                >
+                  <IconExternalLink className="size-4" />
+                  Open verification page
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </li>
+        <li className="flex flex-col gap-3 px-4 py-3 text-sm">
+          <div className="flex items-center gap-3">
+            <IconKeyFilled className="text-muted-foreground size-5" />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="font-medium">OpenAI API key</span>
+              <span className="text-muted-foreground truncate text-xs">
+                {apiKey?.linked
+                  ? `Linked ${whenOf(apiKey.linkedAt)}`
+                  : "Not connected. Runs the operator on the platform API backend."}
+              </span>
+            </div>
+            {apiKey?.linked ? (
+              <Button variant="ghost" size="sm" onClick={() => disconnect("openai-api")}>
+                <IconLinkOff className="size-4" />
+                Disconnect
+              </Button>
+            ) : null}
+          </div>
+          {apiKey?.linked ? null : (
+            <form
+              className="flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void connectKey();
+              }}
+            >
+              <Input
+                className="font-mono"
+                type="password"
+                autoComplete="off"
+                placeholder="sk-…"
+                value={key}
+                onChange={(event) => setKey(event.target.value)}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                variant="outline"
+                disabled={linkingKey || !key.trim()}
+              >
+                <IconLink className="size-4" />
+                Connect
+              </Button>
+            </form>
+          )}
+        </li>
+      </ul>
+      {message ? <p className="text-destructive text-sm">{message}</p> : null}
+    </section>
   );
 }

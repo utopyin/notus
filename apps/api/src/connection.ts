@@ -1,120 +1,55 @@
-import { Connections } from "@notus/accounts/connections";
+import { Connections, type Seed } from "@notus/accounts/connections";
 import { ConnectionError } from "@notus/accounts/errors";
+import { Sealed } from "@notus/cloudflare/sealed";
 import { Sqlite } from "@notus/cloudflare/sqlite";
-import { StoredLogin, type ForwardRequest } from "@notus/openai/types";
+import type { ForwardRequest, Provider } from "@notus/openai/types";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle/Cloudflare";
 import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
-import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { fixtureConnection, operatorConfig } from "./config";
+import { credentialKeyConfig } from "./config";
 import { cryptoLayer } from "./crypto";
 import migrations from "./migrations/connection/migrations";
 
-const loginJson = Schema.fromJsonString(StoredLogin);
-/** Dev box agents sign in through a separate connection object per user. */
-export const agentConnectionId = (userId: string) => `agent:${userId}`;
-
 /**
- * One saved model login per canonical user, addressed by user ID. Only this object reads
- * provider tokens. Callers receive status or forwarded provider responses, never credentials.
+ * One user's saved model logins, addressed by user ID. Only this object opens provider material.
+ * Callers receive status, a device code to type, or forwarded provider responses, never credentials.
  */
 export class Connection extends Cloudflare.DurableObject<Connection>()(
   "Connection",
   Effect.gen(function* () {
     const host = yield* Cloudflare.DurableObjectState;
-    const fixture = yield* fixtureConnection.pipe(Effect.orDie);
-    const operator = yield* operatorConfig.pipe(Effect.orDie);
+    const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
     const context = yield* CurrentRuntimeContext;
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
-    return { host, fixture, operator, context };
+    return { host, credentialKey, context };
   }).pipe(
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, fixture, operator, context }) =>
+    Effect.map(({ host, credentialKey, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
         const services = yield* Layer.build(
           Connections.layer.pipe(
-            Layer.provide([Sqlite.layer(db), FetchHttpClient.layer, cryptoLayer]),
+            Layer.provide([
+              Sqlite.layer(db),
+              FetchHttpClient.layer,
+              cryptoLayer,
+              Sealed.layer(credentialKey),
+            ]),
           ),
         ).pipe(Effect.orDie);
         const connections = yield* Connections.Service.pipe(Effect.provideContext(services));
-        const crypto = yield* Crypto.Crypto.pipe(Effect.provide(cryptoLayer));
         // Serializes refresh and replay decisions. Provider forwarding runs outside it.
         const gate = <A, E>(effect: Effect.Effect<A, E>) =>
           Effect.gen(function* () {
             const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
             return yield* exit;
           }).pipe(Effect.provideService(RuntimeContext, context));
-        const fingerprintOf = (material: string) =>
-          crypto.digest("SHA-256", new TextEncoder().encode(material)).pipe(
-            Effect.map(Encoding.encodeHex),
-            Effect.mapError(() => new ConnectionError({ reason: "storage" })),
-          );
-        /**
-         * Only the deployment's fixture user, only the explicitly selected provider's deployment
-         * secret, only while unlinked, and never the same seed twice. Revoking blocks re-seeding.
-         */
-        const seed = Effect.fn("Connection.seed")(function* (userId: string) {
-          if (fixture.userId !== null && userId === agentConnectionId(fixture.userId)) {
-            if (fixture.agentLogin === null) return;
-            const status = yield* connections.status(userId);
-            if (status.linked) return;
-            const login = yield* Schema.decodeEffect(loginJson)(
-              Redacted.value(fixture.agentLogin),
-            ).pipe(Effect.mapError(() => new ConnectionError({ reason: "invalid-input" })));
-            const fingerprint = yield* fingerprintOf(`agent:${login.accountId}:${login.refresh}`);
-            if (status.seedFingerprint === fingerprint) return;
-            yield* connections.link({
-              userId,
-              provider: "openai-chatgpt",
-              tokens: {
-                access: login.access,
-                refresh: login.refresh,
-                expiresAt: Math.max(0, Math.floor(login.expires)),
-                accountId: login.accountId,
-                ...(login.idToken === undefined ? {} : { idToken: login.idToken }),
-              },
-              fingerprint,
-            });
-            return;
-          }
-          if (fixture.userId === null || userId !== fixture.userId) return;
-          const status = yield* connections.status(userId);
-          if (status.linked) return;
-          if (operator.provider === "openai-api") {
-            if (fixture.apiKey === null) return;
-            const key = Redacted.value(fixture.apiKey);
-            const fingerprint = yield* fingerprintOf(`openai-api:${key}`);
-            if (status.seedFingerprint === fingerprint) return;
-            yield* connections.link({ userId, provider: "openai-api", key, fingerprint });
-            return;
-          }
-          if (fixture.login === null) return;
-          const login = yield* Schema.decodeEffect(loginJson)(Redacted.value(fixture.login)).pipe(
-            Effect.mapError(() => new ConnectionError({ reason: "invalid-input" })),
-          );
-          const fingerprint = yield* fingerprintOf(`${login.accountId}:${login.refresh}`);
-          if (status.seedFingerprint === fingerprint) return;
-          yield* connections.link({
-            userId,
-            provider: "openai-chatgpt",
-            tokens: {
-              access: login.access,
-              refresh: login.refresh,
-              expiresAt: Math.max(0, Math.floor(login.expires)),
-              accountId: login.accountId,
-            },
-            fingerprint,
-          });
-        });
         const result = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
             Effect.map((value) => ({ ok: true as const, value })),
@@ -126,35 +61,39 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
             ),
           );
         return {
-          status: (userId: string) =>
-            result(gate(seed(userId).pipe(Effect.andThen(connections.status(userId))))),
-          revoke: (userId: string) =>
+          status: (userId: string) => result(gate(connections.status(userId))),
+          /** An explicit link with material in hand: the harness, or a pasted API key. */
+          link: (userId: string, seed: Seed) =>
+            result(
+              gate(
+                userId === seed.userId
+                  ? connections.link(seed)
+                  : Effect.fail(new ConnectionError({ reason: "unauthorized" })),
+              ),
+            ),
+          revoke: (userId: string, provider: Provider) =>
             result(
               gate(
                 Effect.gen(function* () {
-                  return yield* connections.revoke(userId, yield* Clock.currentTimeMillis);
+                  return yield* connections.revoke(
+                    userId,
+                    provider,
+                    yield* Clock.currentTimeMillis,
+                  );
                 }),
               ),
             ),
-          /** Only agent connections answer; the login goes to one dev box round, never to storage. */
+          beginDeviceLogin: (userId: string) => result(gate(connections.beginDeviceLogin(userId))),
+          pollDeviceLogin: (userId: string) => result(gate(connections.pollDeviceLogin(userId))),
+          /** The login goes to one dev box round, never to storage. */
           agentLogin: (userId: string, minimumLifetimeMs: number) =>
-            result(
-              gate(
-                Effect.gen(function* () {
-                  if (!userId.startsWith("agent:"))
-                    return yield* new ConnectionError({ reason: "unauthorized" });
-                  yield* seed(userId);
-                  return yield* connections.agentLogin(userId, minimumLifetimeMs);
-                }),
-              ),
-            ),
-          forward: (userId: string, operationId: string, request: ForwardRequest) =>
-            result(
-              Effect.gen(function* () {
-                yield* gate(seed(userId));
-                return yield* connections.forward(userId, operationId, request, gate);
-              }),
-            ),
+            result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
+          forward: (
+            userId: string,
+            provider: Provider,
+            operationId: string,
+            request: ForwardRequest,
+          ) => result(connections.forward(userId, provider, operationId, request, gate)),
         };
       }),
     ),

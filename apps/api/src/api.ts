@@ -5,9 +5,11 @@ import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
+import type { Provider } from "@notus/openai/types";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import type { ScopeInput } from "@notus/workspaces/workspaces";
+import { Sealed } from "@notus/cloudflare/sealed";
 import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
@@ -26,6 +28,7 @@ import { hostnames, zone } from "@notus/stages/hosts";
 import * as Callback from "./callback";
 import { authDatabase, makeAuth } from "./auth";
 import {
+  credentialKeyConfig,
   dashboardConfig,
   deploymentConfig,
   githubConfig,
@@ -54,6 +57,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const github = yield* githubConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
+    // Every credential at rest, model login or platform installation, is sealed under this key.
+    const sealed = Sealed.layer(yield* credentialKeyConfig.pipe(Effect.orDie));
     // Sign-in for the dashboard. Sessions are validated here, never trusted from the dashboard.
     const auth = yield* makeAuth(dashboard);
     const tasks = yield* Task;
@@ -71,7 +76,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       slack: dashboard.slack,
       githubAppSlug: dashboard.githubAppSlug,
     }).pipe(
-      Layer.provide(Credentials.layer.pipe(Layer.provide(d1))),
+      Layer.provide(Credentials.layer.pipe(Layer.provide([d1, sealed]))),
       Layer.provide(Layer.succeed(RuntimeContext, runtime)),
       // The credential store's database client is deployment configuration; failing it is a defect.
       Layer.orDie,
@@ -176,7 +181,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     };
     // Dashboard services: workspace administration, identity adoption and the platforms' scope lists.
     const dashboardLayer = Layer.mergeAll(Workspaces.layer, Identities.layer, platforms).pipe(
-      Layer.provide([d1, cryptoLayer]),
+      Layer.provide([d1, cryptoLayer, sealed]),
     );
     // The platform's redirect after an install; it needs the dashboard's origin to land on.
     const install = dashboard.origin
@@ -305,6 +310,25 @@ export default class Api extends Cloudflare.Worker<Api>()(
       readonly scope: string;
       readonly label: string;
     }
+    /** One call on the user's Connection object, its refusal turned into a dashboard failure. */
+    const connection = <A>(
+      userId: string,
+      call: (
+        object: ReturnType<typeof connections.getByName>,
+      ) => Effect.Effect<
+        { readonly ok: true; readonly value: A } | { readonly ok: false; readonly reason: string },
+        never,
+        RuntimeContext
+      >,
+    ) =>
+      call(connections.getByName(userId)).pipe(
+        Effect.provideService(RuntimeContext, runtime),
+        Effect.flatMap((result) =>
+          result.ok
+            ? Effect.succeed(result.value)
+            : Effect.fail<DashboardFailure>({ _tag: "Connection", reason: result.reason }),
+        ),
+      );
     /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
     interface DashboardFailure {
       readonly _tag: string;
@@ -563,9 +587,49 @@ export default class Api extends Cloudflare.Worker<Api>()(
             };
           }),
         ),
-      // Status only: no method here returns or accepts provider tokens.
+      // Status only: no method here returns provider tokens.
       connectionStatus: (userId: string) => connections.getByName(userId).status(userId),
-      revokeConnection: (userId: string) => connections.getByName(userId).revoke(userId),
+      revokeConnection: (userId: string, provider: Provider) =>
+        connections.getByName(userId).revoke(userId, provider),
+      /** The signed-in user's model connections: status projections, never material. */
+      dashboardConnections: (cookie: string) =>
+        authorized(cookie, (me) => connection(me.userId, (c) => c.status(me.userId))),
+      /** Starts "Sign in with ChatGPT" by device code; the page shows the code and the link. */
+      dashboardBeginChatGpt: (cookie: string) =>
+        authorized(cookie, (me) => connection(me.userId, (c) => c.beginDeviceLogin(me.userId))),
+      /** One poll of the issuer; links the login once the person finished on the verification page. */
+      dashboardPollChatGpt: (cookie: string) =>
+        authorized(cookie, (me) => connection(me.userId, (c) => c.pollDeviceLogin(me.userId))),
+      /** A pasted platform API key: fingerprinted for status, sealed for storage, never shown again. */
+      dashboardLinkApiKey: (cookie: string, key: string) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            const trimmed = key.trim();
+            if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(trimmed))
+              return yield* Effect.fail<DashboardFailure>({
+                _tag: "InvalidKey",
+                reason: "invalid-input",
+              });
+            const digest = yield* Effect.tryPromise({
+              try: () =>
+                globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(trimmed)),
+              catch: (): DashboardFailure => ({ _tag: "Digest", reason: "failed" }),
+            });
+            const fingerprint = Array.from(new Uint8Array(digest), (b) =>
+              b.toString(16).padStart(2, "0"),
+            ).join("");
+            return yield* connection(me.userId, (c) =>
+              c.link(me.userId, {
+                userId: me.userId,
+                provider: "openai-api",
+                key: trimmed,
+                fingerprint: `openai-api:${fingerprint}`,
+              }),
+            );
+          }),
+        ),
+      dashboardRevokeConnection: (cookie: string, provider: Provider) =>
+        authorized(cookie, (me) => connection(me.userId, (c) => c.revoke(me.userId, provider))),
       inboxSnapshot: (workspaceId: string) => withInbox((inbox) => inbox.snapshot(workspaceId)),
       configureEnvironment: (workspaceId: string, provider: string, environment: Schema.Json) =>
         withInbox(() =>
