@@ -65,7 +65,7 @@ function Platforms() {
             <CardContent>
               <CardDescription>{slots.description}</CardDescription>
             </CardContent>
-            <CardFooter className="justify-end border-0 bg-transparent p-0 px-4">
+            <CardFooter className="justify-end border-0 bg-transparent p-0 px-4 pb-4">
               <Button variant="outline" size="sm" className="relative" render={<Link {...to} />}>
                 <IconSettingsFilled className="size-4" />
                 Configure
