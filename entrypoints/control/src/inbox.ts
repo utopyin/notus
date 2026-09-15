@@ -1,6 +1,6 @@
 import { Identities } from "@notus/accounts/identities";
 import { D1 } from "@notus/cloudflare/d1";
-import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { InstallationId, type InstallationRef, PlatformId } from "@notus/platform/ids";
 import { Platforms } from "@notus/platforms/registry";
 import {
   Admission,
@@ -32,6 +32,10 @@ import {
 } from "./types";
 
 export interface Interface {
+  /** The workspace that installed a platform, or null when nobody asked for its events. */
+  readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, IntakeError>;
+  /** Whether the workspace covers the source's scope; ingress asks before spending provider calls. */
+  readonly covers: (workspaceId: string, source: Source) => Effect.Effect<boolean, IntakeError>;
   readonly admit: (input: Input) => Effect.Effect<Receipt, IntakeError | Conflict | Unauthorized>;
   /** The route for a conversation, if one exists. */
   readonly routeOf: (
@@ -330,6 +334,16 @@ export const layerNoDeps = Layer.effect(
       return result;
     }, storageError("drain"));
 
+    const workspaceOf = Effect.fn("Inbox.workspaceOf")(function* (ref: InstallationRef) {
+      return yield* access.workspaceOf(ref).pipe(storageError("workspaceOf"));
+    });
+    const covers = Effect.fn("Inbox.covers")(function* (workspaceId: string, source: Source) {
+      return yield* access.authorizeSource(workspaceId, source).pipe(
+        Effect.as(true),
+        Effect.catchTag("Workspaces.Denied", () => Effect.succeed(false)),
+        storageError("covers"),
+      );
+    });
     const routeOf = Effect.fn("Inbox.routeOf")(function* (conversationKey: string) {
       return yield* findRoute(conversationKey);
     });
@@ -387,7 +401,16 @@ export const layerNoDeps = Layer.effect(
           .where(eq(envelopes.workspaceId, workspaceId)),
       });
     }, storageError("snapshot"));
-    return Service.of({ admit, routeOf, attach, drain, seedFixture, snapshot });
+    return Service.of({
+      workspaceOf,
+      covers,
+      admit,
+      routeOf,
+      attach,
+      drain,
+      seedFixture,
+      snapshot,
+    });
   }),
 );
 

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /** One default environment per workspace. Config is JSON text, not a provider model. */
 export const environments = sqliteTable(
@@ -21,17 +21,38 @@ export const environments = sqliteTable(
   ],
 );
 
-export const channels = sqliteTable(
-  "workspace_channels",
+/**
+ * A platform installed for a workspace: a Slack team, a GitHub App installation. An installation
+ * belongs to one workspace, so its events route to exactly one place.
+ */
+export const installations = sqliteTable(
+  "workspace_installations",
   {
+    /** key(platform, installationId) */
     key: text().primaryKey(),
     workspaceId: text().notNull(),
-    teamId: text().notNull(),
-    channelId: text().notNull(),
+    platform: text().notNull(),
+    installationId: text().notNull(),
+    label: text().notNull().default(""),
+    installedBy: text().notNull(),
+    installedAt: integer().notNull(),
   },
-  (table) => [
-    uniqueIndex("workspace_channels_scope").on(table.workspaceId, table.teamId, table.channelId),
-  ],
+  (table) => [index("workspace_installations_workspace").on(table.workspaceId)],
+);
+
+/** A scope the workspace listens in or works on: a channel of an installed team, a repository of an installed App. */
+export const sources = sqliteTable(
+  "workspace_sources",
+  {
+    /** key(workspaceId, platform, installationId, scope) */
+    key: text().primaryKey(),
+    workspaceId: text().notNull(),
+    platform: text().notNull(),
+    installationId: text().notNull(),
+    scope: text().notNull(),
+    label: text().notNull().default(""),
+  },
+  (table) => [index("workspace_sources_workspace").on(table.workspaceId)],
 );
 
 /** A team's configuration and access boundary. The fixture workspace is seeded with its ID as name. */

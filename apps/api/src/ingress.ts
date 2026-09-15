@@ -21,7 +21,9 @@ export type Confirmation = Omit<Reservation, "conversationKey" | "source">;
 
 export interface Dependencies {
   /** The workspace an installation belongs to; null means nobody asked for its events. */
-  readonly workspaceOf: (ref: InstallationRef) => string | null;
+  readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, IngressFailure>;
+  /** Whether the workspace covers the scope; checked before the adapter spends a provider call. */
+  readonly covers: (workspaceId: string, source: Source) => Effect.Effect<boolean, IngressFailure>;
   readonly routeOf: (
     conversationKey: string,
   ) => Effect.Effect<{ readonly taskId: string } | undefined, IngressFailure>;
@@ -61,8 +63,9 @@ export const handler = (platform: Platform, dependencies: Dependencies) =>
     if (normalized.type === "ignored") return yield* ignored(normalized.reason);
     const { received, claim } = normalized;
     const source = received.target.source;
-    const workspaceId = dependencies.workspaceOf(source);
+    const workspaceId = yield* dependencies.workspaceOf(source);
     if (workspaceId === null) return yield* ignored("foreign-installation");
+    if (!(yield* dependencies.covers(workspaceId, source))) return yield* ignored("scope");
     const port = yield* platforms.forInstallation(source);
     if (!(yield* port.identity.mayParticipate(received.actor, source.scope)))
       return yield* ignored("actor");

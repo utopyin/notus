@@ -5,9 +5,9 @@ import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
-import type { ChannelSummary } from "@notus/slack/service";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
+import type { SourceInput } from "@notus/workspaces/workspaces";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -140,14 +140,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
         Effect.provideService(RuntimeContext, runtime),
       );
     const ingressDependencies: Ingress.Dependencies = {
-      // Until installations are workspace data, the fixture's are the only ones anybody asked for.
-      workspaceOf: (ref) =>
-        (ref.platform === "slack" && ref.installationId === config.teamId) ||
-        (ref.platform === "github" &&
-          github !== null &&
-          ref.installationId === github.installationId)
-          ? config.workspaceId
-          : null,
+      workspaceOf: (ref) => failing(withInbox((inbox) => inbox.workspaceOf(ref))),
+      covers: (workspaceId, source) =>
+        failing(withInbox((inbox) => inbox.covers(workspaceId, source))),
       routeOf: (conversationKey) => failing(withInbox((inbox) => inbox.routeOf(conversationKey))),
       confirm: (taskId, source) =>
         failing(
@@ -230,7 +225,21 @@ export default class Api extends Cloudflare.Worker<Api>()(
         Effect.map((profiles) => ({
           workspace: view.workspace,
           role: view.role,
-          channels: view.channels,
+          installations: view.installations.map((i): InstallationSummary => ({
+            workspaceId: i.workspaceId,
+            platform: i.platform,
+            installationId: i.installationId,
+            label: i.label,
+            installedBy: i.installedBy,
+            installedAt: i.installedAt,
+          })),
+          sources: view.sources.map((s): SourceSummary => ({
+            workspaceId: s.workspaceId,
+            platform: s.platform,
+            installationId: s.installationId,
+            scope: s.scope,
+            label: s.label,
+          })),
           invites: view.invites,
           members: view.members.map((member) => {
             const profile = profiles.get(member.userId);
@@ -246,6 +255,28 @@ export default class Api extends Cloudflare.Worker<Api>()(
           }),
         })),
       );
+    /** What the dashboard sees of a scope, an installation and a source: plain strings, no brands crossing the RPC. */
+    interface ScopeSummary {
+      readonly id: string;
+      readonly label: string;
+      readonly member: boolean;
+      readonly private: boolean;
+    }
+    interface InstallationSummary {
+      readonly workspaceId: string;
+      readonly platform: Platform;
+      readonly installationId: string;
+      readonly label: string;
+      readonly installedBy: string;
+      readonly installedAt: number;
+    }
+    interface SourceSummary {
+      readonly workspaceId: string;
+      readonly platform: Platform;
+      readonly installationId: string;
+      readonly scope: string;
+      readonly label: string;
+    }
     /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
     interface DashboardFailure {
       readonly _tag: string;
@@ -421,53 +452,54 @@ export default class Api extends Cloudflare.Worker<Api>()(
             Effect.flatMap((workspaces) => workspaces.acceptInvite(token, me.userId, me.now)),
           ),
         ),
-      dashboardAddChannel: (
-        cookie: string,
-        workspaceId: string,
-        teamId: string,
-        channelId: string,
-      ) =>
+      dashboardAddSource: (cookie: string, workspaceId: string, source: SourceInput) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
-            Effect.flatMap((workspaces) =>
-              workspaces.addChannel(workspaceId, me.userId, { teamId, channelId }),
-            ),
+            Effect.flatMap((workspaces) => workspaces.addSource(workspaceId, me.userId, source)),
           ),
         ),
-      dashboardRemoveChannel: (
-        cookie: string,
-        workspaceId: string,
-        teamId: string,
-        channelId: string,
-      ) =>
+      dashboardRemoveSource: (cookie: string, workspaceId: string, source: SourceInput) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
-            Effect.flatMap((workspaces) =>
-              workspaces.removeChannel(workspaceId, me.userId, { teamId, channelId }),
-            ),
+            Effect.flatMap((workspaces) => workspaces.removeSource(workspaceId, me.userId, source)),
           ),
         ),
-      /** The installed Slack team's channels, for admins picking what a workspace listens to. */
-      dashboardSlackChannels: (cookie: string) =>
-        authorized(cookie, () =>
-          Platforms.Service.pipe(
-            Effect.flatMap((platforms) =>
-              platforms.forInstallation({
-                platform: "slack",
-                installationId: InstallationId.make(config.teamId),
-              }),
-            ),
-            Effect.flatMap((port) => port.scopes.list),
-            Effect.map((scopes) => ({
-              teamId: config.teamId,
-              channels: scopes.map((scope): ChannelSummary => ({
+      /**
+       * The scopes an installation can see (channels of a team, later repositories of an App), for
+       * admins choosing what a workspace covers. Only the workspace that installed it may ask.
+       */
+      dashboardListScopes: (
+        cookie: string,
+        workspaceId: string,
+        platform: Platform,
+        installationId: string,
+      ) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            const workspaces = yield* Workspaces.Service;
+            const view = yield* workspaces.view(workspaceId, me.userId);
+            const ref = { platform, installationId: InstallationId.make(installationId) };
+            if (
+              !view.installations.some(
+                (i) => i.platform === ref.platform && i.installationId === ref.installationId,
+              )
+            )
+              return yield* Effect.fail<DashboardFailure>({
+                _tag: "NotInstalled",
+                reason: "not-installed",
+              });
+            const platforms = yield* Platforms.Service;
+            const port = yield* platforms.forInstallation(ref);
+            const scopes = yield* port.scopes.list;
+            return {
+              scopes: scopes.map((scope): ScopeSummary => ({
                 id: scope.id,
-                name: scope.label,
-                isMember: scope.member,
-                isPrivate: scope.private,
+                label: scope.label,
+                member: scope.member,
+                private: scope.private,
               })),
-            })),
-          ),
+            };
+          }),
         ),
       // Status only: no method here returns or accepts provider tokens.
       connectionStatus: (userId: string) => connections.getByName(userId).status(userId),

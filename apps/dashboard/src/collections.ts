@@ -2,14 +2,16 @@ import { createCollection } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import { queryClient } from "./query";
 import {
-  addChannel,
+  addSource,
   getWorkspace,
-  removeChannel,
+  removeSource,
   revokeInvite,
   type WorkspaceView,
 } from "./server/workspaces";
 
-export type ChannelRow = WorkspaceView["channels"][number];
+export type SourceRow = WorkspaceView["sources"][number];
+export const sourceKey = (row: Pick<SourceRow, "platform" | "installationId" | "scope">) =>
+  `${row.platform}:${row.installationId}:${row.scope}`;
 export type InviteRow = WorkspaceView["invites"][number];
 
 const load = async (workspaceId: string) => {
@@ -19,21 +21,29 @@ const load = async (workspaceId: string) => {
 };
 
 /**
- * Channels and invites are edited optimistically: the row appears or disappears at once, and the
+ * Sources and invites are edited optimistically: the row appears or disappears at once, and the
  * server call behind it either confirms or rolls it back. One pair of collections per workspace.
  */
-const channelCollection = (workspaceId: string) =>
+const sourceCollection = (workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
-      queryKey: ["workspace", workspaceId, "channels"],
-      queryFn: async () => [...(await load(workspaceId)).channels],
+      queryKey: ["workspace", workspaceId, "sources"],
+      queryFn: async () => [...(await load(workspaceId)).sources],
       queryClient,
-      getKey: (row: ChannelRow) => `${row.teamId}:${row.channelId}`,
+      getKey: (row: SourceRow) => sourceKey(row),
       onInsert: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.modified;
-          const result = await addChannel({
-            data: { workspaceId, teamId: row.teamId, channelId: row.channelId },
+          const result = await addSource({
+            data: {
+              workspaceId,
+              source: {
+                platform: row.platform,
+                installationId: row.installationId,
+                scope: row.scope,
+                label: row.label,
+              },
+            },
           });
           if (!result.ok) throw new Error(result.reason);
         }
@@ -41,8 +51,15 @@ const channelCollection = (workspaceId: string) =>
       onDelete: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.original;
-          const result = await removeChannel({
-            data: { workspaceId, teamId: row.teamId, channelId: row.channelId },
+          const result = await removeSource({
+            data: {
+              workspaceId,
+              source: {
+                platform: row.platform,
+                installationId: row.installationId,
+                scope: row.scope,
+              },
+            },
           });
           if (!result.ok) throw new Error(result.reason);
         }
@@ -80,13 +97,13 @@ const inviteCollection = (workspaceId: string) =>
   );
 const collections = new Map<
   string,
-  { channels: ReturnType<typeof channelCollection>; invites: ReturnType<typeof inviteCollection> }
+  { sources: ReturnType<typeof sourceCollection>; invites: ReturnType<typeof inviteCollection> }
 >();
 export const collectionsOf = (workspaceId: string) => {
   const existing = collections.get(workspaceId);
   if (existing) return existing;
   const created = {
-    channels: channelCollection(workspaceId),
+    sources: sourceCollection(workspaceId),
     invites: inviteCollection(workspaceId),
   };
   collections.set(workspaceId, created);

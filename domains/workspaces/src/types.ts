@@ -1,3 +1,5 @@
+import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { Platform } from "@notus/platform/platform";
 import * as Schema from "effect/Schema";
 
 /** Provider-owned JSON, with separate routing metadata. No provider decoding or secret resolution. */
@@ -75,12 +77,24 @@ export const Membership = Schema.Struct({
   provenance: Schema.NonEmptyString,
 });
 export interface Membership extends Schema.Schema.Type<typeof Membership> {}
-export const Channel = Schema.Struct({
+export const Installation = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
-  teamId: Schema.NonEmptyString,
-  channelId: Schema.NonEmptyString,
+  platform: Platform,
+  installationId: InstallationId,
+  label: Schema.String,
+  installedBy: Schema.NonEmptyString,
+  installedAt: Millis,
 });
-export interface Channel extends Schema.Schema.Type<typeof Channel> {}
+export interface Installation extends Schema.Schema.Type<typeof Installation> {}
+/** A scope of an installation the workspace covers; the label is what the platform called it when chosen. */
+export const WorkspaceSource = Schema.Struct({
+  workspaceId: Schema.NonEmptyString,
+  platform: Platform,
+  installationId: InstallationId,
+  scope: PlatformId,
+  label: Schema.String,
+});
+export interface WorkspaceSource extends Schema.Schema.Type<typeof WorkspaceSource> {}
 export const Invite = Schema.Struct({
   id: Schema.NonEmptyString,
   workspaceId: Schema.NonEmptyString,
@@ -98,7 +112,8 @@ export const WorkspaceView = Schema.Struct({
   workspace: Workspace,
   role: Role,
   members: Schema.Array(Membership),
-  channels: Schema.Array(Channel),
+  installations: Schema.Array(Installation),
+  sources: Schema.Array(WorkspaceSource),
   invites: Schema.Array(Invite),
 });
 export interface WorkspaceView extends Schema.Schema.Type<typeof WorkspaceView> {}

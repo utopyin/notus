@@ -24,7 +24,7 @@ function Overview() {
       to: "/$slug/channels" as const,
       icon: IconMessageCircleFilled,
       label: "Slack channels",
-      value: view.channels.length,
+      value: view.sources.filter((s) => s.platform === "slack").length,
       hint: "mentions start tasks here",
     },
     ...(view.role === "admin"

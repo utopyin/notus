@@ -67,20 +67,35 @@ export const acceptInvite = createServerFn({ method: "POST" })
   .inputValidator((input: { token: string }) => input)
   .handler(async ({ data }) => await api().dashboardAcceptInvite(cookie(), data.token));
 
-export const addChannel = createServerFn({ method: "POST" })
-  .inputValidator((input: { workspaceId: string; teamId: string; channelId: string }) => input)
+export type SourceInput = {
+  platform: "slack" | "github";
+  installationId: string;
+  scope: string;
+  label?: string;
+};
+export const addSource = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; source: SourceInput }) => input)
   .handler(
-    async ({ data }) =>
-      await api().dashboardAddChannel(cookie(), data.workspaceId, data.teamId, data.channelId),
+    async ({ data }) => await api().dashboardAddSource(cookie(), data.workspaceId, data.source),
   );
 
-export const removeChannel = createServerFn({ method: "POST" })
-  .inputValidator((input: { workspaceId: string; teamId: string; channelId: string }) => input)
+export const removeSource = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; source: SourceInput }) => input)
   .handler(
-    async ({ data }) =>
-      await api().dashboardRemoveChannel(cookie(), data.workspaceId, data.teamId, data.channelId),
+    async ({ data }) => await api().dashboardRemoveSource(cookie(), data.workspaceId, data.source),
   );
 
-export const slackChannels = createServerFn({ method: "GET" }).handler(
-  async () => await api().dashboardSlackChannels(cookie()),
-);
+/** The scopes one of the workspace's installations can see. */
+export const listScopes = createServerFn({ method: "GET" })
+  .inputValidator(
+    (input: { workspaceId: string; platform: "slack" | "github"; installationId: string }) => input,
+  )
+  .handler(
+    async ({ data }) =>
+      await api().dashboardListScopes(
+        cookie(),
+        data.workspaceId,
+        data.platform,
+        data.installationId,
+      ),
+  );

@@ -1,4 +1,6 @@
 import { D1 } from "@notus/cloudflare/d1";
+import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { Platform } from "@notus/platform/platform";
 import { key } from "@notus/platform/source";
 import { and, eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
@@ -9,15 +11,16 @@ import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
-import { channels, invites, memberships, workspaces } from "./schema";
+import { installations, invites, memberships, sources, workspaces } from "./schema";
 import {
-  Channel,
+  Installation,
   Invite,
   Membership,
   Role,
   Slug,
   slugOf,
   Workspace,
+  WorkspaceSource,
   WorkspaceName,
   WorkspaceView,
 } from "./types";
@@ -81,15 +84,16 @@ export interface Interface {
     userId: string,
     now: number,
   ) => Effect.Effect<Workspace, WorkspaceError>;
-  readonly addChannel: (
+  /** Covers a scope of a platform the workspace has installed; "not-installed" otherwise. */
+  readonly addSource: (
     workspaceId: string,
     actorId: string,
-    channel: { readonly teamId: string; readonly channelId: string },
+    source: SourceInput,
   ) => Effect.Effect<void, WorkspaceError>;
-  readonly removeChannel: (
+  readonly removeSource: (
     workspaceId: string,
     actorId: string,
-    channel: { readonly teamId: string; readonly channelId: string },
+    source: SourceInput,
   ) => Effect.Effect<void, WorkspaceError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
@@ -98,15 +102,25 @@ export class Service extends Context.Service<Service, Interface>()(
 
 const WorkspaceRow = createSelectSchema(workspaces);
 const MemberRow = createSelectSchema(memberships);
-const ChannelRow = createSelectSchema(channels);
+const InstallationRow = createSelectSchema(installations);
+const SourceRow = createSelectSchema(sources);
 const InviteRow = createSelectSchema(invites);
 const inviteLifetimeMs = 7 * 24 * 60 * 60_000;
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
   new WorkspaceError({ operation, reason });
-const ChannelInput = Schema.Struct({
-  teamId: Schema.NonEmptyString,
-  channelId: Schema.NonEmptyString,
+const SourceInput = Schema.Struct({
+  platform: Platform,
+  installationId: InstallationId,
+  scope: PlatformId,
+  label: Schema.optionalKey(Schema.String),
 });
+/** What a caller supplies; the brands are applied by decoding. */
+export interface SourceInput {
+  readonly platform: Platform;
+  readonly installationId: string;
+  readonly scope: string;
+  readonly label?: string;
+}
 
 export const layerNoDeps = Layer.effect(
   Service,
@@ -262,14 +276,19 @@ export const layerNoDeps = Layer.effect(
       const role = yield* roleOf("view", workspaceId, userId).pipe(storage("view"));
       const row = yield* workspace("view", workspaceId).pipe(storage("view"));
       const memberRows = yield* members(workspaceId).pipe(storage("view"));
-      const channelRows = yield* store.db
+      const installationRows = yield* store.db
         .select()
-        .from(channels)
-        .where(eq(channels.workspaceId, workspaceId))
+        .from(installations)
+        .where(eq(installations.workspaceId, workspaceId))
         .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ChannelRow))),
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
           storage("view"),
         );
+      const sourceRows = yield* store.db
+        .select()
+        .from(sources)
+        .where(eq(sources.workspaceId, workspaceId))
+        .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(SourceRow))), storage("view"));
       const inviteRows =
         role === "admin"
           ? yield* store.db
@@ -292,8 +311,11 @@ export const layerNoDeps = Layer.effect(
             provenance: m.provenance,
           }),
         ),
-        channels: channelRows.map((c) =>
-          Channel.make({ workspaceId: c.workspaceId, teamId: c.teamId, channelId: c.channelId }),
+        installations: yield* Schema.decodeUnknownEffect(Schema.Array(Installation))(
+          installationRows,
+        ).pipe(storage("view")),
+        sources: yield* Schema.decodeUnknownEffect(Schema.Array(WorkspaceSource))(sourceRows).pipe(
+          storage("view"),
         ),
         invites: inviteRows.map((i) =>
           Invite.make({
@@ -438,33 +460,51 @@ export const layerNoDeps = Layer.effect(
       return Workspace.make(row);
     });
 
-    const addChannel = Effect.fn("Workspaces.addChannel")(function* (
+    /** The installation must be the workspace's own: a scope of somebody else's team is never coverable. */
+    const installedHere = (operation: string, workspaceId: string, source: SourceInput) =>
+      store.db
+        .select()
+        .from(installations)
+        .where(eq(installations.key, key(source.platform, source.installationId)))
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
+          storage(operation),
+          Effect.flatMap((rows) =>
+            rows[0]?.workspaceId === workspaceId
+              ? Effect.void
+              : Effect.fail(fail(operation, "not-installed")),
+          ),
+        );
+    const addSource = Effect.fn("Workspaces.addSource")(function* (
       workspaceId: string,
       actorId: string,
-      value: { readonly teamId: string; readonly channelId: string },
+      value: SourceInput,
     ) {
-      const channel = yield* decodeInput(ChannelInput, value, "addChannel");
-      yield* requireAdmin("addChannel", workspaceId, actorId).pipe(storage("addChannel"));
+      const source = yield* decodeInput(SourceInput, value, "addSource");
+      yield* requireAdmin("addSource", workspaceId, actorId).pipe(storage("addSource"));
+      yield* installedHere("addSource", workspaceId, source);
       yield* store
         .batch([
-          sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
-          VALUES (${key(workspaceId, channel.teamId, channel.channelId)}, ${workspaceId}, ${channel.teamId}, ${channel.channelId})
+          sql`INSERT INTO workspace_sources (key, workspaceId, platform, installationId, scope, label)
+          VALUES (${key(workspaceId, source.platform, source.installationId, source.scope)}, ${workspaceId}, ${source.platform}, ${source.installationId}, ${source.scope}, ${source.label ?? source.scope})
           ON CONFLICT DO NOTHING`,
         ])
-        .pipe(storage("addChannel"));
+        .pipe(storage("addSource"));
     });
 
-    const removeChannel = Effect.fn("Workspaces.removeChannel")(function* (
+    const removeSource = Effect.fn("Workspaces.removeSource")(function* (
       workspaceId: string,
       actorId: string,
-      value: { readonly teamId: string; readonly channelId: string },
+      value: SourceInput,
     ) {
-      const channel = yield* decodeInput(ChannelInput, value, "removeChannel");
-      yield* requireAdmin("removeChannel", workspaceId, actorId).pipe(storage("removeChannel"));
+      const source = yield* decodeInput(SourceInput, value, "removeSource");
+      yield* requireAdmin("removeSource", workspaceId, actorId).pipe(storage("removeSource"));
       yield* store.db
-        .delete(channels)
-        .where(eq(channels.key, key(workspaceId, channel.teamId, channel.channelId)))
-        .pipe(storage("removeChannel"));
+        .delete(sources)
+        .where(
+          eq(sources.key, key(workspaceId, source.platform, source.installationId, source.scope)),
+        )
+        .pipe(storage("removeSource"));
     });
 
     return Service.of({
@@ -478,8 +518,8 @@ export const layerNoDeps = Layer.effect(
       createInvite,
       revokeInvite,
       acceptInvite,
-      addChannel,
-      removeChannel,
+      addSource,
+      removeSource,
     });
   }),
 );

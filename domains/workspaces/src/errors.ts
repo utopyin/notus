@@ -31,6 +31,7 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()(
       "conflict",
       "expired",
       "last-admin",
+      "not-installed",
     ]),
   },
 ) {}

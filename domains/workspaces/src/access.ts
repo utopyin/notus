@@ -1,4 +1,5 @@
 import { D1 } from "@notus/cloudflare/d1";
+import type { InstallationRef } from "@notus/platform/ids";
 import { key, Source } from "@notus/platform/source";
 import { eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
@@ -7,10 +8,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { AccessError, Denied } from "./errors";
-import { channels, memberships } from "./schema";
+import { installations, memberships, sources } from "./schema";
 import { Fixture, StartGrant } from "./types";
 
 export interface Interface {
+  /** The workspace that installed a platform, if any; events from anywhere else are nobody's. */
+  readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, AccessError>;
   readonly authorizeSource: (
     workspaceId: string,
     source: Source,
@@ -25,13 +28,25 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/access/Service",
 ) {}
-const ChannelRow = createSelectSchema(channels);
+const SourceRow = createSelectSchema(sources);
+const InstallationRow = createSelectSchema(installations);
 const MemberRow = createSelectSchema(memberships);
 
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+    const workspaceOf = Effect.fn("Access.workspaceOf")(
+      function* (ref: InstallationRef) {
+        const rows = yield* store.db
+          .select()
+          .from(installations)
+          .where(eq(installations.key, key(ref.platform, ref.installationId)))
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))));
+        return rows[0]?.workspaceId ?? null;
+      },
+      Effect.mapError((cause) => new AccessError({ operation: "workspaceOf", cause })),
+    );
     const authorizeSource = Effect.fn("Access.authorizeSource")(function* (
       workspaceId: string,
       value: Source,
@@ -39,20 +54,18 @@ export const layerNoDeps = Layer.effect(
       const source = yield* Schema.decodeEffect(Source)(value).pipe(
         Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
       );
-      // A workspace allows scopes: Slack channels and GitHub repositories share one table for now.
       const rows = yield* store.db
         .select()
-        .from(channels)
-        .where(eq(channels.key, key(workspaceId, source.installationId, source.scope)))
+        .from(sources)
+        .where(
+          eq(sources.key, key(workspaceId, source.platform, source.installationId, source.scope)),
+        )
         .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ChannelRow))),
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(SourceRow))),
           Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
         );
       if (rows.length === 0)
-        return yield* new Denied({
-          workspaceId,
-          reason: "Source is not an administrator-configured fixture channel",
-        });
+        return yield* new Denied({ workspaceId, reason: "Scope is not one the workspace covers" });
     });
     const authorizeStart = Effect.fn("Access.authorizeStart")(function* (
       workspaceId: string,
@@ -79,16 +92,23 @@ export const layerNoDeps = Layer.effect(
       function* (value: Fixture) {
         const { workspaceId, userId, teamId, channelId, github } =
           yield* Schema.decodeEffect(Fixture)(value);
-        if (github)
-          yield* store.batch([
-            sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
-            VALUES (${key(workspaceId, github.installationId, github.fullName)}, ${workspaceId}, ${github.installationId}, ${github.fullName}) ON CONFLICT DO NOTHING`,
-          ]);
+        const installed = (platform: string, installationId: string, label: string) =>
+          sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt)
+          VALUES (${key(platform, installationId)}, ${workspaceId}, ${platform}, ${installationId}, ${label}, ${userId}, 0) ON CONFLICT DO NOTHING`;
+        const covers = (platform: string, installationId: string, scope: string) =>
+          sql`INSERT INTO workspace_sources (key, workspaceId, platform, installationId, scope, label)
+          VALUES (${key(workspaceId, platform, installationId, scope)}, ${workspaceId}, ${platform}, ${installationId}, ${scope}, ${scope}) ON CONFLICT DO NOTHING`;
         yield* store.batch([
           sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)
           VALUES (${workspaceId}, ${workspaceId}, ${workspaceId}, ${userId}, 0) ON CONFLICT DO NOTHING`,
-          sql`INSERT INTO workspace_channels (key, workspaceId, teamId, channelId)
-          VALUES (${key(workspaceId, teamId, channelId)}, ${workspaceId}, ${teamId}, ${channelId}) ON CONFLICT DO NOTHING`,
+          installed("slack", teamId, "Slack"),
+          covers("slack", teamId, channelId),
+          ...(github
+            ? [
+                installed("github", github.installationId, "GitHub"),
+                covers("github", github.installationId, github.fullName),
+              ]
+            : []),
           sql`INSERT INTO workspace_memberships (key, workspaceId, userId, role, provenance)
           VALUES (${key(workspaceId, userId)}, ${workspaceId}, ${userId}, 'admin', 'admin-fixture') ON CONFLICT DO NOTHING`,
           // A membership seeded before roles existed defaulted to member; the fixture user administers.
@@ -98,7 +118,7 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new AccessError({ operation: "seedFixture", cause })),
     );
-    return Service.of({ authorizeSource, authorizeStart, seedFixture });
+    return Service.of({ workspaceOf, authorizeSource, authorizeStart, seedFixture });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

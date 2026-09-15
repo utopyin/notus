@@ -4,7 +4,7 @@ import {
   IconMessageCircleOff,
   IconTrashFilled,
 } from "@tabler/icons-react";
-import { useLiveQuery } from "@tanstack/react-db";
+import { eq, useLiveQuery } from "@tanstack/react-db";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -19,20 +19,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { collectionsOf, type ChannelRow } from "../collections";
+import { collectionsOf, sourceKey, type SourceRow } from "../collections";
 import { queryClient } from "../query";
-import { slackChannels } from "../server/workspaces";
+import { listScopes, type WorkspaceView } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
 
 /**
- * The channels the Slack app can see. Cached on the shared client so returning to the page shows
- * the last list at once; a fresh copy is fetched in the background once it is a few minutes old.
+ * The channels the Slack app can see in the workspace's team. Cached on the shared client so
+ * returning to the page shows the last list at once; a fresh copy is fetched in the background
+ * once it is a few minutes old.
  */
-const slackChannelsQuery = queryOptions({
-  queryKey: ["slack-channels"],
-  queryFn: () => slackChannels(),
-  staleTime: 5 * 60_000,
-});
+const scopesQuery = (workspaceId: string, installationId: string) =>
+  queryOptions({
+    queryKey: ["workspace", workspaceId, "scopes", "slack", installationId],
+    queryFn: () => listScopes({ data: { workspaceId, platform: "slack", installationId } }),
+    staleTime: 5 * 60_000,
+  });
+const slackInstallation = (view: WorkspaceView) =>
+  view.installations.find((i) => i.platform === "slack") ?? null;
 
 export const Route = createFileRoute("/$slug/channels")({
   staticData: {
@@ -47,44 +51,69 @@ export const Route = createFileRoute("/$slug/channels")({
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
     if (!parent.loaderData) return;
+    const view = parent.loaderData;
+    const installation = slackInstallation(view);
     // Not awaited: the page renders its skeleton while Slack answers.
-    void queryClient.prefetchQuery(slackChannelsQuery);
-    await collectionsOf(parent.loaderData.workspace.id).channels.preload();
+    if (installation)
+      void queryClient.prefetchQuery(scopesQuery(view.workspace.id, installation.installationId));
+    await collectionsOf(view.workspace.id).sources.preload();
   },
   component: Channels,
 });
 
 function Channels() {
   const { view } = useWorkspace();
-  const { channels } = collectionsOf(view.workspace.id);
+  const { sources } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
-    query: (q) => q.from({ channel: channels }).orderBy(({ channel }) => channel.channelId, "asc"),
+    query: (q) =>
+      q
+        .from({ source: sources })
+        .where(({ source }) => eq(source.platform, "slack"))
+        .orderBy(({ source }) => source.scope, "asc"),
   });
-  const { data: result } = useQuery(slackChannelsQuery, queryClient);
+  const installation = slackInstallation(view);
+  const { data: result } = useQuery(
+    {
+      ...scopesQuery(view.workspace.id, installation?.installationId ?? ""),
+      enabled: installation !== null,
+    },
+    queryClient,
+  );
   // Slack's channel list once it answered, or the reason it refused.
-  const available = result?.ok ? result.value : null;
+  const available = result?.ok ? result.value.scopes : null;
   const listing = result && !result.ok ? result.reason : null;
-  const loading = result === undefined;
+  const loading = installation !== null && result === undefined;
   const [manual, setManual] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const isAdmin = view.role === "admin";
-  const byId = new Map(available?.channels.map((c) => [c.id, c]) ?? []);
-  const linked = new Set(data.map((row) => row.channelId));
+  const byId = new Map(available?.map((c) => [c.id, c]) ?? []);
+  const linked = new Set(data.map((row) => row.scope));
   const report = (error: unknown) =>
     setMessage(
       error instanceof Error ? `That did not work (${error.message}).` : "That did not work.",
     );
-  const add = (channelId: string) => {
-    const teamId = available?.teamId ?? data[0]?.teamId;
-    if (!teamId) return;
-    channels
-      .insert({ workspaceId: view.workspace.id, teamId, channelId })
+  const add = (scope: string) => {
+    if (!installation) return;
+    sources
+      .insert({
+        workspaceId: view.workspace.id,
+        platform: "slack",
+        installationId: installation.installationId,
+        scope,
+        label: byId.get(scope)?.label ?? scope,
+      })
       .isPersisted.promise.catch(report);
   };
-  const remove = (row: ChannelRow) => {
-    channels.delete(`${row.teamId}:${row.channelId}`).isPersisted.promise.catch(report);
+  const remove = (row: SourceRow) => {
+    sources.delete(sourceKey(row)).isPersisted.promise.catch(report);
   };
-  const options = available?.channels.filter((c) => c.isMember && !linked.has(c.id)) ?? [];
+  const options = available?.filter((c) => c.member && !linked.has(c.id)) ?? [];
+  if (!installation)
+    return (
+      <p className="text-muted-foreground text-sm">
+        Slack is not installed for this workspace yet.
+      </p>
+    );
   return (
     <>
       {data.length === 0 ? (
@@ -92,13 +121,10 @@ function Channels() {
       ) : (
         <ul className="divide-y rounded-lg border">
           {data.map((row) => {
-            const info = byId.get(row.channelId);
+            const info = byId.get(row.scope);
             return (
-              <li
-                key={`${row.teamId}:${row.channelId}`}
-                className="flex items-center gap-3 px-4 py-3 text-sm"
-              >
-                {info?.isPrivate ? (
+              <li key={sourceKey(row)} className="flex items-center gap-3 px-4 py-3 text-sm">
+                {info?.private ? (
                   <IconLockFilled className="text-muted-foreground size-4" />
                 ) : (
                   <IconHash className="text-muted-foreground size-4" />
@@ -108,10 +134,10 @@ function Channels() {
                     <Skeleton className="h-4 w-32" />
                   ) : (
                     <span className="truncate leading-4 font-medium">
-                      {info?.name ?? row.channelId}
+                      {info?.label ?? row.label ?? row.scope}
                     </span>
                   )}
-                  <span className="text-muted-foreground font-mono text-xs">{row.channelId}</span>
+                  <span className="text-muted-foreground font-mono text-xs">{row.scope}</span>
                 </div>
                 {isAdmin ? (
                   <Button variant="ghost" size="sm" onClick={() => remove(row)}>
@@ -151,12 +177,12 @@ function Channels() {
               ) : (
                 options.map((c) => (
                   <SelectItem key={c.id} value={c.id} className="pl-1">
-                    {c.isPrivate ? (
+                    {c.private ? (
                       <IconLockFilled className="text-muted-foreground" />
                     ) : (
                       <IconHash className="text-muted-foreground" />
                     )}
-                    {c.name}
+                    {c.label}
                   </SelectItem>
                 ))
               )}
