@@ -193,6 +193,7 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -225,7 +226,9 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
     starting && device.data?.ok && device.data.value.state === "pending" ? device.data.value : null;
   const connectChatGpt = async () => {
     setMessage(null);
+    setRequesting(true);
     const result = await beginChatGpt();
+    setRequesting(false);
     if (!result.ok) return setMessage(`That did not work (${result.reason}).`);
     setCopied(false);
     queryClient.setQueryData(["chatgpt-device-login"], { ok: true, value: result.value });
@@ -271,15 +274,20 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
                 Disconnect
               </Button>
             ) : pending === null ? (
-              <Button size="sm" variant="outline" disabled={starting} onClick={connectChatGpt}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={starting || requesting}
+                onClick={connectChatGpt}
+              >
                 <IconLink className="size-4" />
-                Sign in with ChatGPT
+                {requesting ? "Requesting a code…" : "Sign in with ChatGPT"}
               </Button>
             ) : null}
           </div>
           {pending ? (
             <div className="flex flex-col items-center gap-4 rounded-lg px-4 py-6 ring-1 ring-foreground/10">
-              <p className="text-muted-foreground text-center text-sm text-pretty">
+              <p className="text-muted-foreground text-center text-xs text-pretty">
                 Open the verification page and enter this one-time code. It expires in{" "}
                 {Math.max(1, Math.ceil((pending.expiresAt - Date.now()) / 60_000))} minutes.
               </p>
@@ -294,9 +302,6 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               >
                 {pending.userCode}
               </button>
-              <span className="text-muted-foreground -mt-3 text-xs">
-                {copied ? "Copied to the clipboard" : "Click the code to copy it"}
-              </span>
               <Button
                 variant="outline"
                 render={<a href={pending.verificationUrl} target="_blank" rel="noreferrer" />}
