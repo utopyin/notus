@@ -48,10 +48,15 @@ export const callback = (dashboardOrigin: string) =>
       .pipe(Effect.mapError(() => "unregistered" as const));
     const installed = yield* scope.installing
       .complete({ state, redirectUri: redirectUriOf(dashboardOrigin, platform) }, url.searchParams)
-      .pipe(Effect.mapError((error) => error.reason));
+      .pipe(
+        Effect.mapError(
+          (error) =>
+            `${platform} ${error.reason}${error.detail === undefined ? "" : ` (${error.detail})`}`,
+        ),
+      );
     yield* workspaces
       .install(intent, installed, now)
-      .pipe(Effect.mapError((error) => error.reason));
+      .pipe(Effect.mapError((error) => `${platform} ${error.reason}`));
     yield* Effect.logInfo(`install.completed ${platform}`);
     return redirect(`${back}?installed=${platform}`);
   }).pipe(

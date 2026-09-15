@@ -6,6 +6,8 @@ import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("Slack.OAuthError", {
   reason: Schema.Literals(["transport", "rejected", "invalid-response"]),
+  /** Slack's error slug, such as `bad_redirect_uri` or `invalid_code`. */
+  code: Schema.optionalKey(Schema.String),
 }) {}
 
 /** What "Add to Slack" yields: the team, and the bot the app now is there. */
@@ -79,7 +81,11 @@ export const exchange = Effect.fn("Slack.OAuth.exchange")(
     const decoded = yield* Schema.decodeUnknownEffect(AccessResponse)(json).pipe(
       Effect.mapError(() => new OAuthError({ reason: "invalid-response" })),
     );
-    if (!decoded.ok) return yield* new OAuthError({ reason: "rejected" });
+    if (!decoded.ok)
+      return yield* new OAuthError({
+        reason: "rejected",
+        ...(decoded.error === undefined ? {} : { code: decoded.error }),
+      });
     if (!decoded.access_token || !decoded.bot_user_id || !decoded.team)
       return yield* new OAuthError({ reason: "invalid-response" });
     return Grant.make({

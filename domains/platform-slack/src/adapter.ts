@@ -122,7 +122,12 @@ export const adapter: Effect.Effect<
       if (configuration.oauth === null)
         return yield* new InstallError({ platform: "slack", reason: "unconfigured" });
       const code = query.get("code");
-      if (!code) return yield* new InstallError({ platform: "slack", reason: "rejected" });
+      if (!code)
+        return yield* new InstallError({
+          platform: "slack",
+          reason: "rejected",
+          detail: "no-code",
+        });
       const grant = yield* OAuth.exchange({
         clientId: configuration.oauth.clientId,
         clientSecret: configuration.oauth.clientSecret,
@@ -130,7 +135,14 @@ export const adapter: Effect.Effect<
         redirectUri: intent.redirectUri,
       }).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
-        Effect.mapError((error) => new InstallError({ platform: "slack", reason: error.reason })),
+        Effect.mapError(
+          (error) =>
+            new InstallError({
+              platform: "slack",
+              reason: error.reason,
+              ...(error.code === undefined ? {} : { detail: error.code }),
+            }),
+        ),
       );
       return {
         installationId: grant.teamId,

@@ -6,6 +6,8 @@ export class InstallError extends Schema.TaggedError<InstallError>()("Sources.In
   platform: Platform,
   /** `unconfigured`: this deployment cannot install the platform at all. */
   reason: Schema.Literals(["unconfigured", "rejected", "transport", "invalid-response"]),
+  /** The platform's own word for it (a Slack error slug, an HTTP status); never a token or body. */
+  detail: Schema.optionalKey(Schema.String),
 }) {}
 
 /** What the host knows and the adapter cannot: where to send the platform back, and the nonce to carry. */

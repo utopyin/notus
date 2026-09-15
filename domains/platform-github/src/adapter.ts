@@ -131,7 +131,11 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       complete: Effect.fn("GitHub.install")(function* (_intent, query) {
         const installationId = query.get("installation_id");
         if (!installationId || !/^\d{1,20}$/.test(installationId))
-          return yield* new InstallError({ platform: "github", reason: "rejected" });
+          return yield* new InstallError({
+            platform: "github",
+            reason: "rejected",
+            detail: "no-installation-id",
+          });
         // The App JWT confirms the installation exists and names the account it belongs to.
         const installation = yield* app.installation(installationId).pipe(
           Effect.mapError(
@@ -146,6 +150,7 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
                       : error.reason === "transport"
                         ? "transport"
                         : "invalid-response",
+                detail: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
               }),
           ),
         );
