@@ -1,6 +1,5 @@
 import { Failure as AuthenticationFailure } from "@notus/control/runtime/auth";
 import { Mode } from "@notus/executions/types";
-import { Provider } from "@notus/openai/types";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -42,14 +41,12 @@ export const runtimeConfig = Effect.gen(function* () {
 export type RuntimeConfig = NonNullable<Effect.Success<typeof runtimeConfig>>;
 
 /**
- * Read by the Task and Connection hosts. Contains no credentials. The subscription backend
- * is the default; Platform API billing must be selected explicitly.
+ * Read by the Task host. Contains no credentials. The operator always runs on the Platform API
+ * with the initiator's key: the subscription backend refuses Cloudflare egress, so a ChatGPT
+ * login serves Codex on the dev box only.
  */
 export const operatorConfig = Effect.gen(function* () {
   return {
-    provider: yield* Config.schema(Provider, "NOTUS_MODEL_PROVIDER").pipe(
-      Config.withDefault("openai-chatgpt"),
-    ),
     model: yield* Config.schema(Schema.NonEmptyString, "NOTUS_MODEL").pipe(
       Config.withDefault("gpt-5.4"),
     ),

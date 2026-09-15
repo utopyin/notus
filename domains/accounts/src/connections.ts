@@ -106,12 +106,12 @@ export interface Interface {
     now: number,
   ) => Effect.Effect<ConnectionStatus, ConnectionError>;
   /**
-   * gate serializes the local decisions (replay lookup, refresh, record) with every other
-   * call on this connection; the provider round trip itself runs outside it.
+   * One operator model request on the user's platform API key. gate serializes the local
+   * decisions (replay lookup, record) with every other call on this connection; the provider
+   * round trip itself runs outside it.
    */
   readonly forward: (
     userId: string,
-    provider: Provider,
     operationId: string,
     request: ForwardRequest,
     gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>,
@@ -300,7 +300,6 @@ export const layerNoDeps = Layer.effect(
     });
     const forward = Effect.fn("Connections.forward")(function* (
       userId: string,
-      provider: Provider,
       operationId: string,
       input: ForwardRequest,
       gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>,
@@ -313,7 +312,7 @@ export const layerNoDeps = Layer.effect(
       );
       const authorized = yield* gate(
         Effect.gen(function* () {
-          const row = yield* storage(load(userId, provider));
+          const row = yield* storage(load(userId, "openai-api"));
           if (!row) return yield* fail("not-linked");
           if (row.revokedAt !== null) return yield* fail("revoked");
           const [replay] = yield* storage(
@@ -333,14 +332,7 @@ export const layerNoDeps = Layer.effect(
           }
           const now = yield* Clock.currentTimeMillis;
           const current = yield* fresh(row, now);
-          const credentials: Backend.Credentials =
-            row.provider === "openai-chatgpt"
-              ? {
-                  provider: row.provider,
-                  access: Redacted.make(current.access),
-                  accountId: current.accountId,
-                }
-              : { provider: row.provider, key: Redacted.make(current.access) };
+          const credentials: Backend.Credentials = { key: Redacted.make(current.access) };
           return { _tag: "Grant" as const, credentials };
         }),
       );

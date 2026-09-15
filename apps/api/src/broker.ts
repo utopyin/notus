@@ -1,6 +1,5 @@
 import type { ConnectionError } from "@notus/accounts/errors";
 import { Model } from "@notus/openai/model";
-import type { Provider } from "@notus/openai/types";
 import type * as Cloudflare from "alchemy/Cloudflare";
 import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
@@ -38,7 +37,6 @@ const statuses: Record<ConnectionError["reason"], number> = {
 export const client = (
   connections: Cloudflare.DurableObject<Connection>,
   runtime: typeof RuntimeContext.Service,
-  provider: Provider,
 ) =>
   HttpClient.make((request, url) =>
     Effect.gen(function* () {
@@ -57,7 +55,7 @@ export const client = (
       });
       const result = yield* connections
         .getByName(operation.userId)
-        .forward(operation.userId, provider, operation.operationId, {
+        .forward(operation.userId, operation.operationId, {
           method: "POST",
           url: url.toString(),
           contentType: body.contentType,
@@ -95,7 +93,5 @@ export const languageModel = (
   options: OperatorConfig,
 ) =>
   Model.languageModel(options).pipe(
-    Layer.provide(
-      Layer.succeed(HttpClient.HttpClient, client(connections, runtime, options.provider)),
-    ),
+    Layer.provide(Layer.succeed(HttpClient.HttpClient, client(connections, runtime))),
   );

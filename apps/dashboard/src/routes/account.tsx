@@ -186,9 +186,9 @@ const whenOf = (millis: number | null) =>
   millis === null ? null : new Date(millis).toLocaleString();
 
 /**
- * The user's own model accounts. A ChatGPT subscription serves Codex on the dev box and the
- * operator on the subscription backend; a platform API key serves the operator on the API backend.
- * Nothing here ever shows a token: status, the account, when it was linked or rotated.
+ * The user's own model accounts. A ChatGPT subscription serves Codex on the dev box; a platform
+ * API key serves the operator, which runs on Cloudflare where the subscription backend is
+ * unreachable. Nothing here ever shows a token: status, the account, when it was linked or rotated.
  */
 function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const router = useRouter();

@@ -88,12 +88,8 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
           /** The login goes to one dev box round, never to storage. */
           agentLogin: (userId: string, minimumLifetimeMs: number) =>
             result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
-          forward: (
-            userId: string,
-            provider: Provider,
-            operationId: string,
-            request: ForwardRequest,
-          ) => result(connections.forward(userId, provider, operationId, request, gate)),
+          forward: (userId: string, operationId: string, request: ForwardRequest) =>
+            result(connections.forward(userId, operationId, request, gate)),
         };
       }),
     ),

@@ -5,27 +5,22 @@ import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { ForwardError } from "./errors";
-import { ForwardRequest, ForwardResponse, Provider } from "./types";
+import { ForwardRequest, ForwardResponse } from "./types";
 
 /**
- * Two OpenAI backends with different identity and billing. Selecting one is an explicit
- * configuration decision; nothing here falls back from one to the other.
+ * The one OpenAI backend a Worker can reach. OpenAI's edge refuses every request arriving from
+ * Cloudflare's network before reading the token (see docs/research/openai-auth.md), so the
+ * subscription backend at chatgpt.com only ever serves Codex on the dev box, which carries the
+ * subscription login. The operator runs on the Platform API with the initiator's key.
  */
-export const endpoint = (provider: Provider): string =>
-  provider === "openai-chatgpt"
-    ? "https://chatgpt.com/backend-api/codex"
-    : "https://api.openai.com/v1";
-export const responsesUrl = (provider: Provider): string => `${endpoint(provider)}/responses`;
+export const endpoint = "https://api.openai.com/v1";
+export const responsesUrl = `${endpoint}/responses`;
 const maxRequestBytes = 512 * 1024;
 const maxResponseBytes = 1024 * 1024;
 
-export type Credentials =
-  | {
-      readonly provider: "openai-chatgpt";
-      readonly access: Redacted.Redacted<string>;
-      readonly accountId: string;
-    }
-  | { readonly provider: "openai-api"; readonly key: Redacted.Redacted<string> };
+export interface Credentials {
+  readonly key: Redacted.Redacted<string>;
+}
 
 /** The only provider call a broker performs for a caller: one Responses request with the owner's bearer. */
 export const forward = Effect.fn("OpenAi.Backend.forward")(
@@ -35,29 +30,17 @@ export const forward = Effect.fn("OpenAi.Backend.forward")(
       Effect.mapError(unsupported),
     );
     if (
-      request.url !== responsesUrl(credentials.provider) ||
+      request.url !== responsesUrl ||
       request.contentType.split(";")[0]?.trim().toLowerCase() !== "application/json" ||
-      new TextEncoder().encode(request.body).byteLength > maxRequestBytes ||
-      (credentials.provider === "openai-chatgpt" &&
-        !/^[a-zA-Z0-9_-]{1,256}$/.test(credentials.accountId))
+      new TextEncoder().encode(request.body).byteLength > maxRequestBytes
     )
       return yield* unsupported();
     const http = yield* HttpClient.HttpClient;
-    const base = HttpClientRequest.post(request.url).pipe(
+    const authorized = HttpClientRequest.post(request.url).pipe(
       HttpClientRequest.setHeaders({ accept: "application/json" }),
       HttpClientRequest.bodyText(request.body, "application/json"),
+      HttpClientRequest.bearerToken(credentials.key),
     );
-    const authorized =
-      credentials.provider === "openai-chatgpt"
-        ? base.pipe(
-            HttpClientRequest.setHeaders({
-              "chatgpt-account-id": credentials.accountId,
-              "openai-beta": "responses=experimental",
-              originator: "notus",
-            }),
-            HttpClientRequest.bearerToken(credentials.access),
-          )
-        : base.pipe(HttpClientRequest.bearerToken(credentials.key));
     const response = yield* http
       .execute(authorized)
       .pipe(Effect.mapError(() => new ForwardError({ reason: "transport" })));
