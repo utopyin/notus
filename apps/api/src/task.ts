@@ -480,7 +480,6 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             admit: (command: Admission) =>
               gate(
                 Effect.gen(function* () {
-                  yield* arm((yield* Clock.currentTimeMillis) + 1);
                   const selected = yield* mode;
                   const receipt = yield* (
                     selected === "readiness"
@@ -489,15 +488,16 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                         ? OperatorControl.admit(command)
                         : Control.admit(command, config.simulationDelayMs)
                   ).pipe(Effect.provideContext(services));
-                  return {
-                    receipt,
-                    needsEnvironment:
-                      selected === "readiness"
-                        ? (yield* provisioning.current) === null
-                        : selected === "operator"
-                          ? (yield* provisioning.captured) === null
-                          : false,
-                  };
+                  const needsEnvironment =
+                    selected === "readiness"
+                      ? (yield* provisioning.current) === null
+                      : selected === "operator"
+                        ? (yield* provisioning.captured) === null
+                        : false;
+                  // A task still waiting for its environment and repositories must not take its
+                  // first step before prepareEnvironment stored them; that call arms the alarm.
+                  if (!needsEnvironment) yield* arm((yield* Clock.currentTimeMillis) + 1);
+                  return { receipt, needsEnvironment };
                 }),
               ).pipe(
                 Effect.map((result) => ({ ok: true as const, ...result })),
