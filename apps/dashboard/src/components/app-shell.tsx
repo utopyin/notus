@@ -4,7 +4,7 @@ import {
   IconLayoutDashboardFilled,
   IconLogout,
   IconMailFilled,
-  IconMessageCircleFilled,
+  IconPlugConnected,
   IconMoonFilled,
   IconPlus,
   IconSelector,
@@ -52,7 +52,7 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
-type Active = "overview" | "members" | "channels" | "invites" | "settings" | "account";
+type Active = "overview" | "members" | "sources" | "invites" | "settings" | "account";
 
 /** What a page under the workspace layout tells the shell about itself. */
 export type ShellPage = { active: Active; title?: string; description?: string };
@@ -182,12 +182,12 @@ export function AppShell(props: {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                      tooltip="Channels"
-                      isActive={active === "channels"}
-                      render={<Link to="/$slug/channels" params={{ slug }} />}
+                      tooltip="Sources"
+                      isActive={active === "sources"}
+                      render={<Link to="/$slug/sources" params={{ slug }} />}
                     >
-                      <IconMessageCircleFilled />
-                      <span>Channels</span>
+                      <IconPlugConnected />
+                      <span>Sources</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   {isAdmin ? (

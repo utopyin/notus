@@ -85,6 +85,27 @@ export const removeSource = createServerFn({ method: "POST" })
     async ({ data }) => await api().dashboardRemoveSource(cookie(), data.workspaceId, data.source),
   );
 
+/** Where to send the admin to install a platform; the API remembers the intent until the platform returns. */
+export const installUrl = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; platform: "slack" | "github" }) => input)
+  .handler(
+    async ({ data }) => await api().dashboardInstallUrl(cookie(), data.workspaceId, data.platform),
+  );
+
+export const uninstall = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { workspaceId: string; platform: "slack" | "github"; installationId: string }) => input,
+  )
+  .handler(
+    async ({ data }) =>
+      await api().dashboardUninstall(
+        cookie(),
+        data.workspaceId,
+        data.platform,
+        data.installationId,
+      ),
+  );
+
 /** The scopes one of the workspace's installations can see. */
 export const listScopes = createServerFn({ method: "GET" })
   .inputValidator(

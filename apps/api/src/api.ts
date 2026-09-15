@@ -8,7 +8,11 @@ import type { Actor } from "@notus/platform/source";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import type { SourceInput } from "@notus/workspaces/workspaces";
+import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
+import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
+import * as Install from "./install";
+import * as Redacted from "effect/Redacted";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
 import { Stack } from "alchemy/Stack";
@@ -55,8 +59,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     // Sign-in for the dashboard. Sessions are validated here, never trusted from the dashboard.
     const auth = yield* makeAuth(dashboard);
-    // Every source goes through the registry: ingress, delivery and the dashboard's scope lists.
-    const platforms = platformsLayer(config, github, webhookSecret);
     const tasks = yield* Task;
     const connections = yield* Connection;
     const database = yield* SharedDatabase;
@@ -65,26 +67,39 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Alchemy supplies this during initialization, not in event contexts.
     const runtime = yield* CurrentRuntimeContext;
     if (!runtime) return yield* Effect.die("Api initialization requires Alchemy RuntimeContext");
+    // Every source goes through the registry: ingress, delivery, installs and the dashboard's scope lists.
+    const d1 = Layer.effect(D1.Binding, binding.raw);
+    const platforms = platformsLayer(config, github, {
+      webhookSecret,
+      slack: dashboard.slack,
+      githubAppSlug: dashboard.githubAppSlug,
+    }).pipe(
+      Layer.provide(Credentials.layer.pipe(Layer.provide(d1))),
+      Layer.provide(Layer.succeed(RuntimeContext, runtime)),
+      // The credential store's database client is deployment configuration; failing it is a defect.
+      Layer.orDie,
+    );
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
     const inboxLayer = Layer.merge(Inbox.layer, Environments.layer).pipe(
-      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer, platforms]),
+      Layer.provide([d1, cryptoLayer, platforms]),
     );
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
       Effect.scoped(
         Effect.gen(function* () {
           const inbox = yield* Inbox.Service;
-          yield* inbox.seedFixture(
-            github && repository
+          yield* inbox.seedFixture({
+            ...config,
+            slack: { botToken: Redacted.value(config.token), botUserId: config.botUserId },
+            ...(github && repository
               ? {
-                  ...config,
                   github: {
                     installationId: github.installationId,
                     fullName: `${repository.owner}/${repository.name}`,
                   },
                 }
-              : config,
-          );
+              : {}),
+          });
           return yield* run(inbox);
         }).pipe(Effect.provide(inboxLayer)),
       );
@@ -171,8 +186,22 @@ export default class Api extends Cloudflare.Worker<Api>()(
     };
     // Dashboard services: workspace administration, identity adoption and the platforms' scope lists.
     const dashboardLayer = Layer.mergeAll(Workspaces.layer, Identities.layer, platforms).pipe(
-      Layer.provide([Layer.effect(D1.Binding, binding.raw), cryptoLayer]),
+      Layer.provide([d1, cryptoLayer]),
     );
+    // The platform's redirect after an install; it needs the dashboard's origin to land on.
+    const install = dashboard.origin
+      ? Install.callback(dashboard.origin).pipe(
+          Effect.scoped,
+          Effect.provide(dashboardLayer),
+          Effect.provideService(RuntimeContext, runtime),
+          Effect.orDie,
+        )
+      : Effect.succeed(HttpServerResponse.empty({ status: 404 }));
+    /** Which platforms this deployment can install; the dashboard offers exactly these. */
+    const installable: ReadonlyArray<Platform> = [
+      ...(dashboard.slack ? (["slack"] as const) : []),
+      ...(dashboard.githubAppSlug ? (["github"] as const) : []),
+    ];
     type DashboardDeps = Workspaces.Service | Identities.Service | Platforms.Service;
     /**
      * Resolves the signed-in dashboard user from the forwarded cookie: the Better Auth session,
@@ -232,7 +261,11 @@ export default class Api extends Cloudflare.Worker<Api>()(
             label: i.label,
             installedBy: i.installedBy,
             installedAt: i.installedAt,
+            name: PLATFORM_DESCRIPTORS[i.platform].name,
+            icon: PLATFORM_DESCRIPTORS[i.platform].icon,
+            scopeNoun: PLATFORM_DESCRIPTORS[i.platform].scopeNoun,
           })),
+          installable,
           sources: view.sources.map((s): SourceSummary => ({
             workspaceId: s.workspaceId,
             platform: s.platform,
@@ -269,6 +302,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
       readonly label: string;
       readonly installedBy: string;
       readonly installedAt: number;
+      /** From the platform's descriptor, so the dashboard never branches on the platform. */
+      readonly name: string;
+      readonly icon: string;
+      readonly scopeNoun: string;
     }
     interface SourceSummary {
       readonly workspaceId: string;
@@ -323,6 +360,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
         const events = /^\/([a-z]+)\/events$/.exec(path)?.[1];
         if (events !== undefined && Schema.is(Platform)(events)) return yield* ingress[events];
         if (path === "/auth" || path.startsWith("/auth/")) return yield* auth.fetch;
+        if (/^\/platforms\/[a-z]+\/install$/.test(path)) return yield* install;
         if (path.startsWith("/runtime/")) return yield* callback;
         return HttpServerResponse.empty({ status: 404 });
       }),
@@ -450,6 +488,39 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
             Effect.flatMap((workspaces) => workspaces.acceptInvite(token, me.userId, me.now)),
+          ),
+        ),
+      /** Where to send an admin to install a platform for the workspace; the intent outlives the round trip. */
+      dashboardInstallUrl: (cookie: string, workspaceId: string, platform: Platform) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            if (!dashboard.origin)
+              return yield* Effect.fail<DashboardFailure>({
+                _tag: "Unconfigured",
+                reason: "unconfigured",
+              });
+            const workspaces = yield* Workspaces.Service;
+            const intent = yield* workspaces.beginInstall(workspaceId, me.userId, platform, me.now);
+            const platforms = yield* Platforms.Service;
+            const scope = yield* platforms.forPlatform(platform);
+            const { url } = yield* scope.installing.begin({
+              state: intent.nonce,
+              redirectUri: Install.redirectUriOf(dashboard.origin, platform),
+            });
+            return { url };
+          }),
+        ),
+      dashboardUninstall: (
+        cookie: string,
+        workspaceId: string,
+        platform: Platform,
+        installationId: string,
+      ) =>
+        authorized(cookie, (me) =>
+          Workspaces.Service.pipe(
+            Effect.flatMap((workspaces) =>
+              workspaces.uninstall(workspaceId, me.userId, { platform, installationId }),
+            ),
           ),
         ),
       dashboardAddSource: (cookie: string, workspaceId: string, source: SourceInput) =>

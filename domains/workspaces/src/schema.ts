@@ -36,9 +36,21 @@ export const installations = sqliteTable(
     label: text().notNull().default(""),
     installedBy: text().notNull(),
     installedAt: integer().notNull(),
+    /** The adapter's own JSON (a bot token, a bot user). Read by the API Worker only, never projected. */
+    credential: text(),
   },
   (table) => [index("workspace_installations_workspace").on(table.workspaceId)],
 );
+
+/** An administrator sent to a platform to install it; single use, short-lived, keyed by the nonce the platform carries back. */
+export const installIntents = sqliteTable("workspace_install_intents", {
+  nonce: text().primaryKey(),
+  workspaceId: text().notNull(),
+  userId: text().notNull(),
+  platform: text().notNull(),
+  createdAt: integer().notNull(),
+  expiresAt: integer().notNull(),
+});
 
 /** A scope the workspace listens in or works on: a channel of an installed team, a repository of an installed App. */
 export const sources = sqliteTable(

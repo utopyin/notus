@@ -135,7 +135,10 @@ export const dashboardConfig = Effect.gen(function* () {
   const githubId = yield* Config.option(Config.string("GITHUB_OAUTH_CLIENT_ID"));
   const githubSecret = yield* Config.option(Config.redacted("GITHUB_OAUTH_CLIENT_SECRET"));
   const origin = yield* Config.option(Config.string("NOTUS_DASHBOARD_URL"));
+  const githubAppSlug = yield* Config.option(Config.string("GITHUB_APP_SLUG"));
   return {
+    /** The public name of the GitHub App, for its installation page; absent means no install offer. */
+    githubAppSlug: Option.getOrNull(githubAppSlug),
     slack:
       Option.isSome(slackId) && Option.isSome(slackSecret)
         ? { clientId: slackId.value, clientSecret: slackSecret.value }

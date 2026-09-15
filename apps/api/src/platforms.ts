@@ -1,38 +1,32 @@
-import { GithubAdapter } from "@notus/platform-github/adapter";
 import { App as GithubApp } from "@notus/github/app";
+import { GithubAdapter } from "@notus/platform-github/adapter";
 import { SlackAdapter } from "@notus/platform-slack/adapter";
-import { Slack } from "@notus/slack/service";
 import { Platforms } from "@notus/platforms/registry";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Redacted from "effect/Redacted";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import type { DeploymentConfig, GithubConfig } from "./config";
+import type { DashboardConfig, DeploymentConfig, GithubConfig } from "./config";
 
 /**
- * The registry over this deployment's adapters: Slack in the configured team, GitHub through the
- * configured App installation. Both hosts build it from the same secrets; the ingress host alone
- * passes the webhook secret, the Task host delivers only.
+ * The registry over this deployment's adapters: the Slack app and the GitHub App, each acting for
+ * whichever installation the credential store knows. Both hosts build it from the same secrets;
+ * the ingress host alone passes the webhook secret and the install clients, the Task host delivers only.
  */
 export const platformsLayer = (
   config: DeploymentConfig,
   github: GithubConfig | null,
-  webhookSecret: Redacted.Redacted<string> | null,
+  install: {
+    readonly webhookSecret: Redacted.Redacted<string> | null;
+    readonly slack: DashboardConfig["slack"];
+    readonly githubAppSlug: string | null;
+  },
 ) =>
   Platforms.layer(Effect.all([SlackAdapter.adapter, GithubAdapter.adapter])).pipe(
     Layer.provide([
-      Slack.layer.pipe(
-        Layer.provide(
-          Layer.succeed(Slack.Configuration, {
-            token: config.token,
-            allowedChannel: config.channelId,
-          }),
-        ),
-      ),
       Layer.succeed(SlackAdapter.Configuration, {
-        teamId: config.teamId,
-        botUserId: config.botUserId,
         signingSecret: config.signingSecret,
+        oauth: install.slack,
       }),
       // Without an App every GitHub operation fails closed as unsupported.
       github
@@ -41,9 +35,10 @@ export const platformsLayer = (
           )
         : GithubApp.disabled,
       Layer.succeed(GithubAdapter.Configuration, {
-        installationId: github?.installationId ?? null,
-        webhookSecret,
+        webhookSecret: install.webhookSecret,
+        slug: install.githubAppSlug,
       }),
+      FetchHttpClient.layer,
     ]),
     // A malformed App key or a platform registered twice is a deployment defect, not a request error.
     Layer.orDie,

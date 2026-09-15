@@ -11,9 +11,10 @@ import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
-import { installations, invites, memberships, sources, workspaces } from "./schema";
+import { installIntents, installations, invites, memberships, sources, workspaces } from "./schema";
 import {
   Installation,
+  InstallIntent,
   Invite,
   Membership,
   Role,
@@ -84,6 +85,34 @@ export interface Interface {
     userId: string,
     now: number,
   ) => Effect.Effect<Workspace, WorkspaceError>;
+  /** An admin is about to be sent to a platform; the nonce comes back with the platform's redirect. */
+  readonly beginInstall: (
+    workspaceId: string,
+    actorId: string,
+    platform: Platform,
+    now: number,
+  ) => Effect.Effect<InstallIntent, WorkspaceError>;
+  /** Consumes the intent the platform's redirect carries; "expired" once used or too old. */
+  readonly takeInstallIntent: (
+    nonce: string,
+    now: number,
+  ) => Effect.Effect<InstallIntent, WorkspaceError>;
+  /** Records a confirmed installation; "conflict" when another workspace holds it. */
+  readonly install: (
+    intent: InstallIntent,
+    installed: {
+      readonly installationId: string;
+      readonly label: string;
+      readonly credential: Schema.Json;
+    },
+    now: number,
+  ) => Effect.Effect<Installation, WorkspaceError>;
+  /** Forgets an installation and every scope covered through it. */
+  readonly uninstall: (
+    workspaceId: string,
+    actorId: string,
+    ref: { readonly platform: Platform; readonly installationId: string },
+  ) => Effect.Effect<void, WorkspaceError>;
   /** Covers a scope of a platform the workspace has installed; "not-installed" otherwise. */
   readonly addSource: (
     workspaceId: string,
@@ -103,7 +132,10 @@ export class Service extends Context.Service<Service, Interface>()(
 const WorkspaceRow = createSelectSchema(workspaces);
 const MemberRow = createSelectSchema(memberships);
 const InstallationRow = createSelectSchema(installations);
+const IntentRow = createSelectSchema(installIntents);
 const SourceRow = createSelectSchema(sources);
+const installIntentLifetimeMs = 15 * 60_000;
+const credentialJson = Schema.fromJsonString(Schema.Json);
 const InviteRow = createSelectSchema(invites);
 const inviteLifetimeMs = 7 * 24 * 60 * 60_000;
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
@@ -460,6 +492,110 @@ export const layerNoDeps = Layer.effect(
       return Workspace.make(row);
     });
 
+    const beginInstall = Effect.fn("Workspaces.beginInstall")(function* (
+      workspaceId: string,
+      actorId: string,
+      platform: Platform,
+      now: number,
+    ) {
+      yield* requireAdmin("beginInstall", workspaceId, actorId).pipe(storage("beginInstall"));
+      const nonce = yield* crypto.randomUUIDv4.pipe(storage("beginInstall"));
+      yield* store
+        .batch([
+          sql`INSERT INTO workspace_install_intents (nonce, workspaceId, userId, platform, createdAt, expiresAt)
+          VALUES (${nonce}, ${workspaceId}, ${actorId}, ${platform}, ${now}, ${now + installIntentLifetimeMs})`,
+        ])
+        .pipe(storage("beginInstall"));
+      return InstallIntent.make({ nonce, workspaceId, userId: actorId, platform });
+    });
+
+    const takeInstallIntent = Effect.fn("Workspaces.takeInstallIntent")(function* (
+      nonce: string,
+      now: number,
+    ) {
+      const rows = yield* store.db
+        .select()
+        .from(installIntents)
+        .where(eq(installIntents.nonce, nonce))
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(IntentRow))),
+          storage("takeInstallIntent"),
+        );
+      const row = rows[0];
+      if (!row) return yield* fail("takeInstallIntent", "not-found");
+      // Single use: gone whether or not it was still valid.
+      yield* store.db
+        .delete(installIntents)
+        .where(eq(installIntents.nonce, nonce))
+        .pipe(storage("takeInstallIntent"));
+      if (row.expiresAt < now) return yield* fail("takeInstallIntent", "expired");
+      return yield* decodeInput(
+        InstallIntent,
+        { nonce, workspaceId: row.workspaceId, userId: row.userId, platform: row.platform },
+        "takeInstallIntent",
+      );
+    });
+
+    const install = Effect.fn("Workspaces.install")(function* (
+      intent: InstallIntent,
+      installed: {
+        readonly installationId: string;
+        readonly label: string;
+        readonly credential: Schema.Json;
+      },
+      now: number,
+    ) {
+      const installationKey = key(intent.platform, installed.installationId);
+      const existing = yield* store.db
+        .select()
+        .from(installations)
+        .where(eq(installations.key, installationKey))
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
+          storage("install"),
+        );
+      // An installation belongs to one workspace; reinstalling in the same one refreshes it.
+      if (existing[0] && existing[0].workspaceId !== intent.workspaceId)
+        return yield* fail("install", "conflict");
+      const credential = yield* Schema.encodeEffect(credentialJson)(installed.credential).pipe(
+        Effect.mapError(() => fail("install", "invalid-input")),
+      );
+      yield* store
+        .batch([
+          sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt, credential)
+          VALUES (${installationKey}, ${intent.workspaceId}, ${intent.platform}, ${installed.installationId}, ${installed.label}, ${intent.userId}, ${now}, ${credential})
+          ON CONFLICT(key) DO UPDATE SET label = excluded.label, installedBy = excluded.installedBy, installedAt = excluded.installedAt, credential = excluded.credential`,
+        ])
+        .pipe(storage("install"));
+      const rows = yield* store.db
+        .select()
+        .from(installations)
+        .where(eq(installations.key, installationKey))
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Installation))),
+          storage("install"),
+        );
+      const row = rows[0];
+      if (!row) return yield* fail("install", "storage");
+      return row;
+    });
+
+    const uninstall = Effect.fn("Workspaces.uninstall")(function* (
+      workspaceId: string,
+      actorId: string,
+      ref: { readonly platform: Platform; readonly installationId: string },
+    ) {
+      yield* requireAdmin("uninstall", workspaceId, actorId).pipe(storage("uninstall"));
+      const installationKey = key(ref.platform, ref.installationId);
+      yield* store
+        .batch([
+          sql`DELETE FROM workspace_sources WHERE workspaceId = ${workspaceId}
+          AND platform = ${ref.platform} AND installationId = ${ref.installationId}`,
+          sql`DELETE FROM workspace_installations WHERE key = ${installationKey} AND workspaceId = ${workspaceId}`,
+        ])
+        .pipe(storage("uninstall"));
+    });
+
     /** The installation must be the workspace's own: a scope of somebody else's team is never coverable. */
     const installedHere = (operation: string, workspaceId: string, source: SourceInput) =>
       store.db
@@ -518,6 +654,10 @@ export const layerNoDeps = Layer.effect(
       createInvite,
       revokeInvite,
       acceptInvite,
+      beginInstall,
+      takeInstallIntent,
+      install,
+      uninstall,
       addSource,
       removeSource,
     });

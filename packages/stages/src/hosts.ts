@@ -8,3 +8,10 @@ export const hostnames = (stage: string) =>
   stage === "production"
     ? { dashboard: zone, api: `api.${zone}` }
     : { dashboard: `${stage}.${zone}`, api: `api.${stage}.${zone}` };
+
+/** The API origin of a dashboard origin: `api.` in front of the same host, on every stage. */
+export const apiOriginOf = (dashboardOrigin: string) => {
+  const url = new URL(dashboardOrigin);
+  url.host = `api.${url.host}`;
+  return url.origin;
+};

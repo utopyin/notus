@@ -4,6 +4,7 @@ import { GITHUB_DESCRIPTOR } from "@notus/platform/descriptors/github";
 import { IngressError, InstallationNotFound, SourceError } from "@notus/platform/errors";
 import type { InstallationRef, PlatformId } from "@notus/platform/ids";
 import type { IngressRequest, Normalized } from "@notus/platform/ingress";
+import { InstallError, type PlatformInstalling } from "@notus/platform/installing";
 import { key, Received, ReplyTarget, type Actor } from "@notus/platform/source";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -14,14 +15,15 @@ import type { AppError } from "@notus/github/errors";
 import { Role } from "@notus/github/app";
 import { Webhooks } from "@notus/github/webhooks";
 
-/** The one App installation this deployment answers for, until installations are workspace data. */
+/** The GitHub App itself: its webhook secret, and its public slug for the installation page. */
 export class Configuration extends Context.Service<
   Configuration,
   {
-    readonly installationId: string | null;
     readonly webhookSecret: Redacted.Redacted<string> | null;
+    /** Absent when this deployment cannot install: the dashboard then offers no "Install GitHub App". */
+    readonly slug: string | null;
   }
->()("@notus/github/Adapter.Configuration") {}
+>()("@notus/platform-github/Configuration") {}
 
 const unsupported = () => new SourceError({ classification: "unsupported" });
 const ingressError = (reason: IngressError["reason"]) =>
@@ -79,8 +81,6 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       if (decoded.type === "ping") return { type: "ignored", reason: "ping" };
       if (decoded.type === "ignored") return { type: "ignored", reason: decoded.reason };
       const feedback = decoded.feedback;
-      if (feedback.installationId !== configuration.installationId)
-        return { type: "ignored", reason: "foreign-installation" };
       // Notus's own comments, and any bot or app, must never start another round.
       if (
         feedback.author.type === "Bot" ||
@@ -120,77 +120,116 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       return { type: "input", received, claim: taskId === null ? null : { taskId } };
     });
 
-    const resolveReply = Effect.fn("GitHub.resolveReply")(function* (
-      target: ReplyTarget,
-    ): Effect.fn.Return<ReplyHandle, SourceError> {
-      const validated = yield* Schema.decodeEffect(ReplyTarget)(target).pipe(
-        Effect.mapError(unsupported),
-      );
-      if (
-        validated.source.platform !== "github" ||
-        validated.source.installationId !== configuration.installationId
-      )
-        return yield* unsupported();
-      const repository = yield* repositoryOf(validated.source.scope);
-      const number = yield* Schema.decodeEffect(PullNumber)(validated.source.conversation).pipe(
-        Effect.mapError(unsupported),
-      );
-      const [kind, id] = yield* Schema.decodeEffect(PullTarget)(validated.target).pipe(
-        Effect.mapError(unsupported),
-      );
-      const pullNumber = Number(number);
+    const installing: PlatformInstalling = {
+      // GitHub installs from its own page and comes back to the setup URL with the installation id.
+      begin: (intent) =>
+        configuration.slug === null
+          ? Effect.fail(new InstallError({ platform: "github", reason: "unconfigured" }))
+          : Effect.succeed({
+              url: `https://github.com/apps/${configuration.slug}/installations/new?state=${encodeURIComponent(intent.state)}`,
+            }),
+      complete: Effect.fn("GitHub.install")(function* (_intent, query) {
+        const installationId = query.get("installation_id");
+        if (!installationId || !/^\d{1,20}$/.test(installationId))
+          return yield* new InstallError({ platform: "github", reason: "rejected" });
+        // The App JWT confirms the installation exists and names the account it belongs to.
+        const installation = yield* app.installation(installationId).pipe(
+          Effect.mapError(
+            (error) =>
+              new InstallError({
+                platform: "github",
+                reason:
+                  error.reason === "configuration"
+                    ? "unconfigured"
+                    : error.reason === "rejected"
+                      ? "rejected"
+                      : error.reason === "transport"
+                        ? "transport"
+                        : "invalid-response",
+              }),
+          ),
+        );
+        return { installationId: installation.id, label: installation.account, credential: {} };
+      }),
+    };
+    /** The surfaces for one installation, over App operations bound to it. */
+    const surfacesOf = (installationId: string, bound: App.Bound): InstallationSurfaces => {
+      const resolveReply = Effect.fn("GitHub.resolveReply")(function* (
+        target: ReplyTarget,
+      ): Effect.fn.Return<ReplyHandle, SourceError> {
+        const validated = yield* Schema.decodeEffect(ReplyTarget)(target).pipe(
+          Effect.mapError(unsupported),
+        );
+        if (
+          validated.source.platform !== "github" ||
+          validated.source.installationId !== installationId
+        )
+          return yield* unsupported();
+        const repository = yield* repositoryOf(validated.source.scope);
+        const number = yield* Schema.decodeEffect(PullNumber)(validated.source.conversation).pipe(
+          Effect.mapError(unsupported),
+        );
+        const [kind, id] = yield* Schema.decodeEffect(PullTarget)(validated.target).pipe(
+          Effect.mapError(unsupported),
+        );
+        const pullNumber = Number(number);
+        return {
+          react: Effect.fn("GitHub.react")(function* (deliveryId) {
+            // Reviews themselves cannot carry reactions on GitHub; the answer still follows.
+            if (!deliveryId || kind === "review") return yield* unsupported();
+            yield* bound
+              .react(repository, { kind, commentId: id })
+              .pipe(Effect.mapError(sourceError));
+            return { reference: key("github-reaction", kind, id), deliveryId };
+          }),
+          reply: Effect.fn("GitHub.reply")(function* (text, deliveryId) {
+            const posted =
+              kind === "review-comment"
+                ? yield* bound.replyToReviewComment(repository, {
+                    pullNumber,
+                    commentId: id,
+                    body: text,
+                  })
+                : yield* bound.comment(repository, { pullNumber, body: text });
+            return { reference: key("github-comment", posted.id), deliveryId };
+          }, Effect.mapError(sourceError)),
+        };
+      });
+      const mayParticipate = Effect.fn("GitHub.mayParticipate")(function* (
+        actor: Actor,
+        scope: PlatformId,
+      ) {
+        const repository = yield* repositoryOf(scope);
+        // Only collaborators with write access may steer a task through its pull request.
+        const role = yield* bound
+          .collaboratorRole(repository, actor.externalId)
+          .pipe(Effect.mapError(sourceError));
+        return writers.has(role);
+      });
       return {
-        react: Effect.fn("GitHub.react")(function* (deliveryId) {
-          // Reviews themselves cannot carry reactions on GitHub; the answer still follows.
-          if (!deliveryId || kind === "review") return yield* unsupported();
-          yield* app.react(repository, { kind, commentId: id }).pipe(Effect.mapError(sourceError));
-          return { reference: key("github-reaction", kind, id), deliveryId };
-        }),
-        reply: Effect.fn("GitHub.reply")(function* (text, deliveryId) {
-          const posted =
-            kind === "review-comment"
-              ? yield* app.replyToReviewComment(repository, {
-                  pullNumber,
-                  commentId: id,
-                  body: text,
-                })
-              : yield* app.comment(repository, { pullNumber, body: text });
-          return { reference: key("github-comment", posted.id), deliveryId };
-        }, Effect.mapError(sourceError)),
+        scopes: {
+          list: Effect.fail(
+            new CapabilityNotSupportedError({ platform: "github", capability: "scope:list" }),
+          ),
+        },
+        conversations: {
+          resolveReply,
+          // A pull request receives replies to its feedback, never the task's running updates.
+          resolveUpdates: () => Effect.fail(unsupported()),
+        },
+        identity: { mayParticipate },
       };
-    });
-    const mayParticipate = Effect.fn("GitHub.mayParticipate")(function* (
-      actor: Actor,
-      scope: PlatformId,
-    ) {
-      const repository = yield* repositoryOf(scope);
-      // Only collaborators with write access may steer a task through its pull request.
-      const role = yield* app
-        .collaboratorRole(repository, actor.externalId)
-        .pipe(Effect.mapError(sourceError));
-      return writers.has(role);
-    });
-    const surfaces: InstallationSurfaces = {
-      scopes: {
-        list: Effect.fail(
-          new CapabilityNotSupportedError({ platform: "github", capability: "scope:list" }),
-        ),
-      },
-      conversations: {
-        resolveReply,
-        // A pull request receives replies to its feedback, never the task's running updates.
-        resolveUpdates: () => Effect.fail(unsupported()),
-      },
-      identity: { mayParticipate },
     };
     return {
       platform: "github",
       descriptor: GITHUB_DESCRIPTOR,
       ingress: { receive },
+      installing,
       forInstallation: (ref: InstallationRef) =>
-        configuration.installationId !== null && ref.installationId === configuration.installationId
-          ? Effect.succeed(surfaces)
-          : Effect.fail(new InstallationNotFound(ref)),
+        app.forInstallation(ref.installationId).pipe(
+          Effect.map((bound) => surfacesOf(ref.installationId, bound)),
+          Effect.mapError(() => new InstallationNotFound(ref)),
+        ),
     };
   });
 

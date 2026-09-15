@@ -384,6 +384,7 @@ export const layerNoDeps = Layer.effect(
         userId: fixture.canonicalUserId,
         teamId: fixture.teamId,
         channelId: fixture.channelId,
+        ...(fixture.slack === undefined ? {} : { slack: fixture.slack }),
         ...(fixture.github === undefined ? {} : { github: fixture.github }),
       });
     }, storageError("seedFixture"));

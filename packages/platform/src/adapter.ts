@@ -5,6 +5,7 @@ import type { PlatformDescriptor } from "./descriptor";
 import type { InstallationNotFound, SourceError } from "./errors";
 import type { InstallationRef, PlatformId } from "./ids";
 import type { PlatformIngress } from "./ingress";
+import type { PlatformInstalling } from "./installing";
 import type { Platform } from "./platform";
 import type { Actor, ReplyTarget, Scope, Source } from "./source";
 
@@ -50,6 +51,7 @@ export interface PlatformAdapter {
   readonly platform: Platform;
   readonly descriptor: PlatformDescriptor;
   readonly ingress: PlatformIngress;
+  readonly installing: PlatformInstalling;
   readonly forInstallation: (
     ref: InstallationRef,
   ) => Effect.Effect<InstallationSurfaces, InstallationNotFound>;

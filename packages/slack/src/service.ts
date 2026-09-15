@@ -18,10 +18,7 @@ import { Timestamp } from "./events";
 
 export class Configuration extends Context.Service<
   Configuration,
-  {
-    readonly token: Redacted.Redacted<string>;
-    readonly allowedChannel: string;
-  }
+  { readonly token: Redacted.Redacted<string> }
 >()("@notus/slack/Configuration") {}
 
 export const Receipt = Schema.Struct({
@@ -107,10 +104,10 @@ const classify = (error: unknown): DeliveryError => {
   return ambiguous();
 };
 
-export const layerNoDeps = Layer.effect(
-  Service,
+/** A client for one bot token: what an installation's operations run through. */
+export const make = (token: Redacted.Redacted<string>) =>
   Effect.gen(function* () {
-    const config = yield* Configuration;
+    const config = { token };
     // Distilled reads the body with orDie before checking status. Reject 429
     // here so a broken or stalled body cannot erase known rate-limit evidence.
     const http = (yield* HttpClient.HttpClient).pipe(
@@ -131,7 +128,7 @@ export const layerNoDeps = Layer.effect(
         Effect.catchDefect(() => Effect.fail(ambiguous())),
       );
     const validate = (channel: string, ts: string) =>
-      channel === config.allowedChannel && channel.length > 0 && Schema.is(Timestamp)(ts);
+      channel.length > 0 && Schema.is(Timestamp)(ts);
     const ChannelItem = Schema.Struct({
       id: Schema.NonEmptyString,
       name: Schema.optionalKey(Schema.String),
@@ -161,12 +158,12 @@ export const layerNoDeps = Layer.effect(
       }
       return channels.sort((a, b) => a.name.localeCompare(b.name));
     }).pipe(Effect.withSpan("Slack.listChannels"));
-    return Service.of({
+    return {
       listChannels,
       react: Effect.fn("Slack.react")(function* (channel, ts) {
         if (!validate(channel, ts)) return yield* rejected();
         const result = yield* run(
-          addReaction({ channel: config.allowedChannel, timestamp: ts, name: "eyes" }).pipe(
+          addReaction({ channel, timestamp: ts, name: "eyes" }).pipe(
             Effect.catchIf(
               (error) => Schema.is(Errors.SlackError)(error) && error.code === "already_reacted",
               () => Effect.succeed({ ok: true }),
@@ -174,7 +171,7 @@ export const layerNoDeps = Layer.effect(
           ),
         );
         if (!result.ok) return yield* ambiguous();
-        return { channel: config.allowedChannel, ts };
+        return { channel, ts };
       }),
       reply: Effect.fn("Slack.reply")(function* (channel, threadTs, text, deliveryId) {
         if (
@@ -186,7 +183,7 @@ export const layerNoDeps = Layer.effect(
           return yield* rejected();
         const result = yield* run(
           postMessage({
-            channel: config.allowedChannel,
+            channel,
             thread_ts: threadTs,
             text,
             unfurl_links: false,
@@ -197,15 +194,17 @@ export const layerNoDeps = Layer.effect(
             reply_broadcast: false,
           }),
         );
-        if (
-          !result.ok ||
-          result.channel !== config.allowedChannel ||
-          !Schema.is(Timestamp)(result.ts)
-        )
+        if (!result.ok || result.channel !== channel || !Schema.is(Timestamp)(result.ts))
           return yield* ambiguous();
         return { channel: result.channel, ts: result.ts, deliveryId };
       }),
-    });
+    } satisfies Interface;
+  });
+export const layerNoDeps = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const config = yield* Configuration;
+    return Service.of(yield* make(config.token));
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(FetchHttpClient.layer));

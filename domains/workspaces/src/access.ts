@@ -29,6 +29,10 @@ export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/access/Service",
 ) {}
 const SourceRow = createSelectSchema(sources);
+/** The seeded Slack credential, in the shape the Slack adapter reads back. */
+const slackCredential = Schema.fromJsonString(
+  Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
+);
 const InstallationRow = createSelectSchema(installations);
 const MemberRow = createSelectSchema(memberships);
 
@@ -90,22 +94,33 @@ export const layerNoDeps = Layer.effect(
     });
     const seedFixture = Effect.fn("Access.seedFixture")(
       function* (value: Fixture) {
-        const { workspaceId, userId, teamId, channelId, github } =
+        const { workspaceId, userId, teamId, channelId, slack, github } =
           yield* Schema.decodeEffect(Fixture)(value);
-        const installed = (platform: string, installationId: string, label: string) =>
-          sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt)
-          VALUES (${key(platform, installationId)}, ${workspaceId}, ${platform}, ${installationId}, ${label}, ${userId}, 0) ON CONFLICT DO NOTHING`;
+        const installed = (
+          platform: string,
+          installationId: string,
+          label: string,
+          credential: string | null,
+        ) =>
+          sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt, credential)
+          VALUES (${key(platform, installationId)}, ${workspaceId}, ${platform}, ${installationId}, ${label}, ${userId}, 0, ${credential})
+          ON CONFLICT(key) DO UPDATE SET credential = COALESCE(excluded.credential, credential)`;
         const covers = (platform: string, installationId: string, scope: string) =>
           sql`INSERT INTO workspace_sources (key, workspaceId, platform, installationId, scope, label)
           VALUES (${key(workspaceId, platform, installationId, scope)}, ${workspaceId}, ${platform}, ${installationId}, ${scope}, ${scope}) ON CONFLICT DO NOTHING`;
         yield* store.batch([
           sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)
           VALUES (${workspaceId}, ${workspaceId}, ${workspaceId}, ${userId}, 0) ON CONFLICT DO NOTHING`,
-          installed("slack", teamId, "Slack"),
+          installed(
+            "slack",
+            teamId,
+            "Slack",
+            slack ? yield* Schema.encodeEffect(slackCredential)(slack) : null,
+          ),
           covers("slack", teamId, channelId),
           ...(github
             ? [
-                installed("github", github.installationId, "GitHub"),
+                installed("github", github.installationId, "GitHub", null),
                 covers("github", github.installationId, github.fullName),
               ]
             : []),

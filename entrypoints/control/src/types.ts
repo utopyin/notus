@@ -8,6 +8,9 @@ export const Fixture = Schema.Struct({
   teamId: Schema.NonEmptyString,
   channelId: Schema.NonEmptyString,
   externalUserId: Schema.NonEmptyString,
+  slack: Schema.optionalKey(
+    Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
+  ),
   github: Schema.optionalKey(
     Schema.Struct({ installationId: Schema.NonEmptyString, fullName: Schema.NonEmptyString }),
   ),

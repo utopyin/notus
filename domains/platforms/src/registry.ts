@@ -10,11 +10,13 @@ import {
 } from "@notus/platform/errors";
 import type { InstallationRef } from "@notus/platform/ids";
 import type { PlatformIngress } from "@notus/platform/ingress";
+import type { PlatformInstalling } from "@notus/platform/installing";
 import type { Platform } from "@notus/platform/platform";
 
 export interface PlatformScope {
   readonly descriptor: PlatformDescriptor;
   readonly ingress: PlatformIngress;
+  readonly installing: PlatformInstalling;
 }
 export interface InstallationPort extends InstallationSurfaces {
   readonly descriptor: PlatformDescriptor;
@@ -49,7 +51,11 @@ export const layerNoDeps = Layer.effect(
     };
     const forPlatform = Effect.fn("Platforms.forPlatform")(function* (platform: Platform) {
       const adapter = yield* adapterFor(platform);
-      return { descriptor: adapter.descriptor, ingress: adapter.ingress } satisfies PlatformScope;
+      return {
+        descriptor: adapter.descriptor,
+        ingress: adapter.ingress,
+        installing: adapter.installing,
+      } satisfies PlatformScope;
     });
     const forInstallation = Effect.fn("Platforms.forInstallation")(function* (
       ref: InstallationRef,

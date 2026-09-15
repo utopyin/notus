@@ -1,4 +1,4 @@
-import { IconMailFilled, IconMessageCircleFilled, IconUserFilled } from "@tabler/icons-react";
+import { IconMailFilled, IconPlugConnected, IconUserFilled } from "@tabler/icons-react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useWorkspace } from "./$slug";
 
@@ -21,11 +21,11 @@ function Overview() {
       hint: `${view.members.filter((m) => m.role === "admin").length} admin`,
     },
     {
-      to: "/$slug/channels" as const,
-      icon: IconMessageCircleFilled,
-      label: "Slack channels",
-      value: view.sources.filter((s) => s.platform === "slack").length,
-      hint: "mentions start tasks here",
+      to: "/$slug/sources" as const,
+      icon: IconPlugConnected,
+      label: "Sources",
+      value: view.sources.length,
+      hint: `${view.installations.length} connected`,
     },
     ...(view.role === "admin"
       ? [

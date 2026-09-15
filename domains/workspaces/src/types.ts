@@ -16,6 +16,10 @@ export const Fixture = Schema.Struct({
   userId: Schema.NonEmptyString,
   teamId: Schema.NonEmptyString,
   channelId: Schema.NonEmptyString,
+  /** The fixture team's bot, so the seeded installation can act like an installed one. */
+  slack: Schema.optionalKey(
+    Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
+  ),
   /** An administrator-allowed repository whose pull request conversations may attach to tasks. */
   github: Schema.optionalKey(
     Schema.Struct({
@@ -33,6 +37,15 @@ export const StartGrant = Schema.Struct({
   initiatorId: Schema.NonEmptyString,
 });
 export interface StartGrant extends Schema.Schema.Type<typeof StartGrant> {}
+
+/** Who asked to install what; what the platform's redirect is matched against. */
+export const InstallIntent = Schema.Struct({
+  nonce: Schema.NonEmptyString,
+  workspaceId: Schema.NonEmptyString,
+  userId: Schema.NonEmptyString,
+  platform: Platform,
+});
+export interface InstallIntent extends Schema.Schema.Type<typeof InstallIntent> {}
 
 export const Role = Schema.Literals(["admin", "member"]);
 export type Role = typeof Role.Type;
