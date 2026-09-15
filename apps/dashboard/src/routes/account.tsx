@@ -195,11 +195,25 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const [message, setMessage] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [requesting, setRequesting] = useState(false);
-  // Between the issuer confirming and the page reloading its connections.
-  const [finishing, setFinishing] = useState(false);
-  const [disconnecting, setDisconnecting] = useState<Connection["provider"] | null>(null);
   const [key, setKey] = useState("");
   const [linkingKey, setLinkingKey] = useState(false);
+  // An outcome the server confirmed, pinned to the connections it was confirmed against. It
+  // stands in for them until the router commits a fresh load, which replaces the array; that is
+  // the moment the row may show real data again, so it never shows the previous state between.
+  const [transition, setTransition] = useState<{
+    readonly provider: Connection["provider"];
+    readonly outcome: "linked" | "unlinked";
+    readonly from: ReadonlyArray<Connection>;
+  } | null>(null);
+  const active = transition !== null && transition.from === props.connections ? transition : null;
+  const connecting = (provider: Connection["provider"]) =>
+    active?.provider === provider && active.outcome === "linked";
+  const disconnecting = (provider: Connection["provider"]) =>
+    active?.provider === provider && active.outcome === "unlinked";
+  const settle = (provider: Connection["provider"], outcome: "linked" | "unlinked") => {
+    setTransition({ provider, outcome, from: props.connections });
+    return router.invalidate().catch(() => setTransition(null));
+  };
   const chatgpt = props.connections.find((c) => c.provider === "openai-chatgpt") ?? null;
   const apiKey = props.connections.find((c) => c.provider === "openai-api") ?? null;
   // A started device login is polled at the issuer's pace until it is linked or expires; the
@@ -210,12 +224,9 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
       queryFn: async () => {
         const result = await pollChatGpt();
         if (result.ok && result.value.state !== "pending") {
-          setFinishing(result.value.state === "linked");
           setStarting(false);
-          if (result.value.state === "expired")
-            setMessage("The code expired before it was used; start again.");
-          await router.invalidate();
-          setFinishing(false);
+          if (result.value.state === "linked") await settle("openai-chatgpt", "linked");
+          else setMessage("The code expired before it was used; start again.");
         }
         return result;
       },
@@ -250,17 +261,16 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
           : `That did not work (${result.reason}).`,
       );
     setKey("");
-    await router.invalidate();
+    await settle("openai-api", "linked");
   };
   const disconnect = async (provider: Connection["provider"]) => {
-    setDisconnecting(provider);
+    setTransition({ provider, outcome: "unlinked", from: props.connections });
     const result = await revokeConnection({ data: { provider } });
     if (!result.ok) {
-      setDisconnecting(null);
+      setTransition(null);
       return setMessage(`That did not work (${result.reason}).`);
     }
-    await router.invalidate();
-    setDisconnecting(null);
+    await settle(provider, "unlinked");
   };
   return (
     <section className="flex flex-col gap-3">
@@ -272,9 +282,9 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">ChatGPT</span>
               <span className="text-muted-foreground truncate text-xs">
-                {finishing
+                {connecting("openai-chatgpt")
                   ? "Connecting your ChatGPT account…"
-                  : disconnecting === "openai-chatgpt"
+                  : disconnecting("openai-chatgpt")
                     ? "Disconnecting…"
                     : chatgpt?.linked
                       ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
@@ -285,21 +295,21 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={disconnecting !== null}
+                disabled={active !== null}
                 onClick={() => disconnect("openai-chatgpt")}
               >
                 <IconLinkOff className="size-4" />
-                {disconnecting === "openai-chatgpt" ? "Disconnecting…" : "Disconnect"}
+                {disconnecting("openai-chatgpt") ? "Disconnecting…" : "Disconnect"}
               </Button>
             ) : pending === null ? (
               <Button
                 size="sm"
                 variant="outline"
-                disabled={starting || requesting || finishing}
+                disabled={starting || requesting || active !== null}
                 onClick={connectChatGpt}
               >
                 <IconLink className="size-4" />
-                {finishing
+                {connecting("openai-chatgpt")
                   ? "Connecting…"
                   : requesting
                     ? "Requesting a code…"
@@ -344,22 +354,24 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">OpenAI API key</span>
               <span className="text-muted-foreground truncate text-xs">
-                {disconnecting === "openai-api"
-                  ? "Disconnecting…"
-                  : apiKey?.linked
-                    ? `Linked ${whenOf(apiKey.linkedAt)}`
-                    : "Not connected. Runs the operator on the platform API backend."}
+                {connecting("openai-api")
+                  ? "Connecting…"
+                  : disconnecting("openai-api")
+                    ? "Disconnecting…"
+                    : apiKey?.linked
+                      ? `Linked ${whenOf(apiKey.linkedAt)}`
+                      : "Not connected. Runs the operator on the platform API backend."}
               </span>
             </div>
             {apiKey?.linked ? (
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={disconnecting !== null}
+                disabled={active !== null}
                 onClick={() => disconnect("openai-api")}
               >
                 <IconLinkOff className="size-4" />
-                {disconnecting === "openai-api" ? "Disconnecting…" : "Disconnect"}
+                {disconnecting("openai-api") ? "Disconnecting…" : "Disconnect"}
               </Button>
             ) : null}
           </div>
@@ -379,9 +391,13 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
                 value={key}
                 onChange={(event) => setKey(event.target.value)}
               />
-              <Button type="submit" variant="outline" disabled={linkingKey || !key.trim()}>
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={linkingKey || active !== null || !key.trim()}
+              >
                 <IconLink className="size-4" />
-                Connect
+                {linkingKey || connecting("openai-api") ? "Connecting…" : "Connect"}
               </Button>
             </form>
           )}
