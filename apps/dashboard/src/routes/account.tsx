@@ -272,9 +272,11 @@ function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="font-medium">ChatGPT</span>
               <span className="text-muted-foreground truncate text-xs">
-                {chatgpt?.linked
-                  ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
-                  : "Not connected. Runs Codex on the dev box with your subscription."}
+                {finishing
+                  ? "Connecting your ChatGPT account…"
+                  : chatgpt?.linked
+                    ? `Connected · linked ${whenOf(chatgpt.linkedAt)}${chatgpt.rotatedAt === null ? "" : ` · refreshed ${whenOf(chatgpt.rotatedAt)}`}`
+                    : "Not connected. Runs Codex on the dev box with your subscription."}
               </span>
             </div>
             {chatgpt?.linked ? (
