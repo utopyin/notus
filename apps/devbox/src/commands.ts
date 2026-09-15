@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
+import { Git, home } from "./git";
 import { signalGroup } from "./host";
 import { Settings } from "./settings";
 
@@ -43,7 +44,7 @@ const collect = (stream: Stream.Stream<Uint8Array, unknown>) =>
   });
 
 const baseEnv = {
-  HOME: "/home/devbox",
+  HOME: home,
   USER: "devbox",
   LOGNAME: "devbox",
   PATH: "/usr/local/bin:/usr/bin:/bin",
@@ -138,7 +139,7 @@ const specialistScript = (
     "fi",
     'instructions="$NOTUS_INSTRUCTIONS',
     "",
-    'When the work is finished, write your final report as Markdown to $report: what you changed, how you checked it, and anything left open. Do not commit or push. Then reply with the single word DONE."',
+    'When the work is finished, write your final report as Markdown to $report: what you changed, how you checked it, and anything left open. Unless the instructions above say otherwise, do not commit or push. Then reply with the single word DONE."',
     "unset NOTUS_INSTRUCTIONS",
     `herdr agent prompt "$agent" "$instructions" --wait --until idle --until done --timeout ${promptTimeout} >/dev/null 2>"$rounds/prompt.err"`,
     "waited=$?",
@@ -150,8 +151,12 @@ const specialistScript = (
   ].join("\n");
 };
 
-/** Commit everything in the checkout as the App's bot identity and push the task branch. */
-const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => {
+/**
+ * Commit everything in the checkout and push the task branch. Signed in as the initiator, the
+ * commit carries their identity and the push their token; otherwise the App's bot identity and
+ * the command's own write token.
+ */
+const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>, asPerson: boolean) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
   return [
@@ -163,7 +168,7 @@ const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => 
     "git add -A",
     // Commit only new changes. A commit left by an earlier failed push is still published, so a
     // retry after a transient failure works instead of stopping at "nothing to commit".
-    `if ! git diff --cached --quiet; then git -c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' commit --quiet -m ${quote(spec.message)}; fi`,
+    `if ! git diff --cached --quiet; then git ${asPerson ? "" : "-c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' "}commit --quiet -m ${quote(spec.message)}; fi`,
     // Nothing to publish when HEAD is what the remote branch already has, or, for a branch that
     // is new to the remote, what the default branch has.
     `base=$(git rev-parse --verify --quiet ${quote(`refs/remotes/origin/${spec.branch}`)} || git rev-parse --verify --quiet refs/remotes/origin/HEAD || true)`,
@@ -200,6 +205,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
   const spec = command.spec;
   if (spec.kind === "pull-request")
     return failure(0, "pull requests are opened by control, never on the box");
+  const asPerson = spec.kind === "push" && (yield* Git.signedIn());
   const script =
     spec.kind === "shell"
       ? spec.script
@@ -207,7 +213,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         ? checkoutScript(spec)
         : spec.kind === "specialist"
           ? specialistScript(spec, command.id)
-          : pushScript(spec);
+          : pushScript(spec, asPerson);
   const cwd = spec.kind === "shell" ? spec.cwd : "/workspaces";
   const env =
     spec.kind === "shell"
@@ -220,7 +226,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
             NOTUS_AGENT_AUTH: command.credential ?? "",
             NOTUS_INSTRUCTIONS: spec.instructions,
           }
-        : gitEnv(command.credential);
+        : gitEnv(asPerson ? null : command.credential);
   return yield* Effect.scoped(
     Effect.gen(function* () {
       // Namespace keeps a box running while a file exists under /.namespace/tasks, so work on the

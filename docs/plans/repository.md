@@ -14,6 +14,15 @@ The operator can check the task's repository out on its dev box, run commands in
 - `run_command` still runs without credentials, so `git push` from bash always fails; bash on the box cannot authenticate to GitHub at all.
 - No merge exists anywhere: there is no merge tool, the merge endpoint requires Contents write and Pull requests write on one token and Notus never mints both together, and the push refspec can never target the default branch. This repository cannot carry branch protection on its current plan, so these application rules stand alone; a human with write access merges through GitHub.
 
+## Authenticated dev box
+
+Decided by the user on 2026-09-15, replacing the "no credential on the box" rule above for git: the box is signed in to GitHub as the initiator, and every git command on it, from `run_command` or a specialist, acts as them. The reasoning: commits should carry the person's own account, the operator should not be the bottleneck that turns every git operation into a tool, and the agents on the box are trusted to do what the operator asks and nothing more. The boundary is therefore the operator's instructions and GitHub's own rules as the person, not a control-plane refspec policy.
+
+- **The login.** The GitHub sign-in already is the App's user authorization, so Better Auth holds a user token that acts as the person within the App's permissions on the repositories where it is installed, plus a refresh token. `accounts/github-login` reads it from the sign-in database, refreshes it through the App's OAuth client when less than the asked lifetime remains, and persists the rotation before the new token is used. The user's Connection object serves it under its gate, so concurrent tasks never spend one refresh token twice. Signing in with GitHub is what grants it; a person who signed in with Slack only gives the box no credentials, and git there stays as before.
+- **Delivery.** A `login` runtime request, under the readiness credential like polls, returns the token with its expiry and the commit identity (`name`, `<id>+<login>@users.noreply.github.com`). The supervisor fetches it before the first command and again half an hour before expiry, writing git's credential store and `~/.gitconfig`. Nothing in the Task object stores it.
+- **What changes on the box.** `push_branch` commits with the person's identity and pushes with their token when the box is signed in; the App's bot identity and per-command write token remain only for boxes without a sign-in. `checkout_repository` still receives its own read token, so cloning never depends on the sign-in. Specialists are told not to commit or push unless the operator's instructions say so, and the prompt tells the operator that git through `run_command` works and is attributed to the initiator.
+- **What no longer holds.** The control-plane branch policy is a convention the prompt states (branches under the login, never the default branch, never a merge), not something the box cannot do: a person who can push to the default branch on GitHub can now do so from the box, and injected content in a checkout or a pull request comment reaches an agent that holds their token. Image v12 carries the runtime side.
+
 ## Ownership
 
 - `@notus/github` (tier 1): App JWT signing with WebCrypto from a PKCS#8 key, and one operation: a repository-scoped installation token with read-only permissions. Failures carry status and classification only.
@@ -25,9 +34,9 @@ The operator can check the task's repository out on its dev box, run commands in
 
 ## Limits
 
-Repository commands run as the same OS user as the supervisor. A hostile build script could read the runtime's callback journal, whose credential grants only this attempt's runtime authority, or the git objects of the checkout. This is a documented limit for the disposable test scope, not isolation. The [codebase plan](codebase.md#runtime-and-data-ownership) keeps enforced isolation as a gate before any untrusted repository.
+Repository commands run as the same OS user as the supervisor. A hostile build script could read the runtime's callback journal, whose credential grants only this attempt's runtime authority, the git objects of the checkout, or, since the authenticated dev box, the initiator's GitHub user token in git's credential store. This is a documented limit for the disposable test scope, not isolation. The [codebase plan](codebase.md#runtime-and-data-ownership) keeps enforced isolation as a gate before any untrusted repository.
 
-Later fetches need a fresh token; only the initial clone is covered. Tokens expire after one hour and are not cached.
+Command-minted tokens expire after one hour and are not cached; on a signed-in box every later fetch uses the person's login instead.
 
 ## Validation
 

@@ -28,6 +28,8 @@ export interface Interface {
   readonly ready: <E, R>(
     validate: Effect.Effect<void, E, R>,
   ) => Effect.Effect<void, Failure | E, R>;
+  /** The initiator's GitHub sign-in for git on the box, fresh for at least an hour. */
+  readonly login: Effect.Effect<Protocol.LoginReply, Failure>;
   /** Pull commands until the credential can no longer be refreshed or the host rejects it. */
   readonly commands: <R>(
     execute: (command: Protocol.RuntimeCommand) => Effect.Effect<CommandResult, never, R>,
@@ -214,9 +216,8 @@ export const layerNoDeps = Layer.effect(
         pending: { ...pending, acknowledgment: acknowledgment.success },
       });
     });
-    const commands = Effect.fn("Devbox.Callback.commands")(function* <R>(
-      execute: (command: Protocol.RuntimeCommand) => Effect.Effect<CommandResult, never, R>,
-    ) {
+    /** The acknowledged enrollment and a readiness credential that refreshes itself by exact replay. */
+    const session = Effect.fn("Devbox.Callback.session")(function* () {
       const { store, journal } = yield* read();
       if (
         journal === null ||
@@ -246,6 +247,18 @@ export const layerNoDeps = Layer.effect(
         yield* store.write({ ...journal, pending });
         return reply.readinessCredential;
       });
+      return { credential };
+    });
+    const login = Effect.gen(function* () {
+      const { credential } = yield* session();
+      return yield* retry(client.login(yield* credential)).pipe(
+        Effect.mapError(() => new Failure({ reason: "binding" })),
+      );
+    });
+    const commands = Effect.fn("Devbox.Callback.commands")(function* <R>(
+      execute: (command: Protocol.RuntimeCommand) => Effect.Effect<CommandResult, never, R>,
+    ) {
+      const { credential } = yield* session();
       // Long-poll continuously while work is flowing; a held poll keeps the Task object busy, so
       // an idle box switches to short checks spaced further and further apart. The spacing stays
       // under control's stale threshold, so a queued command never triggers a needless wake.
@@ -277,7 +290,7 @@ export const layerNoDeps = Layer.effect(
         idlePolls = 0;
       }
     });
-    return Service.of({ bound: true, enroll, ready, commands });
+    return Service.of({ bound: true, enroll, ready, login, commands });
   }),
 );
 
@@ -292,6 +305,7 @@ export const layer = Layer.unwrap(
         ready: Effect.fn("Devbox.Callback.ready")(
           <E, R>(validate: Effect.Effect<void, E, R>) => validate,
         ),
+        login: Effect.succeed({ github: null }),
         // Unbound runs have no control to pull from; stay alive as before.
         commands: () => Effect.never,
       });

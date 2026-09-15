@@ -62,6 +62,23 @@ export const ObserveRequest = Schema.Struct({ commandId: Uuid, result: CommandRe
 export interface ObserveRequest extends Schema.Schema.Type<typeof ObserveRequest> {}
 export const ObserveReply = Schema.Struct({ acceptedAt: Millis });
 export interface ObserveReply extends Schema.Schema.Type<typeof ObserveReply> {}
+/**
+ * The initiator's GitHub sign-in for git on the box: a user token acting as them within the
+ * App's permissions, and the identity their commits carry. null when they never signed in with
+ * GitHub. Carried on the wire only; the box keeps it in git's own credential store.
+ */
+export const LoginReply = Schema.Struct({
+  github: Schema.NullOr(
+    Schema.Struct({
+      token: Schema.NonEmptyString,
+      expiresAt: Millis,
+      login: Schema.NonEmptyString,
+      name: Schema.NonEmptyString,
+      email: Schema.NonEmptyString,
+    }),
+  ),
+});
+export interface LoginReply extends Schema.Schema.Type<typeof LoginReply> {}
 
 export const Request = Schema.TaggedUnion({
   Assignment: {},
@@ -69,6 +86,7 @@ export const Request = Schema.TaggedUnion({
   Ready: { request: ReadinessRequest },
   Poll: { request: PollRequest },
   Observe: { request: ObserveRequest },
+  Login: {},
 });
 export type Request = typeof Request.Type;
 export type RpcReply<A = unknown> =

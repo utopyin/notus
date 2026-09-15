@@ -30,6 +30,7 @@ export const handler = <E, R>(
         "/runtime/ready",
         "/runtime/poll",
         "/runtime/observe",
+        "/runtime/login",
       ].includes(url.pathname)
     )
       return HttpServerResponse.empty({ status: 404 });
@@ -92,6 +93,12 @@ export const handler = <E, R>(
         { onExcessProperty: "error" },
       ).pipe(Effect.mapError(invalid));
       command = Protocol.Request.cases.Observe.make({ request: body });
+    } else if (url.pathname === "/runtime/login") {
+      yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Never)))(
+        text,
+        { onExcessProperty: "error" },
+      ).pipe(Effect.mapError(invalid));
+      command = Protocol.Request.cases.Login.make({});
     } else {
       const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ReadinessRequest))(
         text,
@@ -100,7 +107,10 @@ export const handler = <E, R>(
       command = Protocol.Request.cases.Ready.make({ request: body });
     }
     const runtimeBound =
-      command._tag === "Ready" || command._tag === "Poll" || command._tag === "Observe";
+      command._tag === "Ready" ||
+      command._tag === "Poll" ||
+      command._tag === "Observe" ||
+      command._tag === "Login";
     if (runtimeBound !== (capability._tag === "Readiness"))
       return HttpServerResponse.empty({ status: 403 });
     const result = yield* forward(capability, command);

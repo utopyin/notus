@@ -1,6 +1,8 @@
 import { Client } from "@notus/herdr/client";
 import { protocol, version } from "@notus/herdr/types";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -12,6 +14,7 @@ import type * as ChildProcessSpawner from "effect/unstable/process/ChildProcessS
 import type * as Scope from "effect/Scope";
 import type { Failure as HerdrFailure } from "@notus/herdr/errors";
 import * as Commands from "./commands";
+import { Git } from "./git";
 import { acquireDirectory, assertPlatform, launch, validateDirectories } from "./host";
 import { Failure, Settings } from "./settings";
 import { Callback } from "./callback";
@@ -90,10 +93,30 @@ export const layerNoDeps = Layer.effect(
       return yield* Effect.gen(function* () {
         yield* callback.ready(ready);
         yield* report;
+        // Git is signed in as the initiator before the first command and kept signed in while
+        // the box serves: a login is refreshed half an hour before it expires.
+        const signIn = Effect.gen(function* () {
+          const reply = yield* callback.login.pipe(Effect.orElseSucceed(() => ({ github: null })));
+          yield* Git.configure(reply.github).pipe(Effect.ignore);
+          const now = yield* Clock.currentTimeMillis;
+          return reply.github === null
+            ? 30 * 60_000
+            : Math.min(
+                6 * 60 * 60_000,
+                Math.max(5 * 60_000, reply.github.expiresAt - now - 30 * 60_000),
+              );
+        });
+        let wait = yield* signIn;
+        const keepSignedIn = Effect.gen(function* () {
+          while (true) {
+            yield* Effect.sleep(Duration.millis(wait));
+            wait = yield* signIn;
+          }
+        });
         // Serve operator commands for as long as Control accepts this runtime.
         return yield* callback
           .commands(Commands.run)
-          .pipe(Effect.provideService(Settings.Service, settings));
+          .pipe(Effect.provideService(Settings.Service, settings), Effect.raceFirst(keepSignedIn));
       }).pipe(Effect.raceFirst(unexpectedExit));
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),

@@ -11,6 +11,7 @@
   "dependencies": {
     "@notus/cloudflare": "workspace:*",
     "@notus/contracts": "workspace:*",
+    "@notus/github": "workspace:*",
     "@notus/openai": "workspace:*",
     "@notus/platform": "workspace:*",
     "drizzle-orm": "catalog:",

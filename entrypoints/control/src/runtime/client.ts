@@ -38,6 +38,10 @@ export interface Interface {
     credential: Redacted.Redacted<string>,
     request: Protocol.ObserveRequest,
   ) => Effect.Effect<Protocol.ObserveReply, Failure>;
+  /** The initiator's GitHub sign-in for git on the box, fresh for at least an hour. */
+  readonly login: (
+    credential: Redacted.Redacted<string>,
+  ) => Effect.Effect<Protocol.LoginReply, Failure>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/Runtime.Client",
@@ -156,6 +160,9 @@ export const layerNoDeps = Layer.effect(
         );
         return yield* call("observe", credential, body, Protocol.ObserveReply);
       }),
+      login: Effect.fn("Runtime.Client.login")((credential) =>
+        call("login", credential, {}, Protocol.LoginReply),
+      ),
     });
   }),
 );

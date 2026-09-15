@@ -137,6 +137,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
           return task.runtimePoll(capability, request.request);
         case "Observe":
           return task.runtimeObserve(capability, request.request);
+        case "Login":
+          return task.runtimeLogin(capability);
       }
     }).pipe(
       Effect.provide(RuntimeLayers.authentication(callbackSettings)),

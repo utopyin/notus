@@ -190,13 +190,21 @@ export const verifyReadiness = Effect.fn("Runtime.Server.verifyReadiness")(funct
   if (observed.instanceId !== capability.instanceId) return yield* fail("pending");
 });
 
-/** One claim attempt under the caller's epoch. The host owns any wait between attempts. */
-export const poll = Effect.fn("Runtime.Server.poll")(function* (
+/** The caller's epoch is current and enrolled: what every readiness-credential call checks first. */
+export const authorize = Effect.fn("Runtime.Server.authorize")(function* (
   capability: ReadinessCapability,
   now: number,
 ) {
   yield* context(capability);
   if (now >= capability.expiresAt) return yield* fail("unauthorized");
+});
+
+/** One claim attempt under the caller's epoch. The host owns any wait between attempts. */
+export const poll = Effect.fn("Runtime.Server.poll")(function* (
+  capability: ReadinessCapability,
+  now: number,
+) {
+  yield* authorize(capability, now);
   const commands = yield* Commands.Service;
   const command = yield* commands
     .claim(capability.epoch, now)

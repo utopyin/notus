@@ -189,15 +189,32 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               last_refresh: Schema.NonEmptyString,
             }),
           );
+          const initiator = Effect.suspend(() =>
+            gate(
+              State.Service.pipe(
+                Effect.flatMap((state) => state.snapshot),
+                Effect.map((snapshot) => snapshot.task?.reservation.initiatorId ?? null),
+                Effect.provideContext(services),
+              ),
+            ).pipe(Effect.orElseSucceed(() => null)),
+          );
+          /** The initiator's GitHub sign-in for git on the box; null when they have none or it cannot be refreshed. */
+          const githubAuth = (minimumLifetimeMs: number) =>
+            Effect.gen(function* () {
+              const initiatorId = yield* initiator;
+              if (initiatorId === null) return null;
+              const login = yield* connections
+                .getByName(initiatorId)
+                .githubLogin(initiatorId, minimumLifetimeMs);
+              if (!login.ok) {
+                yield* Effect.logWarning(`task.github_login_failed ${login.reason}`);
+                return null;
+              }
+              return login.value;
+            }).pipe(Effect.catchCause(() => Effect.succeed(null)));
           const agentAuth = (lifetimeMs: number) =>
             Effect.gen(function* () {
-              const initiatorId = yield* gate(
-                State.Service.pipe(
-                  Effect.flatMap((state) => state.snapshot),
-                  Effect.map((snapshot) => snapshot.task?.reservation.initiatorId ?? null),
-                  Effect.provideContext(services),
-                ),
-              ).pipe(Effect.orElseSucceed(() => null));
+              const initiatorId = yield* initiator;
               if (initiatorId === null) return Option.none<string>();
               const login = yield* connections
                 .getByName(initiatorId)
@@ -724,6 +741,35 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                       return yield* Schema.encodeEffect(Protocol.PollReply)({ command: null });
                     yield* Effect.sleep("1 second");
                   }
+                }),
+              ),
+            runtimeLogin: (capability: Authentication.Capability) =>
+              runtimeResult(
+                Effect.gen(function* () {
+                  if (capability._tag !== "Readiness")
+                    return yield* new RuntimeFailure({ reason: "unauthorized" });
+                  yield* gate(
+                    Effect.gen(function* () {
+                      const now = yield* Clock.currentTimeMillis;
+                      yield* Runtime.authorize(capability, now).pipe(
+                        Effect.provideContext(services),
+                      );
+                    }),
+                  );
+                  // Fetched outside the gate, returned once, never persisted by this object.
+                  const login = yield* githubAuth(60 * 60_000);
+                  return yield* Schema.encodeEffect(Protocol.LoginReply)({
+                    github:
+                      login === null
+                        ? null
+                        : {
+                            token: login.access,
+                            expiresAt: login.expiresAt,
+                            login: login.login,
+                            name: login.name,
+                            email: login.email,
+                          },
+                  });
                 }),
               ),
             runtimeObserve: (

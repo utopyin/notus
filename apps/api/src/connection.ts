@@ -1,7 +1,10 @@
 import { Connections, type Seed } from "@notus/accounts/connections";
 import { ConnectionError } from "@notus/accounts/errors";
+import { GithubLogins } from "@notus/accounts/github-login";
+import { D1 } from "@notus/cloudflare/d1";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { Sqlite } from "@notus/cloudflare/sqlite";
+import { OAuth } from "@notus/github/oauth";
 import type { ForwardRequest, Provider } from "@notus/openai/types";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle/Cloudflare";
@@ -11,8 +14,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { credentialKeyConfig } from "./config";
+import { AuthDb } from "./auth";
+import { credentialKeyConfig, dashboardConfig } from "./config";
 import { cryptoLayer } from "./crypto";
+import { SharedDatabase } from "./database";
 import migrations from "./migrations/connection/migrations";
 
 /**
@@ -24,15 +29,44 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
   Effect.gen(function* () {
     const host = yield* Cloudflare.DurableObjectState;
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
+    // GitHub sign-ins live in the sign-in database; the user they act as, in the shared one.
+    const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
+    const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
+    const auth = yield* Cloudflare.D1.QueryDatabase(yield* AuthDb);
     const context = yield* CurrentRuntimeContext;
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
-    return { host, credentialKey, context };
+    return { host, credentialKey, dashboard, shared, auth, context };
   }).pipe(
+    Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
     // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, credentialKey, context }) =>
+    Effect.map(({ host, credentialKey, dashboard, shared, auth, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
+        // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
+        const githubLogins =
+          dashboard.github === null
+            ? null
+            : yield* Layer.build(
+                GithubLogins.layer.pipe(
+                  Layer.provide([
+                    D1.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
+                    // fresh: a second instance for the second binding, not the memoized shared one.
+                    Layer.effect(GithubLogins.AuthDatabase, D1.Service).pipe(
+                      Layer.provide(
+                        Layer.fresh(D1.layer).pipe(
+                          Layer.provide(Layer.effect(D1.Binding, auth.raw)),
+                        ),
+                      ),
+                    ),
+                    FetchHttpClient.layer,
+                    Layer.succeed(OAuth.Configuration, {
+                      clientId: dashboard.github.clientId,
+                      clientSecret: dashboard.github.clientSecret,
+                    }),
+                  ]),
+                ),
+              ).pipe(Effect.orDie);
         const services = yield* Layer.build(
           Connections.layer.pipe(
             Layer.provide([
@@ -90,6 +124,21 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
             result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
           forward: (userId: string, operationId: string, request: ForwardRequest) =>
             result(connections.forward(userId, operationId, request, gate)),
+          /**
+           * The user's GitHub sign-in as a login for their dev box, refreshed under this object's
+           * gate so concurrent tasks never spend the same refresh token twice. Never stored here.
+           */
+          githubLogin: (userId: string, minimumLifetimeMs: number) =>
+            result(
+              gate(
+                githubLogins === null
+                  ? Effect.fail(new ConnectionError({ reason: "not-linked" }))
+                  : GithubLogins.Service.pipe(
+                      Effect.flatMap((logins) => logins.login(userId, minimumLifetimeMs)),
+                      Effect.provideContext(githubLogins),
+                    ),
+              ),
+            ),
         };
       }),
     ),
