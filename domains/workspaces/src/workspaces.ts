@@ -11,7 +11,7 @@ import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
-import { installIntents, installations, invites, memberships, sources, workspaces } from "./schema";
+import { installIntents, installations, invites, memberships, scopes, workspaces } from "./schema";
 import {
   Installation,
   InstallIntent,
@@ -21,7 +21,7 @@ import {
   Slug,
   slugOf,
   Workspace,
-  WorkspaceSource,
+  WorkspaceScope,
   WorkspaceName,
   WorkspaceView,
 } from "./types";
@@ -114,15 +114,15 @@ export interface Interface {
     ref: { readonly platform: Platform; readonly installationId: string },
   ) => Effect.Effect<void, WorkspaceError>;
   /** Covers a scope of a platform the workspace has installed; "not-installed" otherwise. */
-  readonly addSource: (
+  readonly addScope: (
     workspaceId: string,
     actorId: string,
-    source: SourceInput,
+    source: ScopeInput,
   ) => Effect.Effect<void, WorkspaceError>;
-  readonly removeSource: (
+  readonly removeScope: (
     workspaceId: string,
     actorId: string,
-    source: SourceInput,
+    source: ScopeInput,
   ) => Effect.Effect<void, WorkspaceError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
@@ -133,21 +133,21 @@ const WorkspaceRow = createSelectSchema(workspaces);
 const MemberRow = createSelectSchema(memberships);
 const InstallationRow = createSelectSchema(installations);
 const IntentRow = createSelectSchema(installIntents);
-const SourceRow = createSelectSchema(sources);
+const ScopeRow = createSelectSchema(scopes);
 const installIntentLifetimeMs = 15 * 60_000;
 const credentialJson = Schema.fromJsonString(Schema.Json);
 const InviteRow = createSelectSchema(invites);
 const inviteLifetimeMs = 7 * 24 * 60 * 60_000;
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
   new WorkspaceError({ operation, reason });
-const SourceInput = Schema.Struct({
+const ScopeInput = Schema.Struct({
   platform: Platform,
   installationId: InstallationId,
   scope: PlatformId,
   label: Schema.optionalKey(Schema.String),
 });
 /** What a caller supplies; the brands are applied by decoding. */
-export interface SourceInput {
+export interface ScopeInput {
   readonly platform: Platform;
   readonly installationId: string;
   readonly scope: string;
@@ -316,11 +316,11 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
           storage("view"),
         );
-      const sourceRows = yield* store.db
+      const scopeRows = yield* store.db
         .select()
-        .from(sources)
-        .where(eq(sources.workspaceId, workspaceId))
-        .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(SourceRow))), storage("view"));
+        .from(scopes)
+        .where(eq(scopes.workspaceId, workspaceId))
+        .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))), storage("view"));
       const inviteRows =
         role === "admin"
           ? yield* store.db
@@ -346,7 +346,7 @@ export const layerNoDeps = Layer.effect(
         installations: yield* Schema.decodeUnknownEffect(Schema.Array(Installation))(
           installationRows,
         ).pipe(storage("view")),
-        sources: yield* Schema.decodeUnknownEffect(Schema.Array(WorkspaceSource))(sourceRows).pipe(
+        scopes: yield* Schema.decodeUnknownEffect(Schema.Array(WorkspaceScope))(scopeRows).pipe(
           storage("view"),
         ),
         invites: inviteRows.map((i) =>
@@ -589,7 +589,7 @@ export const layerNoDeps = Layer.effect(
       const installationKey = key(ref.platform, ref.installationId);
       yield* store
         .batch([
-          sql`DELETE FROM workspace_sources WHERE workspaceId = ${workspaceId}
+          sql`DELETE FROM workspace_scopes WHERE workspaceId = ${workspaceId}
           AND platform = ${ref.platform} AND installationId = ${ref.installationId}`,
           sql`DELETE FROM workspace_installations WHERE key = ${installationKey} AND workspaceId = ${workspaceId}`,
         ])
@@ -597,7 +597,7 @@ export const layerNoDeps = Layer.effect(
     });
 
     /** The installation must be the workspace's own: a scope of somebody else's team is never coverable. */
-    const installedHere = (operation: string, workspaceId: string, source: SourceInput) =>
+    const installedHere = (operation: string, workspaceId: string, source: ScopeInput) =>
       store.db
         .select()
         .from(installations)
@@ -611,36 +611,36 @@ export const layerNoDeps = Layer.effect(
               : Effect.fail(fail(operation, "not-installed")),
           ),
         );
-    const addSource = Effect.fn("Workspaces.addSource")(function* (
+    const addScope = Effect.fn("Workspaces.addScope")(function* (
       workspaceId: string,
       actorId: string,
-      value: SourceInput,
+      value: ScopeInput,
     ) {
-      const source = yield* decodeInput(SourceInput, value, "addSource");
-      yield* requireAdmin("addSource", workspaceId, actorId).pipe(storage("addSource"));
-      yield* installedHere("addSource", workspaceId, source);
+      const source = yield* decodeInput(ScopeInput, value, "addScope");
+      yield* requireAdmin("addScope", workspaceId, actorId).pipe(storage("addScope"));
+      yield* installedHere("addScope", workspaceId, source);
       yield* store
         .batch([
-          sql`INSERT INTO workspace_sources (key, workspaceId, platform, installationId, scope, label)
+          sql`INSERT INTO workspace_scopes (key, workspaceId, platform, installationId, scope, label)
           VALUES (${key(workspaceId, source.platform, source.installationId, source.scope)}, ${workspaceId}, ${source.platform}, ${source.installationId}, ${source.scope}, ${source.label ?? source.scope})
           ON CONFLICT DO NOTHING`,
         ])
-        .pipe(storage("addSource"));
+        .pipe(storage("addScope"));
     });
 
-    const removeSource = Effect.fn("Workspaces.removeSource")(function* (
+    const removeScope = Effect.fn("Workspaces.removeScope")(function* (
       workspaceId: string,
       actorId: string,
-      value: SourceInput,
+      value: ScopeInput,
     ) {
-      const source = yield* decodeInput(SourceInput, value, "removeSource");
-      yield* requireAdmin("removeSource", workspaceId, actorId).pipe(storage("removeSource"));
+      const source = yield* decodeInput(ScopeInput, value, "removeScope");
+      yield* requireAdmin("removeScope", workspaceId, actorId).pipe(storage("removeScope"));
       yield* store.db
-        .delete(sources)
+        .delete(scopes)
         .where(
-          eq(sources.key, key(workspaceId, source.platform, source.installationId, source.scope)),
+          eq(scopes.key, key(workspaceId, source.platform, source.installationId, source.scope)),
         )
-        .pipe(storage("removeSource"));
+        .pipe(storage("removeScope"));
     });
 
     return Service.of({
@@ -658,8 +658,8 @@ export const layerNoDeps = Layer.effect(
       takeInstallIntent,
       install,
       uninstall,
-      addSource,
-      removeSource,
+      addScope,
+      removeScope,
     });
   }),
 );

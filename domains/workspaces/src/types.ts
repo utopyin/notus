@@ -100,14 +100,14 @@ export const Installation = Schema.Struct({
 });
 export interface Installation extends Schema.Schema.Type<typeof Installation> {}
 /** A scope of an installation the workspace covers; the label is what the platform called it when chosen. */
-export const WorkspaceSource = Schema.Struct({
+export const WorkspaceScope = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   platform: Platform,
   installationId: InstallationId,
   scope: PlatformId,
   label: Schema.String,
 });
-export interface WorkspaceSource extends Schema.Schema.Type<typeof WorkspaceSource> {}
+export interface WorkspaceScope extends Schema.Schema.Type<typeof WorkspaceScope> {}
 export const Invite = Schema.Struct({
   id: Schema.NonEmptyString,
   workspaceId: Schema.NonEmptyString,
@@ -126,7 +126,7 @@ export const WorkspaceView = Schema.Struct({
   role: Role,
   members: Schema.Array(Membership),
   installations: Schema.Array(Installation),
-  sources: Schema.Array(WorkspaceSource),
+  scopes: Schema.Array(WorkspaceScope),
   invites: Schema.Array(Invite),
 });
 export interface WorkspaceView extends Schema.Schema.Type<typeof WorkspaceView> {}

@@ -21,10 +21,10 @@ function Overview() {
       hint: `${view.members.filter((m) => m.role === "admin").length} admin`,
     },
     {
-      to: "/$slug/sources" as const,
+      to: "/$slug/platforms" as const,
       icon: IconPlugConnected,
-      label: "Sources",
-      value: view.sources.length,
+      label: "Platforms",
+      value: view.scopes.length,
       hint: `${view.installations.length} connected`,
     },
     ...(view.role === "admin"

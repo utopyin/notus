@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { AccessError, Denied } from "./errors";
-import { installations, memberships, sources } from "./schema";
+import { installations, memberships, scopes } from "./schema";
 import { Fixture, StartGrant } from "./types";
 
 export interface Interface {
@@ -28,7 +28,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/access/Service",
 ) {}
-const SourceRow = createSelectSchema(sources);
+const ScopeRow = createSelectSchema(scopes);
 /** The seeded Slack credential, in the shape the Slack adapter reads back. */
 const slackCredential = Schema.fromJsonString(
   Schema.Struct({ botToken: Schema.NonEmptyString, botUserId: Schema.NonEmptyString }),
@@ -60,12 +60,12 @@ export const layerNoDeps = Layer.effect(
       );
       const rows = yield* store.db
         .select()
-        .from(sources)
+        .from(scopes)
         .where(
-          eq(sources.key, key(workspaceId, source.platform, source.installationId, source.scope)),
+          eq(scopes.key, key(workspaceId, source.platform, source.installationId, source.scope)),
         )
         .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(SourceRow))),
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))),
           Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
         );
       if (rows.length === 0)
@@ -106,7 +106,7 @@ export const layerNoDeps = Layer.effect(
           VALUES (${key(platform, installationId)}, ${workspaceId}, ${platform}, ${installationId}, ${label}, ${userId}, 0, ${credential})
           ON CONFLICT(key) DO UPDATE SET credential = COALESCE(excluded.credential, credential)`;
         const covers = (platform: string, installationId: string, scope: string) =>
-          sql`INSERT INTO workspace_sources (key, workspaceId, platform, installationId, scope, label)
+          sql`INSERT INTO workspace_scopes (key, workspaceId, platform, installationId, scope, label)
           VALUES (${key(workspaceId, platform, installationId, scope)}, ${workspaceId}, ${platform}, ${installationId}, ${scope}, ${scope}) ON CONFLICT DO NOTHING`;
         yield* store.batch([
           sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)

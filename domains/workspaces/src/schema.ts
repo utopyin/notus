@@ -53,8 +53,8 @@ export const installIntents = sqliteTable("workspace_install_intents", {
 });
 
 /** A scope the workspace listens in or works on: a channel of an installed team, a repository of an installed App. */
-export const sources = sqliteTable(
-  "workspace_sources",
+export const scopes = sqliteTable(
+  "workspace_scopes",
   {
     /** key(workspaceId, platform, installationId, scope) */
     key: text().primaryKey(),
@@ -64,7 +64,7 @@ export const sources = sqliteTable(
     scope: text().notNull(),
     label: text().notNull().default(""),
   },
-  (table) => [index("workspace_sources_workspace").on(table.workspaceId)],
+  (table) => [index("workspace_scopes_workspace").on(table.workspaceId)],
 );
 
 /** A team's configuration and access boundary. The fixture workspace is seeded with its ID as name. */

@@ -2,15 +2,15 @@ import { createCollection } from "@tanstack/react-db";
 import { queryCollectionOptions } from "@tanstack/query-db-collection";
 import { queryClient } from "./query";
 import {
-  addSource,
+  addScope,
   getWorkspace,
-  removeSource,
+  removeScope,
   revokeInvite,
   type WorkspaceView,
 } from "./server/workspaces";
 
-export type SourceRow = WorkspaceView["sources"][number];
-export const sourceKey = (row: Pick<SourceRow, "platform" | "installationId" | "scope">) =>
+export type ScopeRow = WorkspaceView["scopes"][number];
+export const scopeKey = (row: Pick<ScopeRow, "platform" | "installationId" | "scope">) =>
   `${row.platform}:${row.installationId}:${row.scope}`;
 export type InviteRow = WorkspaceView["invites"][number];
 
@@ -21,20 +21,20 @@ const load = async (workspaceId: string) => {
 };
 
 /**
- * Sources and invites are edited optimistically: the row appears or disappears at once, and the
+ * Scopes and invites are edited optimistically: the row appears or disappears at once, and the
  * server call behind it either confirms or rolls it back. One pair of collections per workspace.
  */
-const sourceCollection = (workspaceId: string) =>
+const scopeCollection = (workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
-      queryKey: ["workspace", workspaceId, "sources"],
-      queryFn: async () => [...(await load(workspaceId)).sources],
+      queryKey: ["workspace", workspaceId, "scopes"],
+      queryFn: async () => [...(await load(workspaceId)).scopes],
       queryClient,
-      getKey: (row: SourceRow) => sourceKey(row),
+      getKey: (row: ScopeRow) => scopeKey(row),
       onInsert: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.modified;
-          const result = await addSource({
+          const result = await addScope({
             data: {
               workspaceId,
               source: {
@@ -51,7 +51,7 @@ const sourceCollection = (workspaceId: string) =>
       onDelete: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.original;
-          const result = await removeSource({
+          const result = await removeScope({
             data: {
               workspaceId,
               source: {
@@ -97,13 +97,13 @@ const inviteCollection = (workspaceId: string) =>
   );
 const collections = new Map<
   string,
-  { sources: ReturnType<typeof sourceCollection>; invites: ReturnType<typeof inviteCollection> }
+  { scopes: ReturnType<typeof scopeCollection>; invites: ReturnType<typeof inviteCollection> }
 >();
 export const collectionsOf = (workspaceId: string) => {
   const existing = collections.get(workspaceId);
   if (existing) return existing;
   const created = {
-    sources: sourceCollection(workspaceId),
+    scopes: scopeCollection(workspaceId),
     invites: inviteCollection(workspaceId),
   };
   collections.set(workspaceId, created);

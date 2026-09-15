@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { collectionsOf, sourceKey, type SourceRow } from "../collections";
+import { collectionsOf, scopeKey, type ScopeRow } from "../collections";
 import { queryClient } from "../query";
 import { installUrl, listScopes, uninstall, type WorkspaceView } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
@@ -71,11 +71,11 @@ const scopesQuery = (workspaceId: string, installation: Installation) =>
     staleTime: 5 * 60_000,
   });
 
-export const Route = createFileRoute("/$slug/sources")({
+export const Route = createFileRoute("/$slug/platforms")({
   staticData: {
     shell: {
-      active: "sources",
-      title: "Sources",
+      active: "platforms",
+      title: "Platforms",
       description:
         "Where this workspace listens for work and answers: Slack channels and GitHub repositories.",
     },
@@ -93,12 +93,12 @@ export const Route = createFileRoute("/$slug/sources")({
     // Not awaited: each section renders its skeleton while its platform answers.
     for (const installation of view.installations)
       void queryClient.prefetchQuery(scopesQuery(view.workspace.id, installation));
-    await collectionsOf(view.workspace.id).sources.preload();
+    await collectionsOf(view.workspace.id).scopes.preload();
   },
-  component: Sources,
+  component: PlatformsPage,
 });
 
-function Sources() {
+function PlatformsPage() {
   const { view } = useWorkspace();
   const search = Route.useSearch();
   const router = useRouter();
@@ -172,11 +172,11 @@ function InstallationSection(props: {
   onDisconnect: () => void;
 }) {
   const { view, installation, isAdmin } = props;
-  const { sources } = collectionsOf(view.workspace.id);
+  const { scopes } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({
     query: (q) =>
       q
-        .from({ source: sources })
+        .from({ source: scopes })
         .where(({ source }) => eq(source.installationId, installation.installationId))
         .orderBy(({ source }) => source.label, "asc"),
   });
@@ -194,7 +194,7 @@ function InstallationSection(props: {
       error instanceof Error ? `That did not work (${error.message}).` : "That did not work.",
     );
   const add = (scope: string) => {
-    sources
+    scopes
       .insert({
         workspaceId: view.workspace.id,
         platform: installation.platform,
@@ -204,8 +204,8 @@ function InstallationSection(props: {
       })
       .isPersisted.promise.catch(report);
   };
-  const remove = (row: SourceRow) => {
-    sources.delete(sourceKey(row)).isPersisted.promise.catch(report);
+  const remove = (row: ScopeRow) => {
+    scopes.delete(scopeKey(row)).isPersisted.promise.catch(report);
   };
   const options = available?.filter((c) => c.member && !covered.has(c.id)) ?? [];
   const Mark = marks[installation.icon] ?? IconBrandSlack;
@@ -243,7 +243,7 @@ function InstallationSection(props: {
           {data.map((row) => {
             const info = byId.get(row.scope);
             return (
-              <li key={sourceKey(row)} className="flex items-center gap-3 px-4 py-3 text-sm">
+              <li key={scopeKey(row)} className="flex items-center gap-3 px-4 py-3 text-sm">
                 {info?.private ? (
                   <IconLockFilled className="text-muted-foreground size-4" />
                 ) : (

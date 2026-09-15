@@ -67,22 +67,22 @@ export const acceptInvite = createServerFn({ method: "POST" })
   .inputValidator((input: { token: string }) => input)
   .handler(async ({ data }) => await api().dashboardAcceptInvite(cookie(), data.token));
 
-export type SourceInput = {
+export type ScopeInput = {
   platform: "slack" | "github";
   installationId: string;
   scope: string;
   label?: string;
 };
-export const addSource = createServerFn({ method: "POST" })
-  .inputValidator((input: { workspaceId: string; source: SourceInput }) => input)
+export const addScope = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; source: ScopeInput }) => input)
   .handler(
-    async ({ data }) => await api().dashboardAddSource(cookie(), data.workspaceId, data.source),
+    async ({ data }) => await api().dashboardAddScope(cookie(), data.workspaceId, data.source),
   );
 
-export const removeSource = createServerFn({ method: "POST" })
-  .inputValidator((input: { workspaceId: string; source: SourceInput }) => input)
+export const removeScope = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; source: ScopeInput }) => input)
   .handler(
-    async ({ data }) => await api().dashboardRemoveSource(cookie(), data.workspaceId, data.source),
+    async ({ data }) => await api().dashboardRemoveScope(cookie(), data.workspaceId, data.source),
   );
 
 /** Where to send the admin to install a platform; the API remembers the intent until the platform returns. */

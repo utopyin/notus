@@ -40,7 +40,7 @@ export const callback = (dashboardOrigin: string) =>
     const view = yield* workspaces
       .view(intent.workspaceId, intent.userId)
       .pipe(Effect.mapError(() => "unknown-workspace" as const));
-    const back = `${dashboardOrigin}/${view.workspace.slug}/sources`;
+    const back = `${dashboardOrigin}/${view.workspace.slug}/platforms`;
     if (url.searchParams.get("error"))
       return redirect(`${back}?install=${encodeURIComponent(url.searchParams.get("error") ?? "")}`);
     const scope = yield* platforms

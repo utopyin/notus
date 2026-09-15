@@ -7,7 +7,7 @@ import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
 import { Environments } from "@notus/workspaces/environments";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
-import type { SourceInput } from "@notus/workspaces/workspaces";
+import type { ScopeInput } from "@notus/workspaces/workspaces";
 import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
@@ -266,7 +266,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
             scopeNoun: PLATFORM_DESCRIPTORS[i.platform].scopeNoun,
           })),
           installable,
-          sources: view.sources.map((s): SourceSummary => ({
+          scopes: view.scopes.map((s): ScopeSummaryRow => ({
             workspaceId: s.workspaceId,
             platform: s.platform,
             installationId: s.installationId,
@@ -307,7 +307,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       readonly icon: string;
       readonly scopeNoun: string;
     }
-    interface SourceSummary {
+    interface ScopeSummaryRow {
       readonly workspaceId: string;
       readonly platform: Platform;
       readonly installationId: string;
@@ -523,16 +523,16 @@ export default class Api extends Cloudflare.Worker<Api>()(
             ),
           ),
         ),
-      dashboardAddSource: (cookie: string, workspaceId: string, source: SourceInput) =>
+      dashboardAddScope: (cookie: string, workspaceId: string, source: ScopeInput) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
-            Effect.flatMap((workspaces) => workspaces.addSource(workspaceId, me.userId, source)),
+            Effect.flatMap((workspaces) => workspaces.addScope(workspaceId, me.userId, source)),
           ),
         ),
-      dashboardRemoveSource: (cookie: string, workspaceId: string, source: SourceInput) =>
+      dashboardRemoveScope: (cookie: string, workspaceId: string, source: ScopeInput) =>
         authorized(cookie, (me) =>
           Workspaces.Service.pipe(
-            Effect.flatMap((workspaces) => workspaces.removeSource(workspaceId, me.userId, source)),
+            Effect.flatMap((workspaces) => workspaces.removeScope(workspaceId, me.userId, source)),
           ),
         ),
       /**
