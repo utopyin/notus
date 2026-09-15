@@ -15,7 +15,7 @@ const Repository: FC<{ fullName: string; isPrivate: boolean }> = ({ fullName, is
       )}
       <span className="min-w-0 flex-1 truncate leading-4">
         <span className="text-muted-foreground">{owner}/</span>
-        <span className="font-medium">{name ?? fullName}</span>
+        <span>{name ?? fullName}</span>
       </span>
     </>
   );
