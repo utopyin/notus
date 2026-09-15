@@ -24,8 +24,8 @@ function Overview() {
       to: "/$slug/platforms" as const,
       icon: IconAppsFilled,
       label: "Platforms",
-      value: view.scopes.length,
-      hint: `${view.installations.length} connected`,
+      value: view.installations.length,
+      hint: `${view.scopes.length} ${view.scopes.length === 1 ? "scope" : "scopes"} covered`,
     },
     ...(view.role === "admin"
       ? [
