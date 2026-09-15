@@ -90,7 +90,7 @@ Deployed resources of a developer stage, first deployed 2026-09-14 with workspac
 
 - API Worker `notus-api-<stage>-<suffix>` at `https://api.<stage>.notus.run`.
 - Dashboard Worker `notus-dashboard-<stage>-<suffix>` at `https://<stage>.notus.run`, with its Better Auth database `AuthDb`.
-- D1 `Notus-SharedDatabase-<stage>-<suffix>`, ID `<d1-database-id>`, environment revision 3 on image version 9 (revision 1 was image version 7, whose Codex lacked its code-mode host; revision 2 was version 8; version 9 adds the idle poll backoff).
+- D1 `Notus-SharedDatabase-<stage>-<suffix>`, ID `<d1-database-id>`, environment on image version 10 (version 7's Codex lacked its code-mode host; version 8 fixed that; version 9 added the idle poll backoff; version 10 follows the repository-candidate command schema). The environment row now belongs to the dashboard-created workspace; the fixture workspace `notus` was retired on 2026-09-15.
 - Slack app `<slack-app-id>`, team `<slack-team-id>`, channel `<slack-channel-id>`.
 
 The former simulation Worker and database were deleted through the API on the same day; their tasks and retained devbox assignment were abandoned, and Alchemy's state store still lists that stage.

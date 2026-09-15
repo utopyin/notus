@@ -60,3 +60,5 @@ Offline validation: the harness drives a `run_specialist` call through the actua
 
 1. A live specialist round on the test stage, then review roles as further named agents.
 2. User-driven account linking and application-level encryption of stored connections.
+
+Image version 10 (2026-09-15, `sha256:f628e116…`) rebuilds the runtime for repository candidates: the checkout clones the remote's default branch without naming it and reports the branch it landed on, pushes compare against `origin/HEAD`, and every command spec carries the repository's installation. The v9 runtime decoded the new checkout command as a binding failure and stopped polling, which is why the image must move with the command schema.
