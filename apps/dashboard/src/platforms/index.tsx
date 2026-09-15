@@ -19,6 +19,8 @@ export interface PlatformSlots {
   readonly Mark: FC<{ className?: string }>;
   /** One line for the platform card. */
   readonly description: string;
+  /** What covering a scope means here, shown above the platform's scopes. */
+  readonly covering: string;
   readonly installLabel: string;
   /** The platform's page once installed: its scopes and whatever else it needs. */
   readonly Details: FC<{ view: WorkspaceView; installation: Installation; isAdmin: boolean }>;
@@ -29,13 +31,18 @@ const SLOTS: { readonly [P in Platform]: PlatformSlots } = {
     name: "Slack",
     Mark: SlackIcon,
     description: "Mention Notus in a channel to start a task; it answers in the thread.",
+    covering:
+      "Cover the channels where mentioning Notus starts a task. It replies in the thread it was mentioned in.",
     installLabel: "Add to Slack",
     Details: SlackDetails,
   },
   github: {
     name: "GitHub",
     Mark: GithubIcon,
-    description: "Notus opens pull requests here and takes review feedback on them.",
+    description:
+      "Repositories Notus may work in: it opens pull requests there and follows their reviews.",
+    covering:
+      "Cover the repositories Notus may check out, push to and open pull requests in. Review feedback on a pull request it opened reaches its task by itself; nothing is subscribed by hand.",
     installLabel: "Install GitHub App",
     Details: GithubDetails,
   },

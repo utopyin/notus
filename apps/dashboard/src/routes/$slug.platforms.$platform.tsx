@@ -98,7 +98,10 @@ function PlatformPage() {
         <p className="text-destructive text-sm">Nothing was connected ({search.install}).</p>
       ) : null}
       {installation ? (
-        <slots.Details view={view} installation={installation} isAdmin={isAdmin} />
+        <>
+          <p className="text-muted-foreground text-sm text-pretty">{slots.covering}</p>
+          <slots.Details view={view} installation={installation} isAdmin={isAdmin} />
+        </>
       ) : isAdmin && view.installable.includes(platform) ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-muted-foreground text-sm">{slots.description}</p>
