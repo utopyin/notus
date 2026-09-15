@@ -58,8 +58,11 @@ type Current = Me["workspaces"][number];
 
 type Active = "overview" | "members" | "platforms" | "invites" | "settings" | "account";
 
-/** What a page under the workspace layout tells the shell about itself. */
-export type ShellPage = { active: Active; title?: string; description?: string };
+/**
+ * What a page under the workspace layout tells the shell about itself. No title means the
+ * overview's (the workspace itself); `null` means the page draws its own header.
+ */
+export type ShellPage = { active: Active; title?: string | null; description?: string };
 
 declare module "@tanstack/react-router" {
   interface StaticDataRouteOption {
@@ -78,7 +81,8 @@ export function AppShell(props: {
   active?: Active;
   /** The platform page open under Platforms, when one is. */
   activePlatform?: string;
-  title: string;
+  /** `null` when the page draws its own header. */
+  title: string | null;
   description?: string;
   children: ReactNode;
 }) {
@@ -316,10 +320,12 @@ export function AppShell(props: {
           <SidebarTrigger />
         </div>
         <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10">
-          <header className="flex flex-col gap-1">
-            <h1 className="text-xl font-medium tracking-tight">{title}</h1>
-            {description ? <p className="text-muted-foreground text-sm">{description}</p> : null}
-          </header>
+          {title === null ? null : (
+            <header className="flex flex-col gap-1">
+              <h1 className="text-xl font-medium tracking-tight">{title}</h1>
+              {description ? <p className="text-muted-foreground text-sm">{description}</p> : null}
+            </header>
+          )}
           {children}
         </main>
       </SidebarInset>

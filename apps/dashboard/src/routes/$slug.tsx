@@ -54,7 +54,7 @@ function Layout() {
       current={current}
       active={shell?.active}
       activePlatform={activePlatform}
-      title={shell?.title ?? view.workspace.name}
+      title={shell?.title === null ? null : (shell?.title ?? view.workspace.name)}
       description={shell?.title ? shell.description : `notus.run/${view.workspace.slug}`}
     >
       <Outlet />

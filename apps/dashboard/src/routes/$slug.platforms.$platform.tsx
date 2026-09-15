@@ -16,7 +16,8 @@ import { installUrl, uninstall } from "../server/workspaces";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/platforms/$platform")({
-  staticData: { shell: { active: "platforms" } },
+  // The page's own header names the platform; the shell adds none.
+  staticData: { shell: { active: "platforms", title: null } },
   validateSearch: (search: Record<string, unknown>): { installed?: string; install?: string } => ({
     ...(typeof search.installed === "string" ? { installed: search.installed } : {}),
     ...(typeof search.install === "string" ? { install: search.install } : {}),
