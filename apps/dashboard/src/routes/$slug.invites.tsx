@@ -137,7 +137,7 @@ function Invites() {
       {data.length === 0 ? (
         <p className="text-muted-foreground text-sm">No invites yet.</p>
       ) : (
-        <ul className="divide-y rounded-lg border">
+        <ul className="bg-card divide-y rounded-lg border">
           {data.map((invite) => {
             const s = status(invite);
             return (

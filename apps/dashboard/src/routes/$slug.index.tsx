@@ -47,7 +47,7 @@ function Overview() {
             key={item.label}
             to={item.to}
             params={{ slug: current.slug }}
-            className="bg-background hover:bg-accent flex flex-col gap-2 p-5 transition-colors"
+            className="bg-card hover:bg-accent flex flex-col gap-2 p-5 transition-colors"
           >
             <dt className="text-muted-foreground flex items-center gap-2 text-sm">
               <item.icon className="size-4" />
