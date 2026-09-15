@@ -68,7 +68,7 @@ New tables in shared D1: `workspaces`, `workspace_invites`, `workspace_github_in
 1. **App and sign-in.** `apps/dashboard` in Alchemy with shadcn/ui, TanStack DB and Intent skills; Better Auth on the API with `AuthDb`; Slack and GitHub sign-in; the `/auth` forward; account page with identity linking and session list. Ships with a read-only view of the workspaces the user belongs to.
 2. **Workspaces.** Create, members and roles, invites, channel selection; fixture seeding reduced to the dev stage.
 3. **Connections.** ChatGPT device-code login, API key, status and revoke, unified agent login, encryption at rest, per-workspace operator backend.
-4. **Repositories.** GitHub App installation flow, repository enablement, task repository selection from the workspace list.
+4. **Repositories.** GitHub App installation flow, repository enablement, task repository selection from the workspace list. The installation flow and the channel page move to the [sources plan](sources.md), which replaces both with installations and scopes over a registered adapter contract.
 5. **Instructions.** Roles, per-repository overrides, the `role` parameter on `run_specialist`, resolved instructions recorded per task and shown per task.
 6. **Environments.** The revisioned editor over the existing environment table.
 
