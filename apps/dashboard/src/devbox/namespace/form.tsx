@@ -69,14 +69,9 @@ export const NamespaceForm: FC<{
   disabled: boolean;
   onChange: (change: Partial<Fields>) => void;
 }> = ({ fields, approvedImages, disabled, onChange }) => {
-  const imageApproved = approvedImages.includes(fields.imageRef);
-  const imageItems = [
-    ...approvedImages.map((value) => ({ value, label: shortValue(value) })),
-    // A stored image the deployment no longer approves still shows, so the change is visible.
-    ...(fields.imageRef && !imageApproved
-      ? [{ value: fields.imageRef, label: `${shortValue(fields.imageRef)} (no longer approved)` }]
-      : []),
-  ];
+  // The deployment approves one image; the workspace can only follow it.
+  const approved = approvedImages[0] ?? null;
+  const stale = approved !== null && fields.imageRef !== approved;
   const unusedNames = environmentNames.filter(
     (name) => !fields.variables.some((item) => item.name === name),
   );
@@ -88,39 +83,44 @@ export const NamespaceForm: FC<{
     <div className="flex flex-col gap-8">
       <Section
         title="Image"
-        description="What the devbox boots from. Only images this deployment approved can be selected."
+        description="What the devbox boots from. The deployment approves one image, audited before it is set; a workspace follows it."
       >
-        <Field
-          id="image"
-          label="Image"
-          hint={
-            approvedImages.length === 0
-              ? "This deployment approves no image yet."
-              : fields.imageRef && !imageApproved
-                ? "The deployment approved a newer image. Select it to start tasks from it."
-                : undefined
-          }
-        >
-          <Select
-            items={imageItems}
-            value={fields.imageRef || null}
-            disabled={disabled || imageItems.length === 0}
-            onValueChange={(value) => {
-              if (typeof value === "string") onChange({ imageRef: value });
-            }}
+        <div className="sm:col-span-2">
+          <Field
+            id="image"
+            label="Image"
+            hint={
+              fields.imageRef
+                ? fields.imageRef
+                : "This deployment approves no image, so no devbox can start."
+            }
           >
-            <SelectTrigger id="image" className="w-full">
-              <SelectValue placeholder="Select an image" />
-            </SelectTrigger>
-            <SelectContent>
-              {imageItems.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+            <Input
+              id="image"
+              readOnly
+              className="font-mono"
+              value={shortValue(fields.imageRef)}
+              placeholder="No image approved"
+            />
+          </Field>
+          {stale ? (
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <p className="text-muted-foreground text-xs">
+                The deployment now approves {shortValue(approved)}. Tasks keep starting from the
+                image above until this one is selected.
+              </p>
+              {disabled ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onChange({ imageRef: approved })}
+                >
+                  Use the approved image
+                </Button>
+              )}
+            </div>
+          ) : null}
+        </div>
       </Section>
       <Section title="Machine" description="Blank fields leave the provider's defaults in place.">
         <Field id="site" label="Region" hint="A Namespace site, like iad.">
@@ -143,7 +143,7 @@ export const NamespaceForm: FC<{
               });
             }}
           >
-            <SelectTrigger id="arch" className="w-full">
+            <SelectTrigger id="arch">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -239,7 +239,7 @@ export const NamespaceForm: FC<{
                 onChange({ egress: value });
             }}
           >
-            <SelectTrigger id="egress" className="w-full">
+            <SelectTrigger id="egress">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -260,7 +260,7 @@ export const NamespaceForm: FC<{
                 disabled={disabled}
                 onValueChange={(value) => onChange({ advisory: value === "advisory" })}
               >
-                <SelectTrigger id="enforcement" className="w-full">
+                <SelectTrigger id="enforcement">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -312,7 +312,10 @@ export const NamespaceForm: FC<{
                 .filter((name) => name === item.name || unusedNames.includes(name))
                 .map((name) => ({ value: name, label: name }));
               return (
-                <li key={index} className="flex items-center gap-2">
+                <li
+                  key={index}
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] items-center gap-2"
+                >
                   <Select
                     items={nameItems}
                     value={item.name || null}
@@ -321,7 +324,7 @@ export const NamespaceForm: FC<{
                       if (typeof value === "string") setVariable(index, { name: value });
                     }}
                   >
-                    <SelectTrigger aria-label="Variable name" className="w-44 shrink-0 font-mono">
+                    <SelectTrigger aria-label="Variable name" className="font-mono">
                       <SelectValue placeholder="Name" />
                     </SelectTrigger>
                     <SelectContent>

@@ -153,7 +153,7 @@ export const configOf = (fields: Fields): Json => {
 
 /** What keeps the form from saving, in the words the field shows; null when nothing does. */
 export const problemOf = (fields: Fields): string | null => {
-  if (!fields.imageRef) return "Select an image.";
+  if (!fields.imageRef) return "No image is approved.";
   for (const [label, text] of [
     ["vCPUs", fields.virtualCpu],
     ["Memory", fields.memoryMegabytes],

@@ -76,7 +76,14 @@ function Devbox() {
   const [message, setMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<ReadonlyArray<EnvironmentRevision> | null>(null);
   const stored = environment?.config;
-  const fields = draft ?? opened?.fields ?? fieldsOf(stored);
+  // A workspace that was never configured starts from the image the deployment approves.
+  const current = fieldsOf(stored);
+  const fields =
+    draft ??
+    opened?.fields ??
+    (current.imageRef === "" && approvedImages[0] !== undefined
+      ? { ...current, imageRef: approvedImages[0] }
+      : current);
   const config = configOf(fields);
   const problem = problemOf(fields);
   const dirty = canonical(config) !== canonical(stored);
