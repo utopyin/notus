@@ -138,10 +138,19 @@
   font-size: 15px;
 }
 /* BlockNote's own stylesheet loads with the editor chunk, after this one, so these outrank it by
-   specificity rather than by order. */
+   specificity rather than by order. The editor's colours come from its documented theme
+   variables; the frame is the editor element itself, so its content is flush with it. */
+.bn-root[data-color-scheme] {
+  --bn-colors-editor-background: var(--card);
+  --bn-colors-editor-text: var(--card-foreground);
+  --bn-colors-side-menu: var(--muted-foreground);
+  --bn-border-radius: var(--radius-lg);
+}
 .bn-root.bn-container .bn-editor {
-  background-color: transparent;
-  border-radius: 0;
+  min-height: 24rem;
+  padding: 1.25rem 1.5rem 1.25rem 3.25rem;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
 .bn-editor [data-content-type="heading"] {
   padding-top: 12px;

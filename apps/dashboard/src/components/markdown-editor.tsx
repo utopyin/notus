@@ -44,12 +44,12 @@ export function MarkdownEditor(props: {
     initialContent: blocks.length > 0 ? blocks : undefined,
     ...(props.placeholder ? { placeholders: { default: props.placeholder } } : {}),
   });
-  // No frame: the editor sits on the page itself. Its block handles live in a 54px gutter on the
-  // left, so the wrapper is pulled left by that much and the text lines up with the label above.
-  // BlockNote copies its className onto the portal root it appends after the editor, so the
-  // wrapper is a div of our own and the view carries no class.
+  // The card is the editor element itself (styled in styles.css through BlockNote's theme
+  // variables and classes), so the text is flush with its own frame and the block handles sit in
+  // its left padding. BlockNote copies the view's className onto the portal root it appends after
+  // the editor, so the view carries no class of ours.
   return (
-    <div className="-ml-[54px] min-h-[24rem]">
+    <div>
       <BlockNoteView
         editor={editor}
         editable={props.editable}
