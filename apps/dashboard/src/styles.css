@@ -137,7 +137,9 @@
   font-family: var(--font-sans);
   font-size: 15px;
 }
-.bn-editor {
+/* BlockNote's own stylesheet loads with the editor chunk, after this one, so these outrank it by
+   specificity rather than by order. */
+.bn-root.bn-container .bn-editor {
   background-color: transparent;
   border-radius: 0;
 }
@@ -159,12 +161,17 @@
   --level: 1.1em;
   --prev-level: 1.1em;
 }
-.bn-side-menu button {
-  width: 1.5rem;
-  height: 1.5rem;
-  color: var(--muted-foreground);
+.bn-shadcn .bn-side-menu button.bn-button {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
 }
-.bn-side-menu button svg {
-  width: 1rem;
-  height: 1rem;
+.bn-shadcn .bn-side-menu button.bn-button:hover {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+.bn-shadcn .bn-side-menu button.bn-button svg {
+  width: 0.875rem;
+  height: 0.875rem;
 }
