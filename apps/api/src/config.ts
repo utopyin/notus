@@ -108,6 +108,22 @@ export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
 });
 
+/**
+ * The image this deployment approves for workspace devboxes, with the audit that approved it.
+ * Null where no devbox can start; the dashboard then offers no image to select.
+ */
+export const approvedImageConfig = Effect.gen(function* () {
+  const ref = yield* Config.option(
+    Config.schema(Schema.NonEmptyString, "NOTUS_APPROVED_IMAGE_REF"),
+  );
+  const audit = yield* Config.option(
+    Config.schema(Schema.Literal("audited-no-checkout-or-startup"), "NOTUS_IMAGE_AUDIT"),
+  );
+  return Option.isSome(ref) && Option.isSome(audit)
+    ? { approvedImageRef: ref.value, approvedImageSource: audit.value }
+    : null;
+});
+
 /** Read only by the execution host, not the Slack ingress or the devbox. */
 export const providerConfig = Effect.gen(function* () {
   return {

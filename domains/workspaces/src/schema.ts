@@ -1,7 +1,11 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-/** One default environment per workspace. Config is JSON text, not a provider model. */
+/**
+ * One default environment per workspace. Config is JSON text, not a provider model. The current
+ * row lives here; every save also lands in the revision table, so a change can be traced and put
+ * back.
+ */
 export const environments = sqliteTable(
   "workspace_environments",
   {
@@ -18,6 +22,25 @@ export const environments = sqliteTable(
       "workspace_environments_revision",
       sql`typeof(${table.revision}) = 'integer' AND ${table.revision} BETWEEN 1 AND 9007199254740991`,
     ),
+  ],
+);
+
+export const environmentRevisions = sqliteTable(
+  "workspace_environment_revisions",
+  {
+    /** key(workspaceId, revision) */
+    key: text().primaryKey(),
+    workspaceId: text().notNull(),
+    revision: integer().notNull(),
+    provider: text().notNull(),
+    config: text().notNull(),
+    /** Null when the deployment wrote it, not a person. */
+    authorId: text(),
+    createdAt: integer().notNull(),
+  },
+  (table) => [
+    index("workspace_environment_revisions_workspace").on(table.workspaceId),
+    check("workspace_environment_revisions_config", sql`json_valid(${table.config})`),
   ],
 );
 

@@ -967,6 +967,7 @@ erDiagram
   WORKSPACE_INSTALLATIONS ||--o{ WORKSPACE_SCOPES : "covered scopes"
   WORKSPACES ||--o{ WORKSPACE_INSTALL_INTENTS : "pending installs"
   WORKSPACES ||--o| WORKSPACE_ENVIRONMENTS : "dev box config"
+  WORKSPACES ||--o{ WORKSPACE_ENVIRONMENT_REVISIONS : "every save"
   ACCOUNT_USERS ||--o{ WORKSPACE_MEMBERSHIPS : "belongs"
   ACCOUNT_USERS ||--o{ ACCOUNT_IDENTITIES : "verified identities"
   ACCOUNT_USERS ||--o{ ACCOUNT_LOGINS : "dashboard sign-ins"
@@ -980,6 +981,7 @@ erDiagram
   WORKSPACE_SCOPES { string key PK "workspace, platform, installation, scope" string scope string label }
   WORKSPACE_INSTALL_INTENTS { string nonce PK string userId string platform int expiresAt }
   WORKSPACE_ENVIRONMENTS { string workspaceId PK string provider json config "opaque" int revision }
+  WORKSPACE_ENVIRONMENT_REVISIONS { string key PK "workspace, revision" string provider json config string authorId "null when the deployment wrote it" int createdAt }
   ACCOUNT_USERS { string id PK string name string email string image }
   ACCOUNT_IDENTITIES { string key PK "platform, installation, externalId" string userId FK string provenance "admin-fixture or oauth" }
   ACCOUNT_LOGINS { string authUserId PK "Better Auth user" string userId FK }
@@ -1045,7 +1047,6 @@ Planned in the slice plans but not built at `4cd36b9`:
 - **Dashboard:**
   - connecting model accounts: ChatGPT device code, API key, per-workspace operator backend
   - specialist role and per-repository instructions
-  - the environment editor
 - **PR feedback:**
   - comments from non-writers are not yet kept as review context
   - GitHub does not retry deliveries lost during an outage

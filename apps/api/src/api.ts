@@ -7,6 +7,7 @@ import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
 import type { Provider } from "@notus/openai/types";
 import { Environments } from "@notus/workspaces/environments";
+import { validateRestricted } from "@notus/namespace/service";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import type { ScopeInput } from "@notus/workspaces/workspaces";
 import { Sealed } from "@notus/cloudflare/sealed";
@@ -29,6 +30,7 @@ import { hostnames, zone } from "@notus/shared/hosts";
 import * as Callback from "./callback";
 import { authDatabase, makeAuth } from "./auth";
 import {
+  approvedImageConfig,
   credentialKeyConfig,
   dashboardConfig,
   deploymentConfig,
@@ -56,6 +58,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
+    // What the dashboard may select as a devbox image: exactly what the host would launch.
+    const approved = yield* approvedImageConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     // Every credential at rest, model login or platform installation, is sealed under this key.
@@ -180,6 +184,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const dashboardLayer = Layer.mergeAll(
       Workspaces.layer,
       Roles.layer,
+      Environments.layer,
       Identities.layer,
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
@@ -200,6 +205,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     type DashboardDeps =
       | Workspaces.Service
       | Roles.Service
+      | Environments.Service
       | Identities.Service
       | Platforms.Service;
     /**
@@ -625,6 +631,46 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Roles.Service.pipe(Effect.flatMap((roles) => roles.remove(workspaceId, me.userId, name))),
         ),
+      /** The workspace's devbox configuration and the images this deployment approves for it. */
+      dashboardEnvironment: (cookie: string, workspaceId: string) =>
+        authorized(cookie, (me) =>
+          Environments.Service.pipe(
+            Effect.flatMap((environments) => environments.view(workspaceId, me.userId)),
+            Effect.map((environment) => ({
+              environment: Option.getOrNull(environment),
+              approvedImages: approved ? [approved.approvedImageRef] : [],
+            })),
+          ),
+        ),
+      dashboardEnvironmentHistory: (cookie: string, workspaceId: string) =>
+        authorized(cookie, (me) =>
+          Environments.Service.pipe(
+            Effect.flatMap((environments) => environments.history(workspaceId, me.userId)),
+          ),
+        ),
+      /** The provider's policy decides before anything is stored; its message is what the page shows. */
+      dashboardSaveEnvironment: (cookie: string, workspaceId: string, config: Schema.Json) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            if (!approved)
+              return yield* Effect.fail<DashboardFailure>({
+                _tag: "Environment",
+                reason: "This deployment approves no devbox image.",
+              });
+            yield* validateRestricted({
+              config,
+              approvedImageRef: approved.approvedImageRef,
+              approvedImageSource: approved.approvedImageSource,
+            }).pipe(
+              Effect.mapError((error): DashboardFailure => ({
+                _tag: error._tag,
+                reason: error.message,
+              })),
+            );
+            const environments = yield* Environments.Service;
+            return yield* environments.save(workspaceId, me.userId, "namespace", config, me.now);
+          }),
+        ),
       dashboardConnections: (cookie: string) =>
         authorized(cookie, (me) => connection(me.userId, (c) => c.status(me.userId))),
       /** Starts "Sign in with ChatGPT" by device code; the page shows the code and the link. */
@@ -668,7 +714,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
         withInbox(() =>
           Effect.gen(function* () {
             const environments = yield* Environments.Service;
-            const stored = yield* environments.set(workspaceId, provider, environment);
+            const stored = yield* environments.set(
+              workspaceId,
+              provider,
+              environment,
+              yield* Clock.currentTimeMillis,
+            );
             return {
               workspaceId: stored.workspaceId,
               provider: stored.provider,

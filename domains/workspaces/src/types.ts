@@ -11,6 +11,16 @@ export const Environment = Schema.Struct({
 });
 export interface Environment extends Schema.Schema.Type<typeof Environment> {}
 
+/** One saved configuration, kept after later saves replace it. */
+export const EnvironmentRevision = Schema.Struct({
+  revision: Environment.fields.revision,
+  provider: Environment.fields.provider,
+  config: Environment.fields.config,
+  authorId: Schema.NullOr(Schema.NonEmptyString),
+  createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export interface EnvironmentRevision extends Schema.Schema.Type<typeof EnvironmentRevision> {}
+
 export const StartGrant = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   initiatorId: Schema.NonEmptyString,

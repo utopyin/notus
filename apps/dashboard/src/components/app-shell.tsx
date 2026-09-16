@@ -56,7 +56,7 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
-type Active = "overview" | "platforms" | "specialists" | "settings" | "account";
+type Active = "overview" | "platforms" | "devbox" | "specialists" | "settings" | "account";
 
 /**
  * What a page under the workspace layout tells the shell about itself. No title means the
@@ -204,6 +204,17 @@ export function AppShell(props: {
                         </SidebarMenuSubItem>
                       ))}
                     </SidebarMenuSub>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
+                      tooltip="Devbox"
+                      isActive={active === "devbox"}
+                      render={<Link to="/$slug/devbox" params={{ slug }} />}
+                    >
+                      <IconDeviceDesktopFilled />
+                      <span>Devbox</span>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton

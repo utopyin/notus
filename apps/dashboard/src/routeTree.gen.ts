@@ -15,6 +15,7 @@ import { Route as AccountRouteImport } from './routes/account'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as SlugIndexRouteImport } from './routes/$slug.index'
+import { Route as SlugDevboxRouteImport } from './routes/$slug.devbox'
 import { Route as SlugSettingsRouteImport } from './routes/$slug.settings'
 import { Route as SlugSpecialistsRouteImport } from './routes/$slug.specialists'
 import { Route as AuthSplatRouteImport } from './routes/auth.$'
@@ -50,6 +51,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const SlugIndexRoute = SlugIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => SlugRoute,
+} as any)
+const SlugDevboxRoute = SlugDevboxRouteImport.update({
+  id: '/devbox',
+  path: '/devbox',
   getParentRoute: () => SlugRoute,
 } as any)
 const SlugSettingsRoute = SlugSettingsRouteImport.update({
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/devbox': typeof SlugDevboxRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/devbox': typeof SlugDevboxRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/devbox': typeof SlugDevboxRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/devbox'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/devbox'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/devbox'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -223,6 +235,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugIndexRouteImport
       parentRoute: typeof SlugRoute
     }
+    '/$slug/devbox': {
+      id: '/$slug/devbox'
+      path: '/devbox'
+      fullPath: '/$slug/devbox'
+      preLoaderRoute: typeof SlugDevboxRouteImport
+      parentRoute: typeof SlugRoute
+    }
     '/$slug/settings': {
       id: '/$slug/settings'
       path: '/settings'
@@ -269,6 +288,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface SlugRouteChildren {
+  SlugDevboxRoute: typeof SlugDevboxRoute
   SlugSettingsRoute: typeof SlugSettingsRoute
   SlugSpecialistsRoute: typeof SlugSpecialistsRoute
   SlugIndexRoute: typeof SlugIndexRoute
@@ -277,6 +297,7 @@ interface SlugRouteChildren {
 }
 
 const SlugRouteChildren: SlugRouteChildren = {
+  SlugDevboxRoute: SlugDevboxRoute,
   SlugSettingsRoute: SlugSettingsRoute,
   SlugSpecialistsRoute: SlugSpecialistsRoute,
   SlugIndexRoute: SlugIndexRoute,

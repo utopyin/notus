@@ -4,8 +4,8 @@ import * as Schema from "effect/Schema";
 export class EnvironmentError extends Schema.TaggedError<EnvironmentError>()(
   "Workspaces.EnvironmentError",
   {
-    operation: Schema.Literals(["get", "set"]),
-    reason: Schema.Literals(["invalid-input", "storage", "invalid-record"]),
+    operation: Schema.Literals(["get", "set", "view", "history", "save"]),
+    reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden"]),
   },
 ) {}
 

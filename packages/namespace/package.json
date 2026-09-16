@@ -7,7 +7,8 @@
     "./instances": "./src/instances.ts",
     "./config": "./src/config.ts",
     "./types": "./src/types.ts",
-    "./errors": "./src/errors.ts"
+    "./errors": "./src/errors.ts",
+    "./restricted": "./src/restricted.ts"
   },
   "scripts": {
     "check:types": "tsc --noEmit"

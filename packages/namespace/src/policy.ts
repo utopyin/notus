@@ -2,6 +2,13 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Config } from "./config";
 import { ConfigError } from "./errors";
+import {
+  architectures,
+  environmentNames,
+  environmentValueLength,
+  environmentValuePattern,
+  imageRefPattern,
+} from "./restricted";
 import type { Configuration, RestrictedInput } from "./types";
 import { CreateSettings } from "./wire";
 
@@ -9,25 +16,14 @@ const optional = Schema.optionalKey;
 const empty = Schema.Record(Schema.String, Schema.Never);
 const emptyList = Schema.Array(Schema.Never);
 const fields = CreateSettings.fields;
-const imageRef = Schema.String.check(
-  Schema.isMaxLength(1024),
-  Schema.isPattern(
-    /^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?\/[a-z0-9]+(?:(?:[._-]|\/)[a-z0-9]+)*@sha256:[a-f0-9]{64}$/,
-  ),
-);
+const imageRef = Schema.String.check(Schema.isMaxLength(1024), Schema.isPattern(imageRefPattern));
 // Deliberately small: loader, shell, runtime, proxy and model environment overrides are unsafe.
 const environment = Schema.Struct({
-  name: Schema.Literals([
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "TZ",
-    "TERM",
-    "COLORTERM",
-    "NO_COLOR",
-    "PROJECT_VARIANT",
-  ]),
-  value: Schema.String.check(Schema.isMaxLength(256), Schema.isPattern(/^[\x20-\x7e]*$/)),
+  name: Schema.Literals(environmentNames),
+  value: Schema.String.check(
+    Schema.isMaxLength(environmentValueLength),
+    Schema.isPattern(environmentValuePattern),
+  ),
 });
 const restricted = Schema.Struct({
   imageRef,
@@ -38,7 +34,7 @@ const restricted = Schema.Struct({
       memoryMegabytes: optional(
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 2147483647 })),
       ),
-      machineArch: optional(Schema.Literals(["amd64", "arm64"])),
+      machineArch: optional(Schema.Literals(architectures)),
       os: optional(Schema.Literal("linux")),
     }),
   ),
