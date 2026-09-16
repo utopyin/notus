@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { InvitesSection } from "@/components/invites-section";
 import { MembersSection } from "@/components/members-section";
 import { collectionsOf } from "../collections";
@@ -29,23 +28,15 @@ function Settings() {
   const isAdmin = view.role === "admin";
   return (
     <div className="flex flex-col gap-8">
-      {isAdmin ? (
-        <>
-          <WorkspaceForm />
-          <Separator />
-        </>
-      ) : null}
+      {isAdmin ? <WorkspaceForm /> : null}
       <section className="flex flex-col gap-4">
         <h2 className="text-sm font-medium">Members</h2>
         <MembersSection />
       </section>
       {isAdmin ? (
-        <>
-          <Separator />
-          <section className="flex flex-col gap-4">
-            <InvitesSection />
-          </section>
-        </>
+        <section className="flex flex-col gap-4">
+          <InvitesSection />
+        </section>
       ) : null}
     </div>
   );
@@ -108,11 +99,16 @@ function WorkspaceForm() {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="slug">Slug</Label>
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-sm">notus.run/</span>
+          <div className="relative">
+            <span
+              aria-hidden
+              className="text-muted-foreground pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-base md:text-sm"
+            >
+              notus.run/
+            </span>
             <Input
               id="slug"
-              className="font-mono"
+              className="pl-[10ch]"
               value={slug}
               onChange={(event) => setSlug(event.target.value.toLowerCase())}
             />
