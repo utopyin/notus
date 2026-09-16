@@ -74,33 +74,36 @@ export function InvitesSection() {
   const nameOf = (userId: string) => view.members.find((m) => m.userId === userId)?.name ?? userId;
   return (
     <>
-      <div className="flex items-center">
-        <Button
-          variant="outline"
-          className="rounded-r-none border-r-0"
-          disabled={creating}
-          onClick={() => create("member")}
-        >
-          <IconMailFilled className="size-4" />
-          Invite a member
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="outline"
-                className="rounded-l-none px-2"
-                disabled={creating}
-                aria-label="More invite options"
-              >
-                <IconChevronDown className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" className="min-w-max whitespace-nowrap">
-            <DropdownMenuItem onClick={() => create("admin")}>Invite an admin</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-medium">Invites</h2>
+        <div className="flex items-center">
+          <Button
+            variant="outline"
+            className="rounded-r-none border-r-0"
+            disabled={creating}
+            onClick={() => create("member")}
+          >
+            <IconMailFilled className="size-4" />
+            Invite a member
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  className="rounded-l-none px-2"
+                  disabled={creating}
+                  aria-label="More invite options"
+                >
+                  <IconChevronDown className="size-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="min-w-max whitespace-nowrap">
+              <DropdownMenuItem onClick={() => create("admin")}>Invite an admin</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       {fresh ? (
         <div className="bg-muted/40 flex flex-col gap-2 rounded-lg border p-4 text-sm">
