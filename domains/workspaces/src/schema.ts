@@ -109,18 +109,16 @@ export const invites = sqliteTable(
 );
 
 /**
- * Markdown the workspace's agents follow: a specialist role (`implementer`, `reviewer`, ...) or the
- * conventions of one covered repository. The current text lives here; every save also lands in
- * the revision table, so a task can name the revision it captured.
+ * A specialist role: Markdown a named agent follows (`implementer`, `reviewer`, ...). The current
+ * text lives here; every save also lands in the revision table, so a task can name the revision
+ * it captured.
  */
-export const instructions = sqliteTable(
-  "workspace_instructions",
+export const roles = sqliteTable(
+  "workspace_roles",
   {
-    /** key(workspaceId, kind, name) */
+    /** key(workspaceId, name) */
     key: text().primaryKey(),
     workspaceId: text().notNull(),
-    kind: text({ enum: ["role", "repository"] }).notNull(),
-    /** The role's name, or the repository's owner/name. */
     name: text().notNull(),
     body: text().notNull(),
     revision: integer().notNull().default(1),
@@ -128,19 +126,19 @@ export const instructions = sqliteTable(
     createdAt: integer().notNull(),
     updatedAt: integer().notNull(),
   },
-  (table) => [index("workspace_instructions_workspace").on(table.workspaceId)],
+  (table) => [index("workspace_roles_workspace").on(table.workspaceId)],
 );
 
-export const instructionRevisions = sqliteTable(
-  "workspace_instruction_revisions",
+export const roleRevisions = sqliteTable(
+  "workspace_role_revisions",
   {
-    /** key(instructionKey, revision) */
+    /** key(roleKey, revision) */
     key: text().primaryKey(),
-    instructionKey: text().notNull(),
+    roleKey: text().notNull(),
     revision: integer().notNull(),
     body: text().notNull(),
     authorId: text().notNull(),
     createdAt: integer().notNull(),
   },
-  (table) => [index("workspace_instruction_revisions_instruction").on(table.instructionKey)],
+  (table) => [index("workspace_role_revisions_role").on(table.roleKey)],
 );

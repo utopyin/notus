@@ -209,7 +209,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(eq(instructionRows.singleton, 1));
     return existing
       ? yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions)
-      : ResolvedInstructions.make({ roles: [], repositories: [] });
+      : ResolvedInstructions.make({ roles: [] });
   }).pipe(Effect.withSpan("Provisioning.instructions"));
   /** Picks a candidate by "owner/name"; the choice is final, a second call returns the first. */
   const selectRepository = Effect.fn("Provisioning.selectRepository")(function* (fullName: string) {

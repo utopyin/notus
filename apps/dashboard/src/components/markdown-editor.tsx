@@ -29,13 +29,16 @@ export function MarkdownEditor(props: {
     initialContent: blocks.length > 0 ? blocks : undefined,
     ...(props.placeholder ? { placeholders: { default: props.placeholder } } : {}),
   });
+  // BlockNote copies its className onto the portal root it appends after the editor, so the
+  // frame is a wrapper of our own and the view carries no class.
   return (
-    <BlockNoteView
-      editor={editor}
-      editable={props.editable}
-      theme={props.theme}
-      onChange={(current) => props.onChange(current.blocksToMarkdownLossy(current.document))}
-      className="min-h-[24rem] rounded-lg bg-card py-4 ring-1 ring-foreground/10"
-    />
+    <div className="bg-card min-h-[28rem] rounded-lg py-6 ring-1 ring-foreground/10">
+      <BlockNoteView
+        editor={editor}
+        editable={props.editable}
+        theme={props.theme}
+        onChange={(current) => props.onChange(current.blocksToMarkdownLossy(current.document))}
+      />
+    </div>
   );
 }

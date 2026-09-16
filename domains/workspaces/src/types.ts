@@ -110,46 +110,33 @@ export const WorkspaceView = Schema.Struct({
 });
 export interface WorkspaceView extends Schema.Schema.Type<typeof WorkspaceView> {}
 
-export const InstructionKind = Schema.Literals(["role", "repository"]);
-export type InstructionKind = typeof InstructionKind.Type;
 /** A role name doubles as the specialist agent's name on the box, so it follows the same rule. */
 export const RoleName = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,31}$/));
-export const RepositoryName = Schema.String.check(
-  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/),
-);
-export const InstructionBody = Schema.String.check(Schema.isMaxLength(16_000));
-export const Instruction = Schema.Struct({
+export const RoleBody = Schema.String.check(Schema.isMaxLength(16_000));
+export const SpecialistRole = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
-  kind: InstructionKind,
-  name: Schema.NonEmptyString,
-  body: InstructionBody,
+  name: RoleName,
+  body: RoleBody,
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
   authorId: Schema.NonEmptyString,
   createdAt: Millis,
   updatedAt: Millis,
 });
-export interface Instruction extends Schema.Schema.Type<typeof Instruction> {}
-export const InstructionRevision = Schema.Struct({
+export interface SpecialistRole extends Schema.Schema.Type<typeof SpecialistRole> {}
+export const RoleRevision = Schema.Struct({
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
-  body: InstructionBody,
+  body: RoleBody,
   authorId: Schema.NonEmptyString,
   createdAt: Millis,
 });
-export interface InstructionRevision extends Schema.Schema.Type<typeof InstructionRevision> {}
-/** What a task captures when it starts: the roles it may give a specialist and the conventions of each covered repository. */
+export interface RoleRevision extends Schema.Schema.Type<typeof RoleRevision> {}
+/** What a task captures when it starts: the roles it may give a specialist, at their revision then. */
 export const ResolvedInstructions = Schema.Struct({
   roles: Schema.Array(
     Schema.Struct({
       name: RoleName,
       revision: Schema.Int.check(Schema.isGreaterThan(0)),
-      body: InstructionBody,
-    }),
-  ),
-  repositories: Schema.Array(
-    Schema.Struct({
-      fullName: Schema.NonEmptyString,
-      revision: Schema.Int.check(Schema.isGreaterThan(0)),
-      body: InstructionBody,
+      body: RoleBody,
     }),
   ),
 });

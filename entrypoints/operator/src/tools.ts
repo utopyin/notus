@@ -150,7 +150,7 @@ export interface SpecialistOutcome extends Schema.Schema.Type<typeof SpecialistO
 
 export const RunSpecialist = Tool.make("run_specialist", {
   description:
-    "Give one round of work to a Codex coding agent running on the dev box in the repository checkout, and wait for its written report. Use it for implementation, fixes and reviews that take more than a few commands. The same agent name keeps the same agent and its memory across rounds. The agent receives the workspace's text for the role you name, then the conventions the workspace wrote for this repository, then your instructions for the round. The agent edits files but cannot push; publish its changes with push_branch after checking them. Requires a checkout.",
+    "Give one round of work to a Codex coding agent running on the dev box in the repository checkout, and wait for its written report. Use it for implementation, fixes and reviews that take more than a few commands. The same agent name keeps the same agent and its memory across rounds. The agent receives the workspace's text for the role you name, then your instructions for the round. The agent edits files but cannot push; publish its changes with push_branch after checking them. Requires a checkout.",
   parameters: Schema.Struct({
     agent: Schema.String.annotate({
       description:

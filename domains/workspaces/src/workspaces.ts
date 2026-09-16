@@ -12,7 +12,7 @@ import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
-import { defaultRoleStatements } from "./instructions";
+import { defaultRoleStatements } from "./roles";
 import { installIntents, installations, invites, memberships, scopes, workspaces } from "./schema";
 import {
   Installation,

@@ -183,37 +183,28 @@ const SpecialistParams = Schema.Struct({
   instructions: Schema.NonEmptyString.check(Schema.isMaxLength(specialistInstructionsMax)),
 });
 /**
- * What the specialist reads: the role's text as the workspace wrote it, the conventions the
- * workspace wrote for this repository, then the operator's instructions for the round. Each part
- * is a titled section so the agent can tell standing guidance from today's goal.
+ * What the specialist reads: the role's text as the workspace wrote it, then the operator's
+ * instructions for the round, each a titled section so the agent can tell standing guidance from
+ * today's goal. Without a role the operator's instructions go through unchanged.
  */
 const composeSpecialist = (
   params: typeof SpecialistParams.Type,
   captured: ResolvedInstructions,
-  repository: RepositoryRef,
 ): { readonly instructions: string; readonly error?: undefined } | { readonly error: string } => {
   const wanted = params.role ?? null;
-  const role = wanted === null ? null : captured.roles.find((r) => r.name === wanted);
-  if (wanted !== null && !role)
+  if (wanted === null) return { instructions: params.instructions };
+  const role = captured.roles.find((r) => r.name === wanted);
+  if (!role)
     return {
       error:
         captured.roles.length === 0
           ? `the workspace defines no specialist roles, so role "${wanted}" does not exist; call again without a role`
           : `role "${wanted}" does not exist; the workspace's roles are ${captured.roles.map((r) => r.name).join(", ")}`,
     };
-  const conventions = captured.repositories.find((r) => r.fullName === fullNameOf(repository));
-  if (!role && !conventions) return { instructions: params.instructions };
-  const sections = [
-    ...(role ? [`# Role: ${role.name}\n\n${role.body.trim()}`] : []),
-    ...(conventions
-      ? [`# Repository conventions for ${conventions.fullName}\n\n${conventions.body.trim()}`]
-      : []),
-    `# This round\n\n${params.instructions.trim()}`,
-  ];
-  const instructions = sections.join("\n\n");
+  const instructions = `# Role: ${role.name}\n\n${role.body.trim()}\n\n# This round\n\n${params.instructions.trim()}`;
   return instructions.length > specialistInstructionsMax
     ? {
-        error: `the role text, repository conventions and your instructions together exceed ${specialistInstructionsMax} characters; shorten the round's instructions`,
+        error: `the role text and your instructions together exceed ${specialistInstructionsMax} characters; shorten the round's instructions`,
       }
     : { instructions };
 };
@@ -315,12 +306,10 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
     const params = yield* Schema.decodeUnknownEffect(SpecialistParams)(call.params).pipe(
       Effect.option,
     );
-    const repository = yield* provisioning.repository.pipe(Effect.orDie);
-    if (params._tag === "Some" && repository !== null) {
+    if (params._tag === "Some") {
       const composed = composeSpecialist(
         params.value,
         yield* provisioning.instructions.pipe(Effect.orDie),
-        repository,
       );
       if (composed.error !== undefined) return yield* failed(composed.error);
     }
@@ -523,11 +512,7 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
         );
         if (params._tag === "None") continue;
         // A role the workspace never defined is answered by evaluate, not run without it.
-        const composed = composeSpecialist(
-          params.value,
-          yield* provisioning.instructions,
-          repository,
-        );
+        const composed = composeSpecialist(params.value, yield* provisioning.instructions);
         if (composed.error !== undefined) continue;
         spec = {
           kind: "specialist",

@@ -37,7 +37,7 @@ const instructions = (briefing: Briefing): string => {
           .map((role) => `${role.name} (${role.summary || "no description"})`)
           .join(
             "; ",
-          )}. Name the role that fits the round; its text and the repository's conventions are given to the agent before your instructions, so do not repeat them.`;
+          )}. Name the role that fits the round; its text is given to the agent before your instructions, so do not repeat it.`;
   return [
     "You are Notus, a shared-team coding-agent operator, replying inside a Slack thread.",
     "You coordinate planning, implementation, review and QA for a team; humans approve plans and merge code.",

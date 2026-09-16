@@ -8,71 +8,59 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { defaultRoles } from "./defaults";
 import { WorkspaceError } from "./errors";
-import { instructionRevisions, instructions, memberships } from "./schema";
-import {
-  Instruction,
-  InstructionBody,
-  InstructionKind,
-  InstructionRevision,
-  RepositoryName,
-  ResolvedInstructions,
-  RoleName,
-} from "./types";
+import { memberships, roleRevisions, roles } from "./schema";
+import { ResolvedInstructions, RoleBody, RoleName, RoleRevision, SpecialistRole } from "./types";
 
 /**
- * The Markdown a workspace's agents follow. Members read it, admins write it, and a task captures
- * `resolve` once when it starts so later edits never change work in flight.
+ * The specialist roles a workspace's agents follow. Members read them, admins write them, and a
+ * task captures `resolve` once when it starts so later edits never change work in flight.
  */
 export interface Interface {
   readonly list: (
     workspaceId: string,
     userId: string,
-  ) => Effect.Effect<ReadonlyArray<Instruction>, WorkspaceError>;
-  /** Every revision of one instruction, newest first. */
+  ) => Effect.Effect<ReadonlyArray<SpecialistRole>, WorkspaceError>;
+  /** Every revision of one role, newest first. */
   readonly history: (
     workspaceId: string,
     userId: string,
-    kind: InstructionKind,
     name: string,
-  ) => Effect.Effect<ReadonlyArray<InstructionRevision>, WorkspaceError>;
+  ) => Effect.Effect<ReadonlyArray<RoleRevision>, WorkspaceError>;
   /** Creates or replaces the text; every save is a new revision, even an unchanged one. */
   readonly save: (
     workspaceId: string,
     actorId: string,
-    kind: InstructionKind,
     name: string,
     body: string,
     now: number,
-  ) => Effect.Effect<Instruction, WorkspaceError>;
+  ) => Effect.Effect<SpecialistRole, WorkspaceError>;
   readonly remove: (
     workspaceId: string,
     actorId: string,
-    kind: InstructionKind,
     name: string,
   ) => Effect.Effect<void, WorkspaceError>;
   /** Host-trusted: what a task starting in this workspace captures. */
   readonly resolve: (workspaceId: string) => Effect.Effect<ResolvedInstructions, WorkspaceError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
-  "@notus/workspaces/instructions/Service",
+  "@notus/workspaces/roles/Service",
 ) {}
 
-const Row = createSelectSchema(instructions);
-const RevisionRow = createSelectSchema(instructionRevisions);
+const Row = createSelectSchema(roles);
+const RevisionRow = createSelectSchema(roleRevisions);
 const MemberRow = createSelectSchema(memberships);
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
   new WorkspaceError({ operation, reason });
-const nameSchema = (kind: InstructionKind) => (kind === "role" ? RoleName : RepositoryName);
 
 /** The rows a new workspace starts with; the creator is their author. Part of the creating batch. */
 export const defaultRoleStatements = (workspaceId: string, actorId: string, now: number) =>
   defaultRoles.flatMap((role) => {
-    const instructionKey = key(workspaceId, "role", role.name);
+    const roleKey = key(workspaceId, role.name);
     return [
-      sql`INSERT INTO workspace_instructions (key, workspaceId, kind, name, body, revision, authorId, createdAt, updatedAt)
-      VALUES (${instructionKey}, ${workspaceId}, 'role', ${role.name}, ${role.body}, 1, ${actorId}, ${now}, ${now})`,
-      sql`INSERT INTO workspace_instruction_revisions (key, instructionKey, revision, body, authorId, createdAt)
-      VALUES (${JSON.stringify([instructionKey, 1])}, ${instructionKey}, 1, ${role.body}, ${actorId}, ${now})`,
+      sql`INSERT INTO workspace_roles (key, workspaceId, name, body, revision, authorId, createdAt, updatedAt)
+      VALUES (${roleKey}, ${workspaceId}, ${role.name}, ${role.body}, 1, ${actorId}, ${now}, ${now})`,
+      sql`INSERT INTO workspace_role_revisions (key, roleKey, revision, body, authorId, createdAt)
+      VALUES (${JSON.stringify([roleKey, 1])}, ${roleKey}, 1, ${role.body}, ${actorId}, ${now})`,
     ];
   });
 
@@ -117,38 +105,37 @@ export const layerNoDeps = Layer.effect(
     const rowsOf = (operation: string, workspaceId: string) =>
       store.db
         .select()
-        .from(instructions)
-        .where(eq(instructions.workspaceId, workspaceId))
-        .orderBy(instructions.kind, instructions.createdAt)
+        .from(roles)
+        .where(eq(roles.workspaceId, workspaceId))
+        .orderBy(roles.createdAt, roles.name)
         .pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Row))),
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Instruction))),
+          Effect.flatMap(Schema.decodeEffect(Schema.Array(SpecialistRole))),
           storage(operation),
         );
 
-    const list = Effect.fn("Instructions.list")(function* (workspaceId: string, userId: string) {
+    const list = Effect.fn("Roles.list")(function* (workspaceId: string, userId: string) {
       yield* roleOf("list", workspaceId, userId);
       return yield* rowsOf("list", workspaceId);
     });
 
-    const history = Effect.fn("Instructions.history")(function* (
+    const history = Effect.fn("Roles.history")(function* (
       workspaceId: string,
       userId: string,
-      kind: InstructionKind,
       name: string,
     ) {
       yield* roleOf("history", workspaceId, userId);
       const rows = yield* store.db
         .select()
-        .from(instructionRevisions)
-        .where(eq(instructionRevisions.instructionKey, key(workspaceId, kind, name)))
-        .orderBy(desc(instructionRevisions.revision))
+        .from(roleRevisions)
+        .where(eq(roleRevisions.roleKey, key(workspaceId, name)))
+        .orderBy(desc(roleRevisions.revision))
         .pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(RevisionRow))),
           storage("history"),
         );
       return rows.map((row) =>
-        InstructionRevision.make({
+        RoleRevision.make({
           revision: row.revision,
           body: row.body,
           authorId: row.authorId,
@@ -157,39 +144,37 @@ export const layerNoDeps = Layer.effect(
       );
     });
 
-    const save = Effect.fn("Instructions.save")(function* (
+    const save = Effect.fn("Roles.save")(function* (
       workspaceId: string,
       actorId: string,
-      kindValue: InstructionKind,
       nameValue: string,
       bodyValue: string,
       now: number,
     ) {
-      const kind = yield* decodeInput(InstructionKind, kindValue, "save");
-      const name = yield* decodeInput(nameSchema(kind), nameValue.trim(), "save");
-      const body = yield* decodeInput(InstructionBody, bodyValue, "save");
+      const name = yield* decodeInput(RoleName, nameValue.trim(), "save");
+      const body = yield* decodeInput(RoleBody, bodyValue, "save");
       yield* requireAdmin("save", workspaceId, actorId);
-      const instructionKey = key(workspaceId, kind, name);
+      const roleKey = key(workspaceId, name);
       // One batch: the current text moves on and the revision it became is recorded from the
       // same row, so the revision number is never guessed by the caller.
       yield* store
         .batch([
-          sql`INSERT INTO workspace_instructions (key, workspaceId, kind, name, body, revision, authorId, createdAt, updatedAt)
-          VALUES (${instructionKey}, ${workspaceId}, ${kind}, ${name}, ${body}, 1, ${actorId}, ${now}, ${now})
-          ON CONFLICT(key) DO UPDATE SET body = excluded.body, revision = workspace_instructions.revision + 1,
+          sql`INSERT INTO workspace_roles (key, workspaceId, name, body, revision, authorId, createdAt, updatedAt)
+          VALUES (${roleKey}, ${workspaceId}, ${name}, ${body}, 1, ${actorId}, ${now}, ${now})
+          ON CONFLICT(key) DO UPDATE SET body = excluded.body, revision = workspace_roles.revision + 1,
           authorId = excluded.authorId, updatedAt = excluded.updatedAt`,
-          sql`INSERT INTO workspace_instruction_revisions (key, instructionKey, revision, body, authorId, createdAt)
+          sql`INSERT INTO workspace_role_revisions (key, roleKey, revision, body, authorId, createdAt)
           SELECT json_array(key, revision), key, revision, body, authorId, updatedAt
-          FROM workspace_instructions WHERE key = ${instructionKey}`,
+          FROM workspace_roles WHERE key = ${roleKey}`,
         ])
         .pipe(storage("save"));
       const rows = yield* store.db
         .select()
-        .from(instructions)
-        .where(eq(instructions.key, instructionKey))
+        .from(roles)
+        .where(eq(roles.key, roleKey))
         .pipe(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Row))),
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Instruction))),
+          Effect.flatMap(Schema.decodeEffect(Schema.Array(SpecialistRole))),
           storage("save"),
         );
       const row = rows[0];
@@ -197,31 +182,25 @@ export const layerNoDeps = Layer.effect(
       return row;
     });
 
-    const remove = Effect.fn("Instructions.remove")(function* (
+    const remove = Effect.fn("Roles.remove")(function* (
       workspaceId: string,
       actorId: string,
-      kind: InstructionKind,
       name: string,
     ) {
       yield* requireAdmin("remove", workspaceId, actorId);
-      const instructionKey = key(workspaceId, kind, name);
+      const roleKey = key(workspaceId, name);
       yield* store
         .batch([
-          sql`DELETE FROM workspace_instruction_revisions WHERE instructionKey = ${instructionKey}`,
-          sql`DELETE FROM workspace_instructions WHERE key = ${instructionKey} AND workspaceId = ${workspaceId}`,
+          sql`DELETE FROM workspace_role_revisions WHERE roleKey = ${roleKey}`,
+          sql`DELETE FROM workspace_roles WHERE key = ${roleKey} AND workspaceId = ${workspaceId}`,
         ])
         .pipe(storage("remove"));
     });
 
-    const resolve = Effect.fn("Instructions.resolve")(function* (workspaceId: string) {
+    const resolve = Effect.fn("Roles.resolve")(function* (workspaceId: string) {
       const rows = yield* rowsOf("resolve", workspaceId);
       return yield* Schema.decodeEffect(ResolvedInstructions)({
-        roles: rows
-          .filter((row) => row.kind === "role")
-          .map((row) => ({ name: row.name, revision: row.revision, body: row.body })),
-        repositories: rows
-          .filter((row) => row.kind === "repository")
-          .map((row) => ({ fullName: row.name, revision: row.revision, body: row.body })),
+        roles: rows.map((row) => ({ name: row.name, revision: row.revision, body: row.body })),
       }).pipe(storage("resolve"));
     });
 
@@ -229,4 +208,4 @@ export const layerNoDeps = Layer.effect(
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
-export * as Instructions from "./instructions";
+export * as Roles from "./roles";

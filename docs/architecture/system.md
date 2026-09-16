@@ -751,7 +751,7 @@ sequenceDiagram
   T->>T: tool result replays into the next model round
 ```
 
-The instructions the agent reads are composed by control, not written whole by the operator: the workspace's text for the role the call names (`# Role: implementer`), the conventions the workspace wrote for this repository (`# Repository conventions for owner/name`), then the operator's instructions for the round (`# This round`). Both texts come from the instructions the task captured when it started, so an edit on the dashboard's Instructions page reaches new tasks only. A role the workspace never defined fails the call with the list of roles, and no command is queued.
+The instructions the agent reads are composed by control, not written whole by the operator: the workspace's text for the role the call names (`# Role: implementer`), then the operator's instructions for the round (`# This round`). The role text comes from the roles the task captured when it started, so an edit on the dashboard's Instructions page reaches new tasks only. A role the workspace never defined fails the call with the list of roles, and no command is queued.
 
 The agent can edit files but cannot publish; `push_branch` is still the only way code leaves the box. The box never receives a refresh token, the operator's model connection, or an API key.
 

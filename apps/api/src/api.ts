@@ -12,8 +12,7 @@ import type { ScopeInput } from "@notus/workspaces/workspaces";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
-import { Instructions } from "@notus/workspaces/instructions";
-import type { InstructionKind } from "@notus/workspaces/types";
+import { Roles } from "@notus/workspaces/roles";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
 import * as Install from "./install";
 import * as Clock from "effect/Clock";
@@ -85,7 +84,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     );
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
-    const inboxLayer = Layer.mergeAll(Inbox.layer, Environments.layer, Instructions.layer).pipe(
+    const inboxLayer = Layer.mergeAll(Inbox.layer, Environments.layer, Roles.layer).pipe(
       Layer.provide([d1, cryptoLayer, platforms]),
     );
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
@@ -98,7 +97,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const drain = withInbox((inbox) =>
       Effect.gen(function* () {
         const environments = yield* Environments.Service;
-        const instructions = yield* Instructions.Service;
+        const roles = yield* Roles.Service;
         return yield* inbox.drain((command) =>
           Effect.gen(function* () {
             const task = tasks.getByName(command.reservation.taskId);
@@ -114,7 +113,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
               const prepared = yield* task.prepareEnvironment(
                 Option.getOrNull(environment),
                 repositories,
-                yield* instructions.resolve(command.reservation.workspaceId),
+                yield* roles.resolve(command.reservation.workspaceId),
               );
               if (!prepared.ok) return yield* Effect.fail("task_configuration_rejected");
             }
@@ -180,7 +179,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Dashboard services: workspace administration, identity adoption and the platforms' scope lists.
     const dashboardLayer = Layer.mergeAll(
       Workspaces.layer,
-      Instructions.layer,
+      Roles.layer,
       Identities.layer,
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
@@ -200,7 +199,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     ];
     type DashboardDeps =
       | Workspaces.Service
-      | Instructions.Service
+      | Roles.Service
       | Identities.Service
       | Platforms.Service;
     /**
@@ -597,52 +596,26 @@ export default class Api extends Cloudflare.Worker<Api>()(
       revokeConnection: (userId: string, provider: Provider) =>
         connections.getByName(userId).revoke(userId, provider),
       /** The signed-in user's model connections: status projections, never material. */
-      /** The workspace's instructions: every role and repository override, current text and revision. */
-      dashboardInstructions: (cookie: string, workspaceId: string) =>
+      /** The workspace's specialist roles: current text and revision each. */
+      dashboardRoles: (cookie: string, workspaceId: string) =>
         authorized(cookie, (me) =>
-          Instructions.Service.pipe(
-            Effect.flatMap((instructions) => instructions.list(workspaceId, me.userId)),
+          Roles.Service.pipe(Effect.flatMap((roles) => roles.list(workspaceId, me.userId))),
+        ),
+      dashboardRoleHistory: (cookie: string, workspaceId: string, name: string) =>
+        authorized(cookie, (me) =>
+          Roles.Service.pipe(
+            Effect.flatMap((roles) => roles.history(workspaceId, me.userId, name)),
           ),
         ),
-      dashboardInstructionHistory: (
-        cookie: string,
-        workspaceId: string,
-        kind: InstructionKind,
-        name: string,
-      ) =>
+      dashboardSaveRole: (cookie: string, workspaceId: string, name: string, body: string) =>
         authorized(cookie, (me) =>
-          Instructions.Service.pipe(
-            Effect.flatMap((instructions) =>
-              instructions.history(workspaceId, me.userId, kind, name),
-            ),
+          Roles.Service.pipe(
+            Effect.flatMap((roles) => roles.save(workspaceId, me.userId, name, body, me.now)),
           ),
         ),
-      dashboardSaveInstruction: (
-        cookie: string,
-        workspaceId: string,
-        kind: InstructionKind,
-        name: string,
-        body: string,
-      ) =>
+      dashboardDeleteRole: (cookie: string, workspaceId: string, name: string) =>
         authorized(cookie, (me) =>
-          Instructions.Service.pipe(
-            Effect.flatMap((instructions) =>
-              instructions.save(workspaceId, me.userId, kind, name, body, me.now),
-            ),
-          ),
-        ),
-      dashboardDeleteInstruction: (
-        cookie: string,
-        workspaceId: string,
-        kind: InstructionKind,
-        name: string,
-      ) =>
-        authorized(cookie, (me) =>
-          Instructions.Service.pipe(
-            Effect.flatMap((instructions) =>
-              instructions.remove(workspaceId, me.userId, kind, name),
-            ),
-          ),
+          Roles.Service.pipe(Effect.flatMap((roles) => roles.remove(workspaceId, me.userId, name))),
         ),
       dashboardConnections: (cookie: string) =>
         authorized(cookie, (me) => connection(me.userId, (c) => c.status(me.userId))),
