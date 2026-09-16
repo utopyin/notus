@@ -253,11 +253,11 @@ export const CommandSpec = Schema.Union([
     timeoutMs: Timeout,
   }),
   Schema.Struct({
+    /** Publish the checkout's commits to a branch; committing is the specialist's or the operator's. */
     kind: Schema.Literal("push"),
     repository: RepositoryRef,
     path: WorkspacePath,
     branch: TaskBranch,
-    message: Schema.NonEmptyString.check(Schema.isMaxLength(2000)),
     timeoutMs: Timeout,
   }),
   Schema.Struct({

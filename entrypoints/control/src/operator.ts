@@ -177,10 +177,7 @@ const SpecialistParams = Schema.Struct({
   instructions: Schema.NonEmptyString.check(Schema.isMaxLength(32_000)),
 });
 const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,48}$/));
-const PushParams = Schema.Struct({
-  slug: Slug,
-  message: Schema.NonEmptyString.check(Schema.isMaxLength(2000)),
-});
+const PushParams = Schema.Struct({ slug: Slug });
 const PullParams = Schema.Struct({
   slug: Slug,
   title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
@@ -441,7 +438,6 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           repository,
           path: checkoutPath(repository),
           branch: branch.value,
-          message: params.value.message,
           timeoutMs: checkoutTimeoutMs,
         };
       } else if (call.name === "create_pull_request") {

@@ -152,11 +152,12 @@ const specialistScript = (
 };
 
 /**
- * Commit everything in the checkout and push the task branch. Signed in as the initiator, the
- * commit carries their identity and the push their token; otherwise the App's bot identity and
- * the command's own write token.
+ * Push the checkout's commits to the task branch. Committing is not this command's job: a
+ * specialist commits when told to, or the operator does through git; a dirty checkout is refused
+ * rather than swept into a commit nobody wrote. Signed in as the initiator, the push carries
+ * their token; otherwise the command's own write token.
  */
-const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>, asPerson: boolean) => {
+const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
   return [
@@ -164,11 +165,8 @@ const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>, asP
     `path=${quote(spec.path)}`,
     `[ -d "$path/.git" ] || { echo "no checkout at $path" >&2; exit 3; }`,
     `cd "$path"`,
+    `if [ -n "$(git status --porcelain)" ]; then echo "the checkout has uncommitted changes; commit them first, or discard them, then push" >&2; git status --short | head -20 >&2; exit 5; fi`,
     `git checkout --quiet -B ${quote(spec.branch)}`,
-    "git add -A",
-    // Commit only new changes. A commit left by an earlier failed push is still published, so a
-    // retry after a transient failure works instead of stopping at "nothing to commit".
-    `if ! git diff --cached --quiet; then git ${asPerson ? "" : "-c user.name='Notus' -c user.email='notus[bot]@users.noreply.github.com' "}commit --quiet -m ${quote(spec.message)}; fi`,
     // Nothing to publish when HEAD is what the remote branch already has, or, for a branch that
     // is new to the remote, what the default branch has.
     `base=$(git rev-parse --verify --quiet ${quote(`refs/remotes/origin/${spec.branch}`)} || git rev-parse --verify --quiet refs/remotes/origin/HEAD || true)`,
@@ -213,7 +211,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         ? checkoutScript(spec)
         : spec.kind === "specialist"
           ? specialistScript(spec, command.id)
-          : pushScript(spec, asPerson);
+          : pushScript(spec);
   const cwd = spec.kind === "shell" ? spec.cwd : "/workspaces";
   const env =
     spec.kind === "shell"

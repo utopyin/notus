@@ -97,11 +97,8 @@ const Slug = Schema.String.annotate({
 
 export const PushBranch = Tool.make("push_branch", {
   description:
-    "Commit every change in the repository checkout as Notus and push it to the branch <initiator username>/<slug> on GitHub. Only branches under the initiator's username can be pushed; the default branch never. Pushing to the branch of a checked-out pull request updates that pull request. Requires a checkout with changes. newCommit is false when there was nothing new to commit, meaning the branch did not change. Nothing is merged.",
-  parameters: Schema.Struct({
-    slug: Slug,
-    message: Schema.String.annotate({ description: "Commit message summarizing the change." }),
-  }),
+    "Push the checkout's commits to the branch <initiator username>/<slug> on GitHub. It does not commit: a specialist commits when your instructions tell it to, or you commit through git in run_command; a checkout with uncommitted changes is refused. Only branches under the initiator's username can be pushed; the default branch never. Pushing to the branch of a checked-out pull request updates that pull request. newCommit is false when the branch already had this commit, meaning nothing changed. Nothing is merged.",
+  parameters: Schema.Struct({ slug: Slug }),
   success: PushOutcome,
 });
 
