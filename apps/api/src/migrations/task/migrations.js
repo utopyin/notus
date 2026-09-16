@@ -6,6 +6,7 @@ import m0004 from "./20260914063707_workable_taskmaster/migration.sql";
 import m0005 from "./20260914070148_moaning_red_skull/migration.sql";
 import m0006 from "./20260914074637_previous_kingpin/migration.sql";
 import m0007 from "./20260915132455_repository_candidates/migration.sql";
+import m0008 from "./20260916113850_captured_instructions/migration.sql";
 
 export default {
   migrations: {
@@ -17,5 +18,6 @@ export default {
     "20260914070148_moaning_red_skull": m0005,
     "20260914074637_previous_kingpin": m0006,
     "20260915132455_repository_candidates": m0007,
+    "20260916113850_captured_instructions": m0008,
   },
 };

@@ -12,6 +12,7 @@ import * as Encoding from "effect/Encoding";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
+import { defaultRoleStatements } from "./instructions";
 import { installIntents, installations, invites, memberships, scopes, workspaces } from "./schema";
 import {
   Installation,
@@ -244,6 +245,7 @@ export const layerNoDeps = Layer.effect(
           VALUES (${id}, ${name}, ${slug}, ${actorId}, ${now})`,
           sql`INSERT INTO workspace_memberships (key, workspaceId, userId, role, provenance)
           VALUES (${key(id, actorId)}, ${id}, ${actorId}, 'admin', 'dashboard')`,
+          ...defaultRoleStatements(id, actorId, now),
         ])
         .pipe(storage("create"));
       return Workspace.make({ id, name, slug, createdBy: actorId, createdAt: now });

@@ -23,7 +23,7 @@ import { Steps, type StepOutcome } from "@notus/executions/steps";
 import type { CommandSpec, Observation, RepositoryRef } from "@notus/executions/types";
 import { Operator } from "@notus/operator/operator";
 import { State } from "@notus/tasks/state";
-import type { Environment } from "@notus/workspaces/types";
+import type { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Drizzle from "alchemy/Drizzle/Cloudflare";
 import { CurrentRuntimeContext } from "alchemy/RuntimeContext";
@@ -602,6 +602,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             prepareEnvironment: (
               environment: Environment | null,
               repositories: ReadonlyArray<RepositoryRef>,
+              instructions: ResolvedInstructions,
             ) =>
               gate(
                 Effect.gen(function* () {
@@ -611,9 +612,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   if (!task || task.closedAt !== null)
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
                   if (task.mode === "operator") {
-                    yield* OperatorControl.prepare(environment, repositories, now).pipe(
-                      Effect.provideContext(services),
-                    );
+                    yield* OperatorControl.prepare(
+                      environment,
+                      repositories,
+                      instructions,
+                      now,
+                    ).pipe(Effect.provideContext(services));
                   } else if (task.mode === "readiness") {
                     yield* provisioning.initialize(
                       {

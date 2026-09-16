@@ -15,6 +15,7 @@ import { Route as AccountRouteImport } from './routes/account'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as SlugIndexRouteImport } from './routes/$slug.index'
+import { Route as SlugInstructionsRouteImport } from './routes/$slug.instructions'
 import { Route as SlugInvitesRouteImport } from './routes/$slug.invites'
 import { Route as SlugMembersRouteImport } from './routes/$slug.members'
 import { Route as SlugSettingsRouteImport } from './routes/$slug.settings'
@@ -51,6 +52,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const SlugIndexRoute = SlugIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => SlugRoute,
+} as any)
+const SlugInstructionsRoute = SlugInstructionsRouteImport.update({
+  id: '/instructions',
+  path: '/instructions',
   getParentRoute: () => SlugRoute,
 } as any)
 const SlugInvitesRoute = SlugInvitesRouteImport.update({
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/instructions': typeof SlugInstructionsRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
@@ -109,6 +116,7 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/instructions': typeof SlugInstructionsRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
+  '/$slug/instructions': typeof SlugInstructionsRoute
   '/$slug/invites': typeof SlugInvitesRoute
   '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
@@ -142,6 +151,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/instructions'
     | '/$slug/invites'
     | '/$slug/members'
     | '/$slug/settings'
@@ -156,6 +166,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/instructions'
     | '/$slug/invites'
     | '/$slug/members'
     | '/$slug/settings'
@@ -171,6 +182,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
+    | '/$slug/instructions'
     | '/$slug/invites'
     | '/$slug/members'
     | '/$slug/settings'
@@ -235,6 +247,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugIndexRouteImport
       parentRoute: typeof SlugRoute
     }
+    '/$slug/instructions': {
+      id: '/$slug/instructions'
+      path: '/instructions'
+      fullPath: '/$slug/instructions'
+      preLoaderRoute: typeof SlugInstructionsRouteImport
+      parentRoute: typeof SlugRoute
+    }
     '/$slug/invites': {
       id: '/$slug/invites'
       path: '/invites'
@@ -288,6 +307,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface SlugRouteChildren {
+  SlugInstructionsRoute: typeof SlugInstructionsRoute
   SlugInvitesRoute: typeof SlugInvitesRoute
   SlugMembersRoute: typeof SlugMembersRoute
   SlugSettingsRoute: typeof SlugSettingsRoute
@@ -297,6 +317,7 @@ interface SlugRouteChildren {
 }
 
 const SlugRouteChildren: SlugRouteChildren = {
+  SlugInstructionsRoute: SlugInstructionsRoute,
   SlugInvitesRoute: SlugInvitesRoute,
   SlugMembersRoute: SlugMembersRoute,
   SlugSettingsRoute: SlugSettingsRoute,

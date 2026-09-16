@@ -1,4 +1,4 @@
-import { Environment } from "@notus/workspaces/types";
+import { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import { sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
@@ -251,8 +251,16 @@ export const environments = sqliteTable("execution_environment", {
   capturedAt: integer().notNull(),
 });
 
+/** The workspace's instructions captured for this task when it started; later edits never reach it. */
+export const instructions = sqliteTable("execution_instructions", {
+  singleton: integer().primaryKey().$type<1>(),
+  instructions: text({ mode: "json" }).$type<ResolvedInstructions>().notNull(),
+  capturedAt: integer().notNull(),
+});
+
 /** Drizzle migration aggregate. Parent owns migration generation. */
 export const tables = {
+  instructions,
   attempts,
   invocations,
   outcomes,

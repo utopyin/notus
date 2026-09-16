@@ -37,6 +37,8 @@ export const Briefing = Schema.Struct({
       checkoutPath: Schema.NullOr(Schema.NonEmptyString),
     }),
   ),
+  /** The specialist roles the workspace defined, with the first line of each; a round names one. */
+  roles: Schema.Array(Schema.Struct({ name: Schema.NonEmptyString, summary: Schema.String })),
   history: Schema.Array(Message),
   current: Message,
 });

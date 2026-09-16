@@ -19,8 +19,9 @@ import {
   readiness,
   repositories,
   wakes,
+  instructions as instructionRows,
 } from "./schema";
-import { Environment } from "@notus/workspaces/types";
+import { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import {
   Bootstrap,
   Claim,
@@ -185,6 +186,31 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository)
       : null;
   }).pipe(Effect.withSpan("Provisioning.repository"));
+  const captureInstructions = Effect.fn("Provisioning.captureInstructions")(function* (
+    input: ResolvedInstructions,
+    now: number,
+  ) {
+    yield* Schema.decodeEffect(Millis)(now);
+    const [existing] = yield* db
+      .select()
+      .from(instructionRows)
+      .where(eq(instructionRows.singleton, 1));
+    if (existing) return yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions);
+    const captured = yield* decodeInput(ResolvedInstructions, input);
+    yield* db
+      .insert(instructionRows)
+      .values({ singleton: 1, instructions: captured, capturedAt: now });
+    return captured;
+  });
+  const instructions = Effect.gen(function* () {
+    const [existing] = yield* db
+      .select()
+      .from(instructionRows)
+      .where(eq(instructionRows.singleton, 1));
+    return existing
+      ? yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions)
+      : ResolvedInstructions.make({ roles: [], repositories: [] });
+  }).pipe(Effect.withSpan("Provisioning.instructions"));
   /** Picks a candidate by "owner/name"; the choice is final, a second call returns the first. */
   const selectRepository = Effect.fn("Provisioning.selectRepository")(function* (fullName: string) {
     const chosen = yield* repository;
@@ -723,6 +749,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     captureRepositories,
     candidates,
     repository,
+    captureInstructions,
+    instructions,
     selectRepository,
     get,
     current,
@@ -767,6 +795,12 @@ export interface Interface {
   ) => Effect.Effect<ReadonlyArray<RepositoryRef>, ProvisioningFailure>;
   readonly candidates: Effect.Effect<ReadonlyArray<RepositoryRef>, ProvisioningFailure>;
   readonly repository: Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
+  /** Records the workspace's instructions once; the empty set when nothing was captured. */
+  readonly captureInstructions: (
+    instructions: ResolvedInstructions,
+    now: number,
+  ) => Effect.Effect<ResolvedInstructions, ProvisioningFailure>;
+  readonly instructions: Effect.Effect<ResolvedInstructions, ProvisioningFailure>;
   readonly selectRepository: (
     fullName: string,
   ) => Effect.Effect<RepositoryRef | null, ProvisioningFailure>;
@@ -829,6 +863,10 @@ export const layerNoDeps = Layer.effect(
       ),
       candidates: atomic((q) => q.candidates),
       repository: atomic((q) => q.repository),
+      captureInstructions: Effect.fn("Provisioning.captureInstructionsAtomic")(
+        (instructions, now) => atomic((q) => q.captureInstructions(instructions, now)),
+      ),
+      instructions: atomic((q) => q.instructions),
       selectRepository: Effect.fn("Provisioning.selectRepositoryAtomic")((fullName) =>
         atomic((q) => q.selectRepository(fullName)),
       ),

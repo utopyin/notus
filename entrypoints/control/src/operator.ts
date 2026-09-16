@@ -24,7 +24,7 @@ import {
 } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
-import type { Environment } from "@notus/workspaces/types";
+import type { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -117,11 +117,13 @@ const settle = Effect.fn("OperatorControl.settle")(function* (now: number) {
 export const prepare = Effect.fn("OperatorControl.prepare")(function* (
   environment: Environment | null,
   repositories: ReadonlyArray<RepositoryRef>,
+  instructions: ResolvedInstructions,
   now: number,
 ) {
   const provisioning = yield* Provisioning.Service;
   yield* provisioning.capture(environment, now);
   yield* provisioning.captureRepositories(repositories, now);
+  yield* provisioning.captureInstructions(instructions, now);
 });
 
 const describe = (status: ProvisioningStatus): DevboxResult => {
@@ -173,10 +175,48 @@ const encodeUpdate = Schema.encodeEffect(UpdateOutcome);
 const UpdateParams = Schema.Struct({ text: Schema.NonEmptyString.check(Schema.isMaxLength(4000)) });
 /** A specialist round may run long; the box keeps an idle marker while it does. */
 const specialistTimeoutMs = 45 * 60_000;
+const specialistInstructionsMax = 32_000;
 const SpecialistParams = Schema.Struct({
   agent: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,31}$/)),
-  instructions: Schema.NonEmptyString.check(Schema.isMaxLength(32_000)),
+  /** The provider sends optional keys as null; either spelling means "no role". */
+  role: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  instructions: Schema.NonEmptyString.check(Schema.isMaxLength(specialistInstructionsMax)),
 });
+/**
+ * What the specialist reads: the role's text as the workspace wrote it, the conventions the
+ * workspace wrote for this repository, then the operator's instructions for the round. Each part
+ * is a titled section so the agent can tell standing guidance from today's goal.
+ */
+const composeSpecialist = (
+  params: typeof SpecialistParams.Type,
+  captured: ResolvedInstructions,
+  repository: RepositoryRef,
+): { readonly instructions: string; readonly error?: undefined } | { readonly error: string } => {
+  const wanted = params.role ?? null;
+  const role = wanted === null ? null : captured.roles.find((r) => r.name === wanted);
+  if (wanted !== null && !role)
+    return {
+      error:
+        captured.roles.length === 0
+          ? `the workspace defines no specialist roles, so role "${wanted}" does not exist; call again without a role`
+          : `role "${wanted}" does not exist; the workspace's roles are ${captured.roles.map((r) => r.name).join(", ")}`,
+    };
+  const conventions = captured.repositories.find((r) => r.fullName === fullNameOf(repository));
+  if (!role && !conventions) return { instructions: params.instructions };
+  const sections = [
+    ...(role ? [`# Role: ${role.name}\n\n${role.body.trim()}`] : []),
+    ...(conventions
+      ? [`# Repository conventions for ${conventions.fullName}\n\n${conventions.body.trim()}`]
+      : []),
+    `# This round\n\n${params.instructions.trim()}`,
+  ];
+  const instructions = sections.join("\n\n");
+  return instructions.length > specialistInstructionsMax
+    ? {
+        error: `the role text, repository conventions and your instructions together exceed ${specialistInstructionsMax} characters; shorten the round's instructions`,
+      }
+    : { instructions };
+};
 const Slug = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,48}$/));
 const PushParams = Schema.Struct({ slug: Slug });
 const PullParams = Schema.Struct({
@@ -270,6 +310,20 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
         ? "the workspace covers no repository, so this task has none"
         : `no repository is chosen for this task yet; check out one of ${candidates.map(fullNameOf).join(", ")}`,
     );
+  }
+  if (name === "run_specialist") {
+    const params = yield* Schema.decodeUnknownEffect(SpecialistParams)(call.params).pipe(
+      Effect.option,
+    );
+    const repository = yield* provisioning.repository.pipe(Effect.orDie);
+    if (params._tag === "Some" && repository !== null) {
+      const composed = composeSpecialist(
+        params.value,
+        yield* provisioning.instructions.pipe(Effect.orDie),
+        repository,
+      );
+      if (composed.error !== undefined) return yield* failed(composed.error);
+    }
   }
   const rows = yield* commands.ofStep(stepId).pipe(Effect.orDie);
   const command = rows.find((row) => row.callId === call.id);
@@ -468,10 +522,17 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
           Effect.option,
         );
         if (params._tag === "None") continue;
+        // A role the workspace never defined is answered by evaluate, not run without it.
+        const composed = composeSpecialist(
+          params.value,
+          yield* provisioning.instructions,
+          repository,
+        );
+        if (composed.error !== undefined) continue;
         spec = {
           kind: "specialist",
           agent: params.value.agent,
-          instructions: params.value.instructions,
+          instructions: composed.instructions,
           path: checkoutPath(repository),
           timeoutMs: specialistTimeoutMs,
         };
@@ -635,6 +696,7 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
   const candidates = yield* provisioning.candidates;
   const commands = yield* Commands.Service;
   const checkedOut = latestCheckout(yield* commands.snapshot);
+  const instructions = yield* provisioning.instructions;
   return Briefing.make({
     taskId: task.id,
     initiatorId: task.reservation.initiatorId,
@@ -651,6 +713,10 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
           checkoutPath: checkedOut?.path ?? null,
         }
       : null,
+    roles: instructions.roles.map((role) => ({
+      name: role.name,
+      summary: (role.body.split("\n").find((line) => line.trim() !== "") ?? "").trim(),
+    })),
     history,
     current: {
       role: "user",

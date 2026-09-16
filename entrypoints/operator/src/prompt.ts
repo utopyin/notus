@@ -30,6 +30,14 @@ const instructions = (briefing: Briefing): string => {
                   : ` on branch ${briefing.repository.branch}`
               }.`
         }`;
+  const roles =
+    briefing.roles.length === 0
+      ? "The workspace defines no specialist roles; run_specialist takes your instructions alone."
+      : `Specialist roles the workspace defined, for run_specialist's role parameter: ${briefing.roles
+          .map((role) => `${role.name} (${role.summary || "no description"})`)
+          .join(
+            "; ",
+          )}. Name the role that fits the round; its text and the repository's conventions are given to the agent before your instructions, so do not repeat them.`;
   return [
     "You are Notus, a shared-team coding-agent operator, replying inside a Slack thread.",
     "You coordinate planning, implementation, review and QA for a team; humans approve plans and merge code.",
@@ -37,6 +45,7 @@ const instructions = (briefing: Briefing): string => {
     `Task ${briefing.taskId}. The initiator is user ${briefing.initiatorId}; other thread participants may take part but do not change who owns the task.`,
     devbox,
     repository,
+    roles,
     "Messages may contain Slack mention markup such as <@U123>. Reply in plain text suitable for Slack: short paragraphs, no headings, no tables. Be concise and concrete. Do not invent status you were not given.",
   ].join("\n");
 };

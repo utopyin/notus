@@ -107,3 +107,40 @@ export const invites = sqliteTable(
   },
   (table) => [uniqueIndex("workspace_invites_token").on(table.tokenHash)],
 );
+
+/**
+ * Markdown the workspace's agents follow: a specialist role (`implementer`, `reviewer`, ...) or the
+ * conventions of one covered repository. The current text lives here; every save also lands in
+ * the revision table, so a task can name the revision it captured.
+ */
+export const instructions = sqliteTable(
+  "workspace_instructions",
+  {
+    /** key(workspaceId, kind, name) */
+    key: text().primaryKey(),
+    workspaceId: text().notNull(),
+    kind: text({ enum: ["role", "repository"] }).notNull(),
+    /** The role's name, or the repository's owner/name. */
+    name: text().notNull(),
+    body: text().notNull(),
+    revision: integer().notNull().default(1),
+    authorId: text().notNull(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+  },
+  (table) => [index("workspace_instructions_workspace").on(table.workspaceId)],
+);
+
+export const instructionRevisions = sqliteTable(
+  "workspace_instruction_revisions",
+  {
+    /** key(instructionKey, revision) */
+    key: text().primaryKey(),
+    instructionKey: text().notNull(),
+    revision: integer().notNull(),
+    body: text().notNull(),
+    authorId: text().notNull(),
+    createdAt: integer().notNull(),
+  },
+  (table) => [index("workspace_instruction_revisions_instruction").on(table.instructionKey)],
+);

@@ -8,6 +8,9 @@
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
+    "@blocknote/core": "0.54.2",
+    "@blocknote/react": "0.54.2",
+    "@blocknote/shadcn": "0.54.2",
     "@fontsource-variable/geist": "5.3.0",
     "@paper-design/shaders-react": "0.0.80",
     "@tabler/icons-react": "3.46.0",
