@@ -1,6 +1,7 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Sqlite } from "@notus/cloudflare/sqlite";
 import { Sealed } from "@notus/cloudflare/sealed";
+import { Inbox } from "@notus/control/inbox";
 import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
 import { SharedDatabase } from "./database";
@@ -118,9 +119,14 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ),
             ),
           );
+          // Routes live in the shared database; the task moves one when it takes a conversation over.
+          const inboxLayer = Inbox.layer.pipe(
+            Layer.provide(sourcesLayer),
+            Layer.provide(Layer.effect(D1.Binding, shared.raw)),
+          );
           const services = yield* Layer.build(
             Layer.merge(
-              Layer.merge(stateLayer, sourcesLayer),
+              Layer.merge(Layer.merge(stateLayer, sourcesLayer), inboxLayer),
               Layer.merge(
                 Layer.merge(attemptsLayer, provisioningLayer),
                 Layer.merge(stepsLayer, commandsLayer),

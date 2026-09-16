@@ -47,6 +47,11 @@ export interface Interface {
    * confirm the attachment; a route already owned by another task is a conflict.
    */
   readonly attach: (route: Reservation) => Effect.Effect<void, IntakeError | Conflict>;
+  /**
+   * Route an attached conversation to the task now working on it, taking the route over from an
+   * earlier task if one holds it. New messages follow the route; nothing already forwarded moves.
+   */
+  readonly takeover: (route: Reservation) => Effect.Effect<void, IntakeError>;
   /** Success from forward must mean Task DO admission and its wake are durable. */
   readonly drain: <E>(
     forward: (admission: Admission) => Effect.Effect<void, E>,
@@ -385,6 +390,27 @@ export const layerNoDeps = Layer.effect(
         return yield* new Conflict({ key: route.conversationKey });
     });
 
+    const takeover = Effect.fn("Inbox.takeover")(function* (value: Reservation) {
+      const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
+        storageError("decodeRoute"),
+      );
+      const source = yield* Schema.encodeEffect(sourceJson)(route.source).pipe(
+        storageError("encodeRoute"),
+      );
+      const now = yield* Clock.currentTimeMillis;
+      yield* store
+        .batch([
+          sql`INSERT INTO inbox_routes (key, workspaceId, taskId, initiatorId, startMessageKey, startInputId, startAt, source, createdAt, initialized)
+          VALUES (${route.conversationKey}, ${route.workspaceId}, ${route.taskId}, ${route.initiatorId}, ${key("attachment", route.conversationKey)},
+            ${route.startInputId}, ${route.startAt}, ${source}, ${now}, 1)
+          ON CONFLICT(key) DO UPDATE SET taskId = excluded.taskId, initiatorId = excluded.initiatorId,
+            startMessageKey = excluded.startMessageKey, startInputId = excluded.startInputId,
+            startAt = excluded.startAt, createdAt = excluded.createdAt, initialized = 1
+          WHERE taskId <> excluded.taskId`,
+        ])
+        .pipe(storageError("takeoverRoute"));
+    });
+
     const snapshot = Effect.fn("Inbox.snapshot")(function* (workspaceId: string) {
       return yield* Schema.decodeUnknownEffect(Snapshot)({
         messages: yield* store.db
@@ -405,6 +431,7 @@ export const layerNoDeps = Layer.effect(
       admit,
       routeOf,
       attach,
+      takeover,
       drain,
       snapshot,
     });

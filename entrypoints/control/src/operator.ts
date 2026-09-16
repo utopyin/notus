@@ -1,4 +1,5 @@
-import { key, type Admission, type Source } from "@notus/platform/source";
+import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { conversationKeyOf, key, type Admission, type Source } from "@notus/platform/source";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
@@ -28,6 +29,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
+import { Inbox } from "./inbox";
 import { acceptOutcome } from "./task";
 
 const batchSize = 16;
@@ -500,6 +502,49 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
 });
 
 /** Resolve waiting steps whose durable work has settled; unknown tools fail immediately. */
+/**
+ * A pull request conversation follows the task now working on it: checking one out by number
+ * attaches it here and moves its inbox route from whichever task held it, so new comments land
+ * where the current work and its box are. Earlier tasks keep their history.
+ */
+const followPullRequest = Effect.fn("OperatorControl.followPullRequest")(function* (
+  stepId: string,
+  callId: string,
+  now: number,
+) {
+  const commands = yield* Commands.Service;
+  const state = yield* State.Service;
+  const inbox = yield* Inbox.Service;
+  const row = (yield* commands.ofStep(stepId)).find((entry) => entry.callId === callId);
+  if (
+    !row ||
+    row.spec.kind !== "checkout" ||
+    row.spec.pullRequest === undefined ||
+    row.status !== "done" ||
+    row.result?.checkout === undefined
+  )
+    return;
+  const task = (yield* state.snapshot).task;
+  if (!task) return;
+  const source: Source = {
+    platform: "github",
+    installationId: InstallationId.make(row.spec.repository.installationId),
+    scope: PlatformId.make(`${row.spec.repository.owner}/${row.spec.repository.name}`),
+    conversation: PlatformId.make(String(row.spec.pullRequest)),
+  };
+  yield* state.attach(source, now);
+  yield* inbox.takeover({
+    taskId: task.id,
+    workspaceId: task.reservation.workspaceId,
+    conversationKey: conversationKeyOf(task.reservation.workspaceId, source),
+    initiatorId: task.reservation.initiatorId,
+    startInputId: key("pull-request", source.scope, source.conversation),
+    // Whole seconds: GitHub timestamps have second precision.
+    startAt: `${Math.floor(now / 1000)}.000000`,
+    source,
+  });
+});
+
 const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: number) {
   const steps = yield* Steps.Service;
   const commands = yield* Commands.Service;
@@ -513,6 +558,10 @@ const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: n
         pending = true;
         continue;
       }
+      if (call.name === "checkout_repository" && !evaluation.isFailure)
+        yield* followPullRequest(step.id, call.id, now).pipe(
+          Effect.catchCause(() => Effect.logWarning("task.pull_request_follow_failed")),
+        );
       if (call.name === "run_command" && evaluation.isFailure) {
         // A silent runtime is recorded as failed so a late observation cannot revive the call.
         const rows = yield* commands.ofStep(step.id);
