@@ -6,7 +6,7 @@ import {
   redirect,
   useMatches,
 } from "@tanstack/react-router";
-import { zone } from "@notus/stages/hosts";
+import { zone } from "@notus/shared/hosts";
 import { AppShell } from "@/components/app-shell";
 import { getWorkspaceBySlug } from "../server/workspaces";
 

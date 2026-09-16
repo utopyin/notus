@@ -1,6 +1,6 @@
 import { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
-import { apiOriginOf } from "@notus/stages/hosts";
+import { apiOriginOf } from "@notus/shared/hosts";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";

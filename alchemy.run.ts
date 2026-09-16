@@ -4,7 +4,7 @@ import { Stack } from "alchemy/Stack";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
 import Api from "./apps/api/src/api";
-import { hostnames, zone } from "@notus/stages/hosts";
+import { hostnames, zone } from "@notus/shared/hosts";
 
 /**
  * The dashboard: a TanStack Start app on its own Worker. It reaches the API only through the

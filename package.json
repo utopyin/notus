@@ -48,7 +48,7 @@
   },
   "devDependencies": {
     "@effect/tsgo": "0.45.0",
-    "@notus/stages": "workspace:*",
+    "@notus/shared": "workspace:*",
     "drizzle-kit": "catalog:",
     "mime": "4.1.0",
     "oxfmt": "^0.67.0",

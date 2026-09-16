@@ -1,5 +1,5 @@
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
-import { zone } from "@notus/stages/hosts";
+import { zone } from "@notus/shared/hosts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

@@ -25,7 +25,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
-import { hostnames, zone } from "@notus/stages/hosts";
+import { hostnames, zone } from "@notus/shared/hosts";
 import * as Callback from "./callback";
 import { authDatabase, makeAuth } from "./auth";
 import {

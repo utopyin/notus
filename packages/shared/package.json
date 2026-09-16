@@ -1,5 +1,5 @@
 {
-  "name": "@notus/stages",
+  "name": "@notus/shared",
   "private": true,
   "type": "module",
   "exports": {
