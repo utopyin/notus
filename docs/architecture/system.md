@@ -284,7 +284,7 @@ sequenceDiagram
   B->>W: observe report
   O-->>T: push_branch, then create_pull_request
   B->>G: git push login/slug
-  T->>G: open PR with a hidden notus:task marker
+  T->>G: open PR, then route its conversation to this task
   O-->>T: final text with the PR link
   T->>S: reply in the thread
   U->>G: review comment on the PR
@@ -513,7 +513,7 @@ flowchart TB
   which -->|"checkout_repository"| co["CommandSpec checkout<br/>path /workspaces/name, 300s"]
   which -->|"push_branch"| pb["CommandSpec push<br/>branch login/slug, never the default"]
   which -->|"run_specialist"| sp["CommandSpec specialist<br/>agent name, instructions, 45 min"]
-  which -->|"create_pull_request"| pr["CommandSpec pull-request<br/>body plus hidden notus:task marker,<br/>executor control"]
+  which -->|"create_pull_request"| pr["CommandSpec pull-request<br/>executor control; on success the task<br/>attaches the PR and takes its route"]
   which -->|"unknown"| bad["resolved immediately as a failure"]
 
   rc & co & pb & sp --> rt["execution_commands<br/>executor runtime, status pending"]
@@ -785,7 +785,7 @@ sequenceDiagram
 
   Note over T,G: create_pull_request, never on the box
   T->>T: alarm claimControl, lease 60s
-  T->>App: createPullRequest(repository, branch, title, body with notus:task marker)
+  T->>App: createPullRequest(repository, branch, title, body)
   App->>G: token with pull_requests write, contents read, metadata read
   App->>G: POST /repos/owner/name/pulls head login/slug base main
   G-->>T: number, html_url
@@ -803,7 +803,7 @@ sequenceDiagram
 
 ## 14. Pull request feedback continues the task
 
-A pull request comment never starts a task. It continues the task that opened the PR. The marker in the PR body is only a hint: a PR is attached only after the Task object confirms it holds a completed pull-request action for exactly that source.
+A pull request comment never starts a task. It continues the task that owns the PR conversation: the task that opened it or, since 2026-09-16, the last task that checked it out by number. That task attached the conversation and wrote the inbox route itself when the action completed; the ingress only looks the route up.
 
 ```mermaid
 sequenceDiagram
@@ -813,28 +813,16 @@ sequenceDiagram
   participant W as Worker /github/events
   participant GA as GitHub adapter
   participant I as Inbox and D1
-  participant T as Task DO named in the marker
+  participant T as Task DO that owns the route
 
   R->>G: review comment on PR 2
   G->>W: pull_request_review_comment, X-Hub-Signature-256
   W->>GA: receive: verify HMAC, decode issue_comment, review or review comment
   GA->>GA: ignore bots, apps and actions other than created or submitted
-  GA-->>W: Received: startIntent false, root false, target review-comment id,<br/>text prefixed with file and line, claim taskId from the notus:task marker
+  GA-->>W: Received: startIntent false, root false, target review-comment id,<br/>text prefixed with file and line
   W->>I: workspaceOf(github installation), covers(owner/name)
   W->>GA: mayParticipate: collaborator role is admin, maintain or write
-  W->>I: routeOf(conversation key)
-  alt no route yet
-    W->>T: attachConversation(source)
-    T->>T: gate: a done pull-request command whose result Source equals this source?
-    alt confirmed
-      T->>T: insert task_sources attached: receive, reply, reaction, no updates
-      T-->>W: taskId, workspaceId, initiatorId, startAt = PR creation second
-      W->>I: insert route, initialized, same task ID, conflict if another task owns it
-    else not opened by this task
-      T-->>W: null
-      W-->>G: 200, ignored as unconfirmed-attachment
-    end
-  end
+  W->>I: routeOf(conversation key): the task that opened or checked out the PR wrote it
   W->>I: admit input, then drain
   I->>T: admit: source must be attached, same initiator and workspace, never a start
   T->>T: new input with an answer obligation, eyes reaction, new operator turn
@@ -849,7 +837,7 @@ Rules this enforces:
 
 - The Slack origin thread remains the only update channel.
 - Feedback never changes the task's owner or the model connection it uses.
-- A forged marker cannot route feedback into another task.
+- Nothing in a webhook payload can route feedback: only a task that opened or checked out the pull request writes its route.
 
 Known limits:
 

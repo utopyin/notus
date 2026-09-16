@@ -115,8 +115,7 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         startIntent: false,
         root: false,
       }).pipe(Effect.mapError(() => ingressError("envelope")));
-      const taskId = Webhooks.markedTask(feedback.pullBody);
-      return { type: "input", received, claim: taskId === null ? null : { taskId } };
+      return { type: "input", received };
     });
 
     const installing: PlatformInstalling = {

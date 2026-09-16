@@ -80,8 +80,6 @@ export interface Feedback {
   readonly installationId: string;
   readonly repository: { readonly owner: string; readonly name: string };
   readonly pullNumber: number;
-  /** Used only to find the routing marker; never trusted without the task's confirmation. */
-  readonly pullBody: string;
   readonly pullCreatedAt: string;
   readonly target: { readonly kind: TargetKind; readonly id: string };
   readonly author: { readonly login: string; readonly type: string };
@@ -159,7 +157,6 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           installationId: String(event.installation.id),
           repository: { owner: event.repository.owner.login, name: event.repository.name },
           pullNumber: event.issue.number,
-          pullBody: event.issue.body ?? "",
           pullCreatedAt: event.issue.created_at,
           target: { kind: "issue-comment", id: String(event.comment.id) },
           author: event.comment.user,
@@ -180,7 +177,6 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           installationId: String(event.installation.id),
           repository: { owner: event.repository.owner.login, name: event.repository.name },
           pullNumber: event.pull_request.number,
-          pullBody: event.pull_request.body ?? "",
           pullCreatedAt: event.pull_request.created_at,
           target: { kind: "review-comment", id: String(event.comment.id) },
           author: event.comment.user,
@@ -208,7 +204,6 @@ export const decode = Effect.fn("GitHub.decode")(function* (
           installationId: String(event.installation.id),
           repository: { owner: event.repository.owner.login, name: event.repository.name },
           pullNumber: event.pull_request.number,
-          pullBody: event.pull_request.body ?? "",
           pullCreatedAt: event.pull_request.created_at,
           target: { kind: "review", id: String(event.review.id) },
           author: event.review.user,
@@ -223,11 +218,6 @@ export const decode = Effect.fn("GitHub.decode")(function* (
       return { type: "ignored", reason: "event" };
   }
 });
-
-/** The task marker create_pull_request embeds. Only a hint: the task must confirm it. */
-export const marker = (taskId: string) => `<!-- notus:task=${taskId} -->`;
-export const markedTask = (body: string): string | null =>
-  /<!-- notus:task=([0-9a-f-]{36}) -->/.exec(body)?.[1] ?? null;
 
 /** Slack-style ordered timestamp from an ISO instant, so inbox ordering stays uniform. */
 export const orderedTimestamp = (iso: string): string | null => {

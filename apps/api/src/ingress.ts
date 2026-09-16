@@ -2,12 +2,7 @@ import type { Conflict, IntakeError, Unauthorized } from "@notus/control/errors"
 import type { InstallationRef } from "@notus/platform/ids";
 import type { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
-import {
-  conversationKeyOf,
-  type Input,
-  type Reservation,
-  type Source,
-} from "@notus/platform/source";
+import { conversationKeyOf, type Input, type Source } from "@notus/platform/source";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
@@ -17,7 +12,6 @@ import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 export class IngressFailure extends Schema.TaggedError<IngressFailure>()("Ingress.Failure", {}) {}
 
 /** What a confirmed attachment supplies; the route adds its own conversation key and source. */
-export type Confirmation = Omit<Reservation, "conversationKey" | "source">;
 
 export interface Dependencies {
   /** The workspace an installation belongs to; null means nobody asked for its events. */
@@ -27,12 +21,6 @@ export interface Dependencies {
   readonly routeOf: (
     conversationKey: string,
   ) => Effect.Effect<{ readonly taskId: string } | undefined, IngressFailure>;
-  /** Asks the task a conversation claims as its opener whether it did; null when it did not. */
-  readonly confirm: (
-    taskId: string,
-    source: Source,
-  ) => Effect.Effect<Confirmation | null, IngressFailure>;
-  readonly attach: (route: Reservation) => Effect.Effect<void, IngressFailure>;
   readonly admit: (
     input: Input,
   ) => Effect.Effect<unknown, Conflict | IntakeError | Unauthorized | IngressFailure>;
@@ -61,7 +49,7 @@ export const handler = (platform: Platform, dependencies: Dependencies) =>
     });
     if (normalized.type === "acknowledge") return yield* HttpServerResponse.json(normalized.body);
     if (normalized.type === "ignored") return yield* ignored(normalized.reason);
-    const { received, claim } = normalized;
+    const { received } = normalized;
     const source = received.target.source;
     const workspaceId = yield* dependencies.workspaceOf(source);
     if (workspaceId === null) return yield* ignored("foreign-installation");
@@ -69,16 +57,8 @@ export const handler = (platform: Platform, dependencies: Dependencies) =>
     const port = yield* platforms.forInstallation(source);
     if (!(yield* port.identity.mayParticipate(received.actor, source.scope)))
       return yield* ignored("actor");
+    // A conversation is routed by the task that opened it or checked it out; nothing routes here.
     const conversationKey = conversationKeyOf(workspaceId, source);
-    if (claim !== null && (yield* dependencies.routeOf(conversationKey)) === undefined) {
-      const confirmed = yield* dependencies.confirm(claim.taskId, source);
-      if (confirmed === null) {
-        yield* Effect.logWarning("ingress.ignored unconfirmed-attachment");
-        return ok();
-      }
-      yield* dependencies.attach({ ...confirmed, conversationKey, source });
-      yield* Effect.logInfo("ingress.attached");
-    }
     yield* dependencies.admit({
       workspaceId,
       // The inbox recomputes identity keys server-side; these placeholders are never trusted.

@@ -104,7 +104,7 @@ export const adapter: Effect.Effect<
         event.type === "app_mention" || event.text.includes(`<@${credential.value.botUserId}>`),
       root: rootTs === event.ts,
     }).pipe(Effect.mapError(() => ingressError("envelope")));
-    return { type: "input", received, claim: null };
+    return { type: "input", received };
   });
 
   const installing: PlatformInstalling = {

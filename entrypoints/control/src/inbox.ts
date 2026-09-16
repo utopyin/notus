@@ -43,11 +43,6 @@ export interface Interface {
     conversationKey: string,
   ) => Effect.Effect<Schema.Schema.Type<typeof RouteRow> | undefined, IntakeError>;
   /**
-   * Route an attached conversation to its task, idempotently. Callers must first have the task
-   * confirm the attachment; a route already owned by another task is a conflict.
-   */
-  readonly attach: (route: Reservation) => Effect.Effect<void, IntakeError | Conflict>;
-  /**
    * Route an attached conversation to the task now working on it, taking the route over from an
    * earlier task if one holds it. New messages follow the route; nothing already forwarded moves.
    */
@@ -369,27 +364,6 @@ export const layerNoDeps = Layer.effect(
     const routeOf = Effect.fn("Inbox.routeOf")(function* (conversationKey: string) {
       return yield* findRoute(conversationKey);
     });
-    const attach = Effect.fn("Inbox.attach")(function* (value: Reservation) {
-      const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
-        storageError("decodeRoute"),
-      );
-      const source = yield* Schema.encodeEffect(sourceJson)(route.source).pipe(
-        storageError("encodeRoute"),
-      );
-      const now = yield* Clock.currentTimeMillis;
-      yield* store
-        .batch([
-          sql`INSERT INTO inbox_routes (key, workspaceId, taskId, initiatorId, startMessageKey, startInputId, startAt, source, createdAt, initialized)
-          VALUES (${route.conversationKey}, ${route.workspaceId}, ${route.taskId}, ${route.initiatorId}, ${key("attachment", route.conversationKey)},
-            ${route.startInputId}, ${route.startAt}, ${source}, ${now}, 1)
-          ON CONFLICT(key) DO NOTHING`,
-        ])
-        .pipe(storageError("attachRoute"));
-      const existing = yield* findRoute(route.conversationKey);
-      if (!existing || existing.taskId !== route.taskId)
-        return yield* new Conflict({ key: route.conversationKey });
-    });
-
     const takeover = Effect.fn("Inbox.takeover")(function* (value: Reservation) {
       const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
         storageError("decodeRoute"),
@@ -430,7 +404,6 @@ export const layerNoDeps = Layer.effect(
       covers,
       admit,
       routeOf,
-      attach,
       takeover,
       drain,
       snapshot,

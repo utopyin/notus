@@ -12,15 +12,7 @@ export type Normalized =
   /** The platform expects this body back, such as Slack's URL verification challenge. */
   | { readonly type: "acknowledge"; readonly body: unknown }
   | { readonly type: "ignored"; readonly reason: string }
-  | {
-      readonly type: "input";
-      readonly received: Received;
-      /**
-       * The conversation says a task opened it (a marker in a pull request body). A hint only:
-       * the host must have that task confirm before anything attaches.
-       */
-      readonly claim: { readonly taskId: string } | null;
-    };
+  | { readonly type: "input"; readonly received: Received };
 
 /** Verification, decoding and normalization in one step; the raw payload shape never leaves the adapter. */
 export interface PlatformIngress {

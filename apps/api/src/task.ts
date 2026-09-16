@@ -6,7 +6,7 @@ import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
 import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
-import type { Admission, Source } from "@notus/platform/source";
+import type { Admission } from "@notus/platform/source";
 import * as Control from "@notus/control/task";
 import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";
@@ -629,21 +629,6 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   return { ok: true as const };
                 }),
               ).pipe(Effect.orElseSucceed(() => ({ ok: false as const }))),
-            /** Confirms this task opened the pull request and records it as an attached source. */
-            attachConversation: (source: Source) =>
-              gate(
-                Effect.gen(function* () {
-                  const now = yield* Clock.currentTimeMillis;
-                  return yield* OperatorControl.attach(source, now).pipe(
-                    Effect.provideContext(services),
-                  );
-                }),
-              ).pipe(
-                Effect.map((value) =>
-                  value === null ? { ok: false as const } : { ok: true as const, value },
-                ),
-                Effect.orElseSucceed(() => ({ ok: false as const })),
-              ),
             acceptOutcome: (observation: Observation) =>
               gate(
                 Effect.gen(function* () {

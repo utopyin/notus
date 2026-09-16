@@ -156,14 +156,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
       covers: (workspaceId, source) =>
         failing(withInbox((inbox) => inbox.covers(workspaceId, source))),
       routeOf: (conversationKey) => failing(withInbox((inbox) => inbox.routeOf(conversationKey))),
-      confirm: (taskId, source) =>
-        failing(
-          tasks
-            .getByName(taskId)
-            .attachConversation(source)
-            .pipe(Effect.map((result) => (result.ok ? result.value : null))),
-        ),
-      attach: (route) => failing(withInbox((inbox) => inbox.attach(route))),
       admit: (input) =>
         withInbox((inbox) => inbox.admit(input)).pipe(
           Effect.mapError((error) =>
