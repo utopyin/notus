@@ -1,4 +1,5 @@
 import { createFileRoute, getRouteApi, redirect, useRouter } from "@tanstack/react-router";
+import { zone } from "@notus/stages/hosts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,7 +80,7 @@ function Welcome() {
         <div className="flex flex-col gap-2">
           <Label htmlFor="slug">Slug</Label>
           <div className="flex items-center gap-2">
-            <span className="text-muted-foreground text-sm">notus.run/</span>
+            <span className="text-muted-foreground text-sm">{zone}/</span>
             <Input
               id="slug"
               className="font-mono"

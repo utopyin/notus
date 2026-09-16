@@ -1,4 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { zone } from "@notus/stages/hosts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,7 +105,7 @@ function WorkspaceForm() {
               aria-hidden
               className="text-muted-foreground pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-base md:text-sm"
             >
-              notus.run/
+              {zone}/
             </span>
             <Input
               id="slug"

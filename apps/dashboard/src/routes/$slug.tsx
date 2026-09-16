@@ -6,6 +6,7 @@ import {
   redirect,
   useMatches,
 } from "@tanstack/react-router";
+import { zone } from "@notus/stages/hosts";
 import { AppShell } from "@/components/app-shell";
 import { getWorkspaceBySlug } from "../server/workspaces";
 
@@ -55,7 +56,7 @@ function Layout() {
       active={shell?.active}
       activePlatform={activePlatform}
       title={shell?.title === null ? null : (shell?.title ?? view.workspace.name)}
-      description={shell?.title ? shell.description : `notus.run/${view.workspace.slug}`}
+      description={shell?.title ? shell.description : `${zone}/${view.workspace.slug}`}
     >
       <Outlet />
     </AppShell>
