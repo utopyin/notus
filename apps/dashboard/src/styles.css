@@ -137,6 +137,10 @@
   font-family: var(--font-sans);
   font-size: 15px;
 }
+.bn-editor {
+  background-color: transparent;
+  border-radius: 0;
+}
 .bn-editor [data-content-type="heading"] {
   padding-top: 12px;
 }
