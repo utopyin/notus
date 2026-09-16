@@ -1,14 +1,18 @@
 /**
  * The roles every workspace starts with. They are ordinary rows once created: a workspace edits,
- * renames or deletes them like any role it adds. The first line is what the operator sees when it
+ * renames or deletes them like any role it adds. The summary is what the operator sees when it
  * chooses a role, so it states the role's job.
  */
-export const defaultRoles: ReadonlyArray<{ readonly name: string; readonly body: string }> = [
+export const defaultRoles: ReadonlyArray<{
+  readonly name: string;
+  readonly summary: string;
+  readonly body: string;
+}> = [
   {
     name: "implementer",
-    body: `Implements the change the operator describes, end to end, in the repository checkout.
-
-## How to work
+    summary:
+      "Implements the change the operator describes, end to end, in the repository checkout.",
+    body: `## How to work
 
 - Read the relevant code before changing it, and keep the change as small as the goal allows.
 - Follow the conventions you find in the repository: formatting, naming, module layout, error handling.
@@ -21,9 +25,9 @@ State what changed and where, how you checked it, and anything you left open or 
   },
   {
     name: "reviewer",
-    body: `Reviews a change for correctness, safety and fit with the codebase, without editing it.
-
-## How to work
+    summary:
+      "Reviews a change for correctness, safety and fit with the codebase, without editing it.",
+    body: `## How to work
 
 - Read the diff and the code around it; run the checks the repository provides.
 - Look for bugs, unhandled cases, security and data-loss risks, and departures from the repository's conventions.
@@ -35,9 +39,9 @@ List findings from most to least serious, each with the file and line and why it
   },
   {
     name: "qa",
-    body: `Exercises a change the way a user or a caller would and reports what actually happens.
-
-## How to work
+    summary:
+      "Exercises a change the way a user or a caller would and reports what actually happens.",
+    body: `## How to work
 
 - Build and run the project as its README describes; run the existing test suite.
 - Try the change along its main path and its edge cases: empty input, wrong input, repeated actions, concurrent use where it applies.

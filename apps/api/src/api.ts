@@ -607,10 +607,18 @@ export default class Api extends Cloudflare.Worker<Api>()(
             Effect.flatMap((roles) => roles.history(workspaceId, me.userId, name)),
           ),
         ),
-      dashboardSaveRole: (cookie: string, workspaceId: string, name: string, body: string) =>
+      dashboardSaveRole: (
+        cookie: string,
+        workspaceId: string,
+        name: string,
+        summary: string,
+        body: string,
+      ) =>
         authorized(cookie, (me) =>
           Roles.Service.pipe(
-            Effect.flatMap((roles) => roles.save(workspaceId, me.userId, name, body, me.now)),
+            Effect.flatMap((roles) =>
+              roles.save(workspaceId, me.userId, name, summary, body, me.now),
+            ),
           ),
         ),
       dashboardDeleteRole: (cookie: string, workspaceId: string, name: string) =>

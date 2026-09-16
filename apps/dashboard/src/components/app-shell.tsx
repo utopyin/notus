@@ -61,7 +61,7 @@ type Active =
   | "overview"
   | "members"
   | "platforms"
-  | "instructions"
+  | "specialists"
   | "invites"
   | "settings"
   | "account";
@@ -228,12 +228,12 @@ export function AppShell(props: {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                      tooltip="Instructions"
-                      isActive={active === "instructions"}
-                      render={<Link to="/$slug/instructions" params={{ slug }} />}
+                      tooltip="Specialists"
+                      isActive={active === "specialists"}
+                      render={<Link to="/$slug/specialists" params={{ slug }} />}
                     >
                       <IconBookFilled />
-                      <span>Instructions</span>
+                      <span>Specialists</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   {isAdmin ? (

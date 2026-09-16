@@ -113,9 +113,12 @@ export interface WorkspaceView extends Schema.Schema.Type<typeof WorkspaceView> 
 /** A role name doubles as the specialist agent's name on the box, so it follows the same rule. */
 export const RoleName = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,31}$/));
 export const RoleBody = Schema.String.check(Schema.isMaxLength(16_000));
+/** One line, what the operator reads when choosing which specialist to run. */
+export const RoleSummary = Schema.String.check(Schema.isMaxLength(200));
 export const SpecialistRole = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   name: RoleName,
+  summary: RoleSummary,
   body: RoleBody,
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
   authorId: Schema.NonEmptyString,
@@ -125,6 +128,7 @@ export const SpecialistRole = Schema.Struct({
 export interface SpecialistRole extends Schema.Schema.Type<typeof SpecialistRole> {}
 export const RoleRevision = Schema.Struct({
   revision: Schema.Int.check(Schema.isGreaterThan(0)),
+  summary: RoleSummary,
   body: RoleBody,
   authorId: Schema.NonEmptyString,
   createdAt: Millis,
@@ -136,6 +140,8 @@ export const ResolvedInstructions = Schema.Struct({
     Schema.Struct({
       name: RoleName,
       revision: Schema.Int.check(Schema.isGreaterThan(0)),
+      /** Absent in tasks captured before summaries existed; the body's first line stood in for it. */
+      summary: Schema.optionalKey(RoleSummary),
       body: RoleBody,
     }),
   ),

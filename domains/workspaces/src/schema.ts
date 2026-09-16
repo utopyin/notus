@@ -120,6 +120,8 @@ export const roles = sqliteTable(
     key: text().primaryKey(),
     workspaceId: text().notNull(),
     name: text().notNull(),
+    /** One line the operator reads when choosing which specialist to run. */
+    summary: text().notNull().default(""),
     body: text().notNull(),
     revision: integer().notNull().default(1),
     authorId: text().notNull(),
@@ -136,6 +138,7 @@ export const roleRevisions = sqliteTable(
     key: text().primaryKey(),
     roleKey: text().notNull(),
     revision: integer().notNull(),
+    summary: text().notNull().default(""),
     body: text().notNull(),
     authorId: text().notNull(),
     createdAt: integer().notNull(),

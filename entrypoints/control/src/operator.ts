@@ -201,7 +201,8 @@ const composeSpecialist = (
           ? `the workspace defines no specialist roles, so role "${wanted}" does not exist; call again without a role`
           : `role "${wanted}" does not exist; the workspace's roles are ${captured.roles.map((r) => r.name).join(", ")}`,
     };
-  const instructions = `# Role: ${role.name}\n\n${role.body.trim()}\n\n# This round\n\n${params.instructions.trim()}`;
+  const standing = [role.summary?.trim() ?? "", role.body.trim()].filter((t) => t !== "");
+  const instructions = `# Role: ${role.name}\n\n${standing.join("\n\n")}\n\n# This round\n\n${params.instructions.trim()}`;
   return instructions.length > specialistInstructionsMax
     ? {
         error: `the role text and your instructions together exceed ${specialistInstructionsMax} characters; shorten the round's instructions`,
@@ -700,7 +701,9 @@ const brief = Effect.fn("OperatorControl.brief")(function* (invocationId: string
       : null,
     roles: instructions.roles.map((role) => ({
       name: role.name,
-      summary: (role.body.split("\n").find((line) => line.trim() !== "") ?? "").trim(),
+      summary:
+        role.summary?.trim() ||
+        (role.body.split("\n").find((line) => line.trim() !== "") ?? "").trim(),
     })),
     history,
     current: {

@@ -130,3 +130,37 @@
     @apply font-sans;
   }
 }
+
+/* BlockNote inside the specialists editor: the page's font, smaller headings, and block handles
+   sized like the text rather than like buttons. */
+.bn-default-styles {
+  font-family: var(--font-sans);
+  font-size: 15px;
+}
+.bn-editor [data-content-type="heading"] {
+  padding-top: 12px;
+}
+.bn-editor [data-content-type="heading"][data-level="1"],
+.bn-editor [data-prev-level="1"] {
+  --level: 1.5em;
+  --prev-level: 1.5em;
+}
+.bn-editor [data-content-type="heading"][data-level="2"],
+.bn-editor [data-prev-level="2"] {
+  --level: 1.25em;
+  --prev-level: 1.25em;
+}
+.bn-editor [data-content-type="heading"][data-level="3"],
+.bn-editor [data-prev-level="3"] {
+  --level: 1.1em;
+  --prev-level: 1.1em;
+}
+.bn-side-menu button {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--muted-foreground);
+}
+.bn-side-menu button svg {
+  width: 1rem;
+  height: 1rem;
+}

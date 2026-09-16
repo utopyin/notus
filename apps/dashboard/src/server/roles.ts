@@ -23,10 +23,12 @@ export type RevisionRow = Extract<
 >["value"][number];
 
 export const saveRole = createServerFn({ method: "POST" })
-  .inputValidator((input: { workspaceId: string; name: string; body: string }) => input)
+  .inputValidator(
+    (input: { workspaceId: string; name: string; summary: string; body: string }) => input,
+  )
   .handler(
     async ({ data }) =>
-      await api().dashboardSaveRole(cookie(), data.workspaceId, data.name, data.body),
+      await api().dashboardSaveRole(cookie(), data.workspaceId, data.name, data.summary, data.body),
   );
 
 export const deleteRole = createServerFn({ method: "POST" })
