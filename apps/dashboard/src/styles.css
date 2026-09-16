@@ -152,8 +152,13 @@
   border-radius: var(--radius-lg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
+/* Space above a heading goes on the block, not inside its content, so the block handles line up
+   with the heading's text instead of its padding. */
 .bn-editor [data-content-type="heading"] {
-  padding-top: 12px;
+  padding-top: 0;
+}
+.bn-editor .bn-block-outer:has(> .bn-block > [data-content-type="heading"]) {
+  margin-top: 0.75em;
 }
 .bn-editor [data-content-type="heading"][data-level="1"],
 .bn-editor [data-prev-level="1"] {

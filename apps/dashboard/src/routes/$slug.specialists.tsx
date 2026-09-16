@@ -19,6 +19,15 @@ import { useTheme } from "../theme";
 import { useWorkspace } from "./$slug";
 
 const roleNamePattern = /^[a-z][a-z0-9_-]{0,31}$/;
+/** The role's id from the name typed: "Code reviewer" becomes code-reviewer. */
+const idOf = (display: string) =>
+  display
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
 
 export const Route = createFileRoute("/$slug/specialists")({
   staticData: {
@@ -165,12 +174,11 @@ function Specialists() {
   };
   const confirmName = () => {
     if (!creating) return;
-    const name = creating.name.trim();
+    const name = idOf(creating.name);
     if (!roleNamePattern.test(name)) return;
     if (roles.some((role) => role.name === name)) select(name);
     else setCreating({ name, named: true });
   };
-  const validNewName = creating ? roleNamePattern.test(creating.name.trim()) : false;
   // The editor is keyed so switching roles, or opening a revision, starts it afresh.
   const editorKey =
     selectedName === null
@@ -211,37 +219,30 @@ function Specialists() {
             </Button>
           ) : null}
           {creating && !creating.named ? (
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                confirmName();
-              }}
-            >
-              <Input
-                autoFocus
-                className="w-48 font-mono text-sm"
-                placeholder="role-name"
-                value={creating.name}
-                onChange={(event) =>
-                  setCreating({ name: event.target.value.toLowerCase(), named: false })
+            // The button becomes the field: the name as it will read, Enter to add, Escape to drop.
+            <Input
+              autoFocus
+              className="w-56"
+              placeholder="Role name"
+              aria-label="New role name"
+              value={creating.name}
+              onChange={(event) => setCreating({ name: event.target.value, named: false })}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setCreating(null);
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  confirmName();
                 }
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setCreating(null);
-                }}
-              />
-              <Button type="submit" size="sm" disabled={!validNewName}>
-                Add
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setCreating(null)}>
-                Cancel
-              </Button>
-            </form>
+              }}
+              onBlur={() => {
+                if (creating.name.trim() === "") setCreating(null);
+              }}
+            />
           ) : null}
         </div>
         {selectedName !== null && editorKey !== null ? (
           <>
-            <div className="flex max-w-2xl flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-1.5">
                 <Label htmlFor="role-summary">Role</Label>
                 <Tooltip>
@@ -272,14 +273,32 @@ function Specialists() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Label>Instructions</Label>
-                <div className="flex items-center gap-2">
-                  {revisionOpen ? (
-                    <span className="text-muted-foreground text-xs">
-                      Showing revision {revisionOpen.revision}; saving makes it current.
-                    </span>
+                {revisionOpen ? (
+                  <span className="text-muted-foreground text-xs">
+                    Showing revision {revisionOpen.revision}; saving makes it current.
+                  </span>
+                ) : null}
+              </div>
+              <MarkdownEditor
+                key={editorKey}
+                markdown={base?.body ?? ""}
+                editable={isAdmin}
+                theme={theme === "system" ? resolvedTheme() : theme}
+                placeholder="How this specialist should work, and what to report."
+                onChange={(next) => edit({ markdown: next })}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  {current ? (
+                    <Button variant="ghost" size="sm" onClick={openHistory}>
+                      <IconHistory className="size-4" />
+                      History
+                    </Button>
                   ) : null}
+                </div>
+                <div className="flex items-center gap-2">
                   {isAdmin && current ? (
                     confirmDelete ? (
                       <Button variant="destructive" size="sm" disabled={saving} onClick={remove}>
@@ -308,22 +327,6 @@ function Specialists() {
                   ) : null}
                 </div>
               </div>
-              <MarkdownEditor
-                key={editorKey}
-                markdown={base?.body ?? ""}
-                editable={isAdmin}
-                theme={theme === "system" ? resolvedTheme() : theme}
-                placeholder="How this specialist should work, and what to report."
-                onChange={(next) => edit({ markdown: next })}
-              />
-              {current ? (
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={openHistory}>
-                    <IconHistory className="size-4" />
-                    History
-                  </Button>
-                </div>
-              ) : null}
             </div>
             {message ? <p className="text-destructive text-sm">{message}</p> : null}
           </>

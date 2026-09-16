@@ -108,7 +108,7 @@ function WorkspaceForm() {
             </span>
             <Input
               id="slug"
-              className="pl-[10ch]"
+              className="pl-[8.5ch]"
               value={slug}
               onChange={(event) => setSlug(event.target.value.toLowerCase())}
             />
