@@ -1,23 +1,77 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { InvitesSection } from "@/components/invites-section";
+import { MembersSection } from "@/components/members-section";
+import { collectionsOf } from "../collections";
 import { validSlug } from "../lib/slug";
 import { workspacesCollection } from "../workspaces-collection";
 import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/settings")({
-  staticData: { shell: { active: "settings", title: "Settings" } },
-  loader: async ({ params, parentMatchPromise }) => {
+  staticData: {
+    shell: {
+      active: "settings",
+      title: "Settings",
+      description: "The workspace itself, who belongs to it, and how to invite more people.",
+    },
+  },
+  // The invites list is a TanStack DB collection, which does not render on the server.
+  ssr: false,
+  loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (parent.loaderData && parent.loaderData.role !== "admin")
-      throw redirect({ to: "/$slug", params });
+    if (!parent.loaderData || parent.loaderData.role !== "admin") return;
+    await collectionsOf(parent.loaderData.workspace.id).invites.preload();
   },
   component: Settings,
 });
 
+/** One page in sections: the workspace's name and address (admins), its members, and invites (admins). */
 function Settings() {
+  const { view } = useWorkspace();
+  const isAdmin = view.role === "admin";
+  return (
+    <div className="flex flex-col gap-8">
+      {isAdmin ? (
+        <>
+          <section className="flex flex-col gap-4">
+            <h2 className="font-medium">Workspace</h2>
+            <WorkspaceForm />
+          </section>
+          <Separator />
+        </>
+      ) : null}
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-medium">Members</h2>
+          <p className="text-muted-foreground text-sm">
+            Who can start tasks from this workspace's channels.
+          </p>
+        </div>
+        <MembersSection />
+      </section>
+      {isAdmin ? (
+        <>
+          <Separator />
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="font-medium">Invites</h2>
+              <p className="text-muted-foreground text-sm">
+                Invite links are valid for a week and can be used once.
+              </p>
+            </div>
+            <InvitesSection />
+          </section>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkspaceForm() {
   const { view } = useWorkspace();
   const router = useRouter();
   const [name, setName] = useState(view.workspace.name);

@@ -1,6 +1,5 @@
 import { IconChevronDown, IconCopy, IconMailFilled, IconX } from "@tabler/icons-react";
 import { isNull, useLiveQuery } from "@tanstack/react-db";
-import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,27 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { collectionsOf, type InviteRow } from "../collections";
 import { createInvite } from "../server/workspaces";
-import { useWorkspace } from "./$slug";
+import { useWorkspace } from "../routes/$slug";
 
-export const Route = createFileRoute("/$slug/invites")({
-  staticData: {
-    shell: {
-      active: "invites",
-      title: "Invites",
-      description: "Invite links are valid for a week and can be used once.",
-    },
-  },
-  ssr: false,
-  loader: async ({ params, parentMatchPromise }) => {
-    const parent = await parentMatchPromise;
-    if (!parent.loaderData) return;
-    if (parent.loaderData.role !== "admin") throw redirect({ to: "/$slug", params });
-    await collectionsOf(parent.loaderData.workspace.id).invites.preload();
-  },
-  component: Invites,
-});
-
-function Invites() {
+/** Invite links for admins: created through the server, listed from the live collection. */
+export function InvitesSection() {
   const { view } = useWorkspace();
   const { invites } = collectionsOf(view.workspace.id);
   const { data } = useLiveQuery({

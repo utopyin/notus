@@ -1,5 +1,5 @@
 import { IconDotsVertical, IconShieldCheckFilled, IconUserMinus } from "@tabler/icons-react";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,18 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { removeMember, setRole } from "../server/workspaces";
-import { useWorkspace } from "./$slug";
-
-export const Route = createFileRoute("/$slug/members")({
-  staticData: {
-    shell: {
-      active: "members",
-      title: "Members",
-      description: "Who can start tasks from this workspace's channels.",
-    },
-  },
-  component: Members,
-});
+import { useWorkspace } from "../routes/$slug";
 
 const initialsOf = (name: string) =>
   name
@@ -32,7 +21,8 @@ const initialsOf = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-function Members() {
+/** Who belongs to the workspace, with role changes and removal for admins. */
+export function MembersSection() {
   const { me, view } = useWorkspace();
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);

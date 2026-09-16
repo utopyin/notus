@@ -202,7 +202,7 @@ function Specialists() {
           </Tabs>
           {isAdmin && !creating ? (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               onClick={() => setCreating({ name: "", named: false })}
             >
@@ -280,12 +280,6 @@ function Specialists() {
                       Showing revision {revisionOpen.revision}; saving makes it current.
                     </span>
                   ) : null}
-                  {current ? (
-                    <Button variant="ghost" size="sm" onClick={openHistory}>
-                      <IconHistory className="size-4" />
-                      History
-                    </Button>
-                  ) : null}
                   {isAdmin && current ? (
                     confirmDelete ? (
                       <Button variant="destructive" size="sm" disabled={saving} onClick={remove}>
@@ -322,6 +316,14 @@ function Specialists() {
                 placeholder="How this specialist should work, and what to report."
                 onChange={(next) => edit({ markdown: next })}
               />
+              {current ? (
+                <div className="flex justify-end">
+                  <Button variant="ghost" size="sm" onClick={openHistory}>
+                    <IconHistory className="size-4" />
+                    History
+                  </Button>
+                </div>
+              ) : null}
             </div>
             {message ? <p className="text-destructive text-sm">{message}</p> : null}
           </>

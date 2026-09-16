@@ -14,7 +14,7 @@ function Overview() {
   ).length;
   const items = [
     {
-      to: "/$slug/members" as const,
+      to: "/$slug/settings" as const,
       icon: IconUserFilled,
       label: "Members",
       value: view.members.length,
@@ -30,7 +30,7 @@ function Overview() {
     ...(view.role === "admin"
       ? [
           {
-            to: "/$slug/invites" as const,
+            to: "/$slug/settings" as const,
             icon: IconMailFilled,
             label: "Open invites",
             value: open,

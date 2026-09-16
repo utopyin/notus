@@ -3,7 +3,6 @@ import {
   IconDeviceDesktopFilled,
   IconLayoutDashboardFilled,
   IconLogout,
-  IconMailFilled,
   IconAppsFilled,
   IconBookFilled,
   IconMoonFilled,
@@ -57,14 +56,7 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
-type Active =
-  | "overview"
-  | "members"
-  | "platforms"
-  | "specialists"
-  | "invites"
-  | "settings"
-  | "account";
+type Active = "overview" | "platforms" | "specialists" | "settings" | "account";
 
 /**
  * What a page under the workspace layout tells the shell about itself. No title means the
@@ -114,7 +106,6 @@ export function AppShell(props: {
     .slice(0, 2)
     .toUpperCase();
   const slug = current?.slug;
-  const isAdmin = current?.role === "admin";
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon" className="text-sm">
@@ -189,17 +180,6 @@ export function AppShell(props: {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                      tooltip="Members"
-                      isActive={active === "members"}
-                      render={<Link to="/$slug/members" params={{ slug }} />}
-                    >
-                      <IconUserFilled />
-                      <span>Members</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
                       tooltip="Platforms"
                       isActive={active === "platforms" && activePlatform === undefined}
                       render={<Link to="/$slug/platforms" params={{ slug }} />}
@@ -236,32 +216,17 @@ export function AppShell(props: {
                       <span>Specialists</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                  {isAdmin ? (
-                    <>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                          tooltip="Invites"
-                          isActive={active === "invites"}
-                          render={<Link to="/$slug/invites" params={{ slug }} />}
-                        >
-                          <IconMailFilled />
-                          <span>Invites</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      <SidebarMenuItem>
-                        <SidebarMenuButton
-                          className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                          tooltip="Settings"
-                          isActive={active === "settings"}
-                          render={<Link to="/$slug/settings" params={{ slug }} />}
-                        >
-                          <IconSettingsFilled />
-                          <span>Settings</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    </>
-                  ) : null}
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
+                      tooltip="Settings"
+                      isActive={active === "settings"}
+                      render={<Link to="/$slug/settings" params={{ slug }} />}
+                    >
+                      <IconSettingsFilled />
+                      <span>Settings</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

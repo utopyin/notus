@@ -15,8 +15,6 @@ import { Route as AccountRouteImport } from './routes/account'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as SlugIndexRouteImport } from './routes/$slug.index'
-import { Route as SlugInvitesRouteImport } from './routes/$slug.invites'
-import { Route as SlugMembersRouteImport } from './routes/$slug.members'
 import { Route as SlugSettingsRouteImport } from './routes/$slug.settings'
 import { Route as SlugSpecialistsRouteImport } from './routes/$slug.specialists'
 import { Route as AuthSplatRouteImport } from './routes/auth.$'
@@ -52,16 +50,6 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const SlugIndexRoute = SlugIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => SlugRoute,
-} as any)
-const SlugInvitesRoute = SlugInvitesRouteImport.update({
-  id: '/invites',
-  path: '/invites',
-  getParentRoute: () => SlugRoute,
-} as any)
-const SlugMembersRoute = SlugMembersRouteImport.update({
-  id: '/members',
-  path: '/members',
   getParentRoute: () => SlugRoute,
 } as any)
 const SlugSettingsRoute = SlugSettingsRouteImport.update({
@@ -101,8 +89,6 @@ export interface FileRoutesByFullPath {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
-  '/$slug/invites': typeof SlugInvitesRoute
-  '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -116,8 +102,6 @@ export interface FileRoutesByTo {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
-  '/$slug/invites': typeof SlugInvitesRoute
-  '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -133,8 +117,6 @@ export interface FileRoutesById {
   '/account': typeof AccountRoute
   '/sign-in': typeof SignInRoute
   '/welcome': typeof WelcomeRoute
-  '/$slug/invites': typeof SlugInvitesRoute
-  '/$slug/members': typeof SlugMembersRoute
   '/$slug/settings': typeof SlugSettingsRoute
   '/$slug/specialists': typeof SlugSpecialistsRoute
   '/auth/$': typeof AuthSplatRoute
@@ -151,8 +133,6 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
-    | '/$slug/invites'
-    | '/$slug/members'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -166,8 +146,6 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
-    | '/$slug/invites'
-    | '/$slug/members'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -182,8 +160,6 @@ export interface FileRouteTypes {
     | '/account'
     | '/sign-in'
     | '/welcome'
-    | '/$slug/invites'
-    | '/$slug/members'
     | '/$slug/settings'
     | '/$slug/specialists'
     | '/auth/$'
@@ -247,20 +223,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugIndexRouteImport
       parentRoute: typeof SlugRoute
     }
-    '/$slug/invites': {
-      id: '/$slug/invites'
-      path: '/invites'
-      fullPath: '/$slug/invites'
-      preLoaderRoute: typeof SlugInvitesRouteImport
-      parentRoute: typeof SlugRoute
-    }
-    '/$slug/members': {
-      id: '/$slug/members'
-      path: '/members'
-      fullPath: '/$slug/members'
-      preLoaderRoute: typeof SlugMembersRouteImport
-      parentRoute: typeof SlugRoute
-    }
     '/$slug/settings': {
       id: '/$slug/settings'
       path: '/settings'
@@ -307,8 +269,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface SlugRouteChildren {
-  SlugInvitesRoute: typeof SlugInvitesRoute
-  SlugMembersRoute: typeof SlugMembersRoute
   SlugSettingsRoute: typeof SlugSettingsRoute
   SlugSpecialistsRoute: typeof SlugSpecialistsRoute
   SlugIndexRoute: typeof SlugIndexRoute
@@ -317,8 +277,6 @@ interface SlugRouteChildren {
 }
 
 const SlugRouteChildren: SlugRouteChildren = {
-  SlugInvitesRoute: SlugInvitesRoute,
-  SlugMembersRoute: SlugMembersRoute,
   SlugSettingsRoute: SlugSettingsRoute,
   SlugSpecialistsRoute: SlugSpecialistsRoute,
   SlugIndexRoute: SlugIndexRoute,
