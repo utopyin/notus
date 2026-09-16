@@ -1,6 +1,7 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Sqlite } from "@notus/cloudflare/sqlite";
 import { Sealed } from "@notus/cloudflare/sealed";
+import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
 import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
@@ -239,8 +240,8 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               });
               return Option.some(file);
             }).pipe(Effect.catchCause(() => Effect.succeed(Option.none<string>())));
-          /** Control-plane actions: currently only opening pull requests, never on the box. */
-          const performControl = (command: {
+          /** Opening a pull request: a control-plane action with the App's token, never on the box. */
+          const openPullRequest = (command: {
             readonly id: string;
             readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" }>;
           }) =>
@@ -305,6 +306,46 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   timedOut: false,
                   truncated: false,
                 });
+          /** A message in the origin conversation, sent through its platform; the command id keeps it idempotent. */
+          const postUpdate = (command: {
+            readonly id: string;
+            readonly spec: Extract<CommandSpec, { readonly kind: "update" }>;
+          }) =>
+            Platforms.Service.pipe(
+              Effect.flatMap((platforms) => platforms.forInstallation(command.spec.target.source)),
+              Effect.flatMap((port) => port.conversations.resolveReply(command.spec.target)),
+              Effect.flatMap((handle) => handle.reply(command.spec.text, command.id)),
+              Effect.provideContext(services),
+              Effect.map((receipt) => ({
+                exitCode: 0,
+                stdout: "",
+                stderr: "",
+                durationMs: 0,
+                timedOut: false,
+                truncated: false,
+                update: { reference: receipt.reference },
+              })),
+              Effect.catch((error) =>
+                Effect.succeed({
+                  exitCode: 1,
+                  stdout: "",
+                  stderr:
+                    error._tag === "Sources.SourceError"
+                      ? `update ${error.classification}`
+                      : "update unavailable",
+                  durationMs: 0,
+                  timedOut: false,
+                  truncated: false,
+                }),
+              ),
+            );
+          const performControl = (command: {
+            readonly id: string;
+            readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" | "update" }>;
+          }) =>
+            command.spec.kind === "update"
+              ? postUpdate({ id: command.id, spec: command.spec })
+              : openPullRequest({ id: command.id, spec: command.spec });
           // Built once per object lifetime; each model request selects its operation at call time.
           const model = yield* Layer.build(
             Broker.languageModel(connections, context, operator),
@@ -436,8 +477,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                     return command ? { command, claimedAt: now } : null;
                   }),
                 );
-                if (!claimed || claimed.command.spec.kind !== "pull-request") break;
+                if (!claimed) break;
                 const spec = claimed.command.spec;
+                if (spec.kind !== "pull-request" && spec.kind !== "update") break;
                 // Provider call outside the gate; the lease fences a lost isolate.
                 const result = yield* performControl({ id: claimed.command.id, spec });
                 yield* gate(

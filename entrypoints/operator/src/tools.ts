@@ -128,6 +128,22 @@ export const CreatePullRequest = Tool.make("create_pull_request", {
   success: PullRequestOutcome,
 });
 
+/** Where the update landed, or why it did not. */
+export const UpdateOutcome = Schema.Struct({
+  reference: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+});
+export interface UpdateOutcome extends Schema.Schema.Type<typeof UpdateOutcome> {}
+
+export const PostUpdate = Tool.make("post_update", {
+  description:
+    "Post a message in the conversation where this task started (its Slack thread), right now, without ending the turn: a progress note during long work, or the answer itself when the person asked to be told there rather than where they wrote. Returns once it is posted. If this message is your whole answer, end the turn with no text afterwards; an empty final answer is not posted anywhere.",
+  parameters: Schema.Struct({
+    text: Schema.String.annotate({ description: "The message, plain text suitable for Slack." }),
+  }),
+  success: UpdateOutcome,
+});
+
 /** What a specialist reported, or why the round produced no report. */
 export const SpecialistOutcome = Schema.Struct({
   report: Schema.NullOr(Schema.String),
@@ -158,6 +174,7 @@ export const toolkit = Toolkit.make(
   PushBranch,
   CreatePullRequest,
   RunSpecialist,
+  PostUpdate,
 );
 /**
  * Tool calls are never executed inline. Control records them as durable waits and resolves them
@@ -173,6 +190,7 @@ export const ready = toolkit.pipe(
       push_branch: unreachable,
       create_pull_request: unreachable,
       run_specialist: unreachable,
+      post_update: unreachable,
     }),
   ),
 );
@@ -184,5 +202,6 @@ export const encoded = Toolkit.make(
   PushBranch.setParameters(Schema.toEncoded(PushBranch.parametersSchema)),
   CreatePullRequest.setParameters(Schema.toEncoded(CreatePullRequest.parametersSchema)),
   RunSpecialist.setParameters(Schema.toEncoded(RunSpecialist.parametersSchema)),
+  PostUpdate.setParameters(Schema.toEncoded(PostUpdate.parametersSchema)),
 );
 export const names = Object.keys(toolkit.tools);

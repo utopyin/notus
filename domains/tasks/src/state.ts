@@ -130,7 +130,9 @@ export const layerNoDeps = Layer.effect(
           final: true,
           createdAt: outcome.acceptedAt,
         });
-      // Replay also repairs a missing outbox row without running the simulator again.
+      // Replay also repairs a missing outbox row without running the simulator again. An empty
+      // answer is one the operator gave elsewhere: recorded, never posted, obligation met.
+      const silent = outcome.content === "";
       yield* tx
         .insert(deliveries)
         .values({
@@ -140,10 +142,15 @@ export const layerNoDeps = Layer.effect(
           kind: "answer",
           text: outcome.content,
           digest: outcome.digest,
-          status: "pending",
+          status: silent ? "skipped" : "pending",
           retryAt: now,
         })
         .onConflictDoNothing();
+      if (silent)
+        yield* tx
+          .update(inputs)
+          .set({ obligation: "fulfilled", fulfilledAt: now })
+          .where(and(eq(inputs.id, input.id), eq(inputs.obligation, "pending")));
       return existing?.id ?? responseId;
     });
 

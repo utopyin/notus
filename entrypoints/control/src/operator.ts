@@ -19,6 +19,7 @@ import {
   PullRequestOutcome,
   PushOutcome,
   SpecialistOutcome,
+  UpdateOutcome,
 } from "@notus/operator/tools";
 import { Briefing, type Message } from "@notus/operator/types";
 import { State } from "@notus/tasks/state";
@@ -58,17 +59,28 @@ const settle = Effect.fn("OperatorControl.settle")(function* (now: number) {
   const attempts = yield* Attempts.Service;
   const steps = yield* Steps.Service;
   const state = yield* State.Service;
+  const commands = yield* Commands.Service;
   const settled = yield* steps.settled(batchSize);
   const execution = yield* attempts.snapshot;
+  const commandRows = yield* commands.snapshot;
   const outcomes = new Map(execution.outcomes.map((row) => [row.invocationId, row]));
   let count = 0;
   for (const entry of settled) {
     if (outcomes.has(entry.invocationId)) continue;
     const invocation = execution.invocations.find((row) => row.id === entry.invocationId);
     if (!invocation) continue;
+    // A turn that already spoke through post_update may end with nothing: an empty answer is
+    // recorded and not posted, so the person is not answered twice.
+    const spoke = commandRows.some(
+      (row) =>
+        entry.stepIds.includes(row.stepId) &&
+        row.spec.kind === "update" &&
+        row.status === "done" &&
+        row.result?.update !== undefined,
+    );
     const content =
       entry.result._tag === "Final"
-        ? entry.result.text.trim() || "I have nothing to add to this message."
+        ? entry.result.text.trim() || (spoke ? "" : "I have nothing to add to this message.")
         : fallback(entry.result.failure);
     yield* acceptOutcome(
       {
@@ -156,6 +168,8 @@ const checkoutTimeoutMs = 300_000;
 const encodePush = Schema.encodeEffect(PushOutcome);
 const encodePull = Schema.encodeEffect(PullRequestOutcome);
 const encodeSpecialist = Schema.encodeEffect(SpecialistOutcome);
+const encodeUpdate = Schema.encodeEffect(UpdateOutcome);
+const UpdateParams = Schema.Struct({ text: Schema.NonEmptyString.check(Schema.isMaxLength(4000)) });
 /** A specialist round may run long; the box keeps an idle marker while it does. */
 const specialistTimeoutMs = 45 * 60_000;
 const SpecialistParams = Schema.Struct({
@@ -184,6 +198,7 @@ const toolNames = new Set([
   "push_branch",
   "create_pull_request",
   "run_specialist",
+  "post_update",
 ]);
 // Operational bounds: one command's runtime, the grace before a silent runtime fails it, and
 // how long a box may go without polling before a wake is requested on its behalf.
@@ -237,7 +252,9 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
             ? encodePull({ number: null, url: null, branch: null, error })
             : name === "run_specialist"
               ? encodeSpecialist({ report: null, error })
-              : encodeOutcome(commandFailure(error));
+              : name === "post_update"
+                ? encodeUpdate({ reference: null, error })
+                : encodeOutcome(commandFailure(error));
     return encoded.pipe(
       Effect.orDie,
       Effect.map((result): Evaluation => ({ _tag: "Resolved", result, isFailure: true })),
@@ -294,6 +311,14 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
       const done = command.result.specialist;
       if (!done) return yield* failed(`the specialist round produced no report${stderr}`);
       const encoded = yield* encodeSpecialist({ report: done.report, error: null }).pipe(
+        Effect.orDie,
+      );
+      return { _tag: "Resolved", result: encoded, isFailure: false };
+    }
+    if (name === "post_update") {
+      const done = command.result.update;
+      if (!done) return yield* failed(`the update was not posted${stderr}`);
+      const encoded = yield* encodeUpdate({ reference: done.reference, error: null }).pipe(
         Effect.orDie,
       );
       return { _tag: "Resolved", result: encoded, isFailure: false };
@@ -365,11 +390,32 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
       const defaultBranch = checkedOut?.defaultBranch ?? checkedOut?.branch ?? null;
       if (
         call.name !== "create_pull_request" &&
+        call.name !== "post_update" &&
         (status === null || status.resourceId === null || status.phase === "blocked")
       )
         continue;
       let spec: CommandSpec;
-      if (call.name === "checkout_repository") {
+      if (call.name === "post_update") {
+        const params = yield* Schema.decodeUnknownEffect(UpdateParams)(call.params).pipe(
+          Effect.option,
+        );
+        if (params._tag === "None") continue;
+        // The origin conversation's thread: where the task's first input arrived.
+        const snapshot = yield* state.snapshot;
+        const origin = snapshot.sources.find((row) => row.attachment.origin);
+        const first = origin
+          ? [...snapshot.inputs]
+              .filter((row) => row.sourceId === origin.id)
+              .sort((left, right) => left.createdAt - right.createdAt)[0]
+          : undefined;
+        if (!first) continue;
+        spec = {
+          kind: "update",
+          target: first.input.target,
+          text: params.value.text,
+          timeoutMs: 60_000,
+        };
+      } else if (call.name === "checkout_repository") {
         if (repository === null) continue;
         const pullRequest =
           checkoutParams._tag === "Some" ? checkoutParams.value.pullRequest : undefined;

@@ -203,8 +203,8 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
     truncated: false,
   });
   const spec = command.spec;
-  if (spec.kind === "pull-request")
-    return failure(0, "pull requests are opened by control, never on the box");
+  if (spec.kind === "pull-request" || spec.kind === "update")
+    return failure(0, "control-plane commands never run on the box");
   const asPerson = spec.kind === "push" && (yield* Git.signedIn());
   const script =
     spec.kind === "shell"

@@ -1,4 +1,4 @@
-import { Source } from "@notus/platform/source";
+import { ReplyTarget, Source } from "@notus/platform/source";
 import { Environment } from "@notus/workspaces/types";
 import * as Schema from "effect/Schema";
 
@@ -234,8 +234,8 @@ export const TaskBranch = Schema.String.check(
   ),
 );
 /**
- * What executes for the operator. shell, checkout and push run on the dev box runtime;
- * pull-request runs in the control plane with its own token.
+ * What executes for the operator. shell, checkout, push and specialist run on the dev box
+ * runtime; pull-request and update run in the control plane with its own credentials.
  */
 export const CommandSpec = Schema.Union([
   Schema.Struct({
@@ -270,6 +270,13 @@ export const CommandSpec = Schema.Union([
     timeoutMs: Schema.Int.check(Schema.isBetween({ minimum: 60_000, maximum: 3_600_000 })),
   }),
   Schema.Struct({
+    /** A message posted in the conversation where the task started, mid-turn; control sends it. */
+    kind: Schema.Literal("update"),
+    target: ReplyTarget,
+    text: Schema.NonEmptyString.check(Schema.isMaxLength(4000)),
+    timeoutMs: Timeout,
+  }),
+  Schema.Struct({
     kind: Schema.Literal("pull-request"),
     repository: RepositoryRef,
     branch: TaskBranch,
@@ -282,7 +289,7 @@ export const CommandSpec = Schema.Union([
 ]);
 export type CommandSpec = typeof CommandSpec.Type;
 export const executorOf = (spec: CommandSpec): "runtime" | "control" =>
-  spec.kind === "pull-request" ? "control" : "runtime";
+  spec.kind === "pull-request" || spec.kind === "update" ? "control" : "runtime";
 export const Command = Schema.Struct({ id: Schema.NonEmptyString, spec: CommandSpec });
 export interface Command extends Schema.Schema.Type<typeof Command> {}
 /** Bounded observation the runtime reports; output is truncated, never streamed. */
@@ -314,6 +321,8 @@ export const CommandResult = Schema.Struct({
   specialist: Schema.optionalKey(
     Schema.Struct({ report: Schema.String.check(Schema.isMaxLength(65_536)) }),
   ),
+  /** Present for updates the origin conversation confirmed. */
+  update: Schema.optionalKey(Schema.Struct({ reference: Schema.NonEmptyString })),
   /** Present for successfully opened pull requests only. */
   pullRequest: Schema.optionalKey(
     Schema.Struct({

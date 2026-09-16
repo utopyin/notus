@@ -52,6 +52,8 @@ export const Waiting = Schema.Struct({
 export interface Waiting extends Schema.Schema.Type<typeof Waiting> {}
 export const Settled = Schema.Struct({
   invocationId: Schema.NonEmptyString,
+  /** Every step of the turn, so its commands can be told apart from earlier turns'. */
+  stepIds: Schema.Array(Schema.NonEmptyString),
   result: Schema.TaggedUnion({
     Final: { text: Schema.String },
     Failed: { failure: Schema.NonEmptyString },
@@ -271,8 +273,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const result: Array<Settled> = [];
     for (const row of rows) {
       const step = yield* Schema.decodeEffect(Step)(row);
+      const siblings = yield* db
+        .select({ id: steps.id })
+        .from(steps)
+        .where(eq(steps.invocationId, step.invocationId));
       result.push({
         invocationId: step.invocationId,
+        stepIds: siblings.map((sibling) => sibling.id),
         result:
           step.status === "failed"
             ? { _tag: "Failed", failure: step.failure ?? "unknown" }

@@ -13,7 +13,7 @@ Each topic has one canonical home:
 | [Product context](CONTEXT.md)                       | Requirements, vocabulary, scope, and open product decisions                       |
 | [Agent instructions](AGENTS.md)                     | Working practices and code style                                                  |
 | [Architecture](docs/architecture/CONTEXT.md)        | Tier boundaries, provider separation, and service/Layer conventions               |
-| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, request flows, dev box wire, claims          |
+| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, platforms, flows, dev box wire, claims       |
 | [Codebase proposal](docs/plans/codebase.md)         | Package responsibilities and reviewed runtime/data recommendations                |
 | [First tracer](docs/plans/tracer.md)                | End-to-end scenario, runnable increments, and blocking experiments                |
 | [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order   |
