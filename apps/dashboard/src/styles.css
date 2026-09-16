@@ -152,13 +152,18 @@
   border-radius: var(--radius-lg);
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
 }
-/* Space above a heading goes on the block, not inside its content, so the block handles line up
-   with the heading's text instead of its padding. */
-.bn-editor [data-content-type="heading"] {
-  padding-top: 0;
+/* BlockNote drops the block handles a fixed 39, 27 and 18.5px below a level 1, 2 and 3 heading's
+   top, sized for its own 3em, 2em and 1.3em headings over an 18px top padding. With the smaller
+   headings below, these paddings put each heading's first line at exactly that height, so the
+   handles sit on the text. */
+.bn-editor [data-content-type="heading"][data-level="1"] {
+  padding-top: 37px;
 }
-.bn-editor .bn-block-outer:has(> .bn-block > [data-content-type="heading"]) {
-  margin-top: 0.75em;
+.bn-editor [data-content-type="heading"][data-level="2"] {
+  padding-top: 28px;
+}
+.bn-editor [data-content-type="heading"][data-level="3"] {
+  padding-top: 21px;
 }
 .bn-editor [data-content-type="heading"][data-level="1"],
 .bn-editor [data-prev-level="1"] {
