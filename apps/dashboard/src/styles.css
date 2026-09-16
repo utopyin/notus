@@ -183,8 +183,8 @@
 /* The handles keep a gap from the text (floating-ui places the menu flush, so the gap is the
    menu's own right padding), sit a little apart from each other, and hover as round pills. */
 .bn-shadcn .bn-side-menu {
-  gap: 2px;
-  padding-right: 3px;
+  gap: 1px;
+  padding-right: 4px;
 }
 .bn-shadcn .bn-side-menu button.bn-button {
   width: 1.25rem;
