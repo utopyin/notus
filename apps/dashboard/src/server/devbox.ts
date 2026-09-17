@@ -8,7 +8,7 @@ import type { Json } from "../lib/json";
 const api = () => Cloudflare.toRpcAsync<Api>(env.API);
 const cookie = () => getRequestHeader("cookie") ?? "";
 
-/** The workspace's devbox configuration and the images this deployment approves. */
+/** The workspace's devbox configuration and the images it may select: the deployment's and its own. */
 export const getEnvironment = createServerFn({ method: "GET" })
   .inputValidator((input: { workspaceId: string }) => input)
   .handler(async ({ data }) => await api().dashboardEnvironment(cookie(), data.workspaceId));
@@ -31,4 +31,18 @@ export const saveEnvironment = createServerFn({ method: "POST" })
   .handler(
     async ({ data }) =>
       await api().dashboardSaveEnvironment(cookie(), data.workspaceId, data.config),
+  );
+
+/** An admin approves an image of the workspace's own by its immutable reference. */
+export const addImage = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; ref: string; label: string }) => input)
+  .handler(
+    async ({ data }) =>
+      await api().dashboardAddImage(cookie(), data.workspaceId, data.ref, data.label),
+  );
+
+export const removeImage = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; ref: string }) => input)
+  .handler(
+    async ({ data }) => await api().dashboardRemoveImage(cookie(), data.workspaceId, data.ref),
   );

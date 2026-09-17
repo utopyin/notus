@@ -27,11 +27,14 @@ import {
   type Fields,
 } from "../devbox/namespace/fields";
 import { NamespaceForm } from "../devbox/namespace/form";
+import { WorkspaceImages } from "../devbox/namespace/images";
 import { NamespaceMark } from "../devbox/namespace/mark";
 import { canonical } from "../lib/json";
 import {
+  addImage,
   environmentHistory,
   getEnvironment,
+  removeImage,
   saveEnvironment,
   type EnvironmentRevision,
 } from "../server/devbox";
@@ -47,7 +50,7 @@ export const Route = createFileRoute("/$slug/devbox")({
   },
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (!parent.loaderData) return { environment: null, approvedImages: [] };
+    if (!parent.loaderData) return { environment: null, approvedImages: [], workspaceImages: [] };
     const result = await getEnvironment({
       data: { workspaceId: parent.loaderData.workspace.id },
     });
@@ -66,7 +69,7 @@ const when = (millis: number) =>
  */
 function Devbox() {
   const { view } = useWorkspace();
-  const { environment, approvedImages } = Route.useLoaderData();
+  const { environment, approvedImages, workspaceImages } = Route.useLoaderData();
   const router = useRouter();
   const isAdmin = view.role === "admin";
   // The unsaved fields, and a revision opened from the history to be put back.
@@ -106,6 +109,12 @@ function Devbox() {
     setOpened(null);
     setSaving(false);
     setMessage(null);
+  };
+  // The list the select offers comes back with the page, so a change reloads it.
+  const changeImages = async (result: { ok: true } | { ok: false; reason: string }) => {
+    if (!result.ok) return result.reason;
+    await router.invalidate();
+    return null;
   };
   const openHistory = async () => {
     const result = await environmentHistory({ data: { workspaceId: view.workspace.id } });
@@ -179,6 +188,30 @@ function Devbox() {
             </div>
           ) : null}
         </CardFooter>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Your images</CardTitle>
+          <CardDescription className="text-pretty">
+            Images this workspace approves beside the ones the deployment offers. Build yours from
+            the Notus base image, publish it, and add its digest; it then appears in the image field
+            above. Notus does not inspect it: whoever adds an image vouches for what it contains.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WorkspaceImages
+            images={workspaceImages}
+            selected={fieldsOf(stored).imageRef}
+            disabled={!isAdmin}
+            nameOf={nameOf}
+            onAdd={async (ref, label) =>
+              changeImages(await addImage({ data: { workspaceId: view.workspace.id, ref, label } }))
+            }
+            onRemove={async (ref) =>
+              changeImages(await removeImage({ data: { workspaceId: view.workspace.id, ref } }))
+            }
+          />
+        </CardContent>
       </Card>
       <Sheet
         open={history !== null}
