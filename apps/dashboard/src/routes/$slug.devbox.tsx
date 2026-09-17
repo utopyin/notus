@@ -79,6 +79,17 @@ function Devbox() {
   const [message, setMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<ReadonlyArray<EnvironmentRevision> | null>(null);
   const stored = environment?.config;
+  // The reloaded page lands in a transition, later than a state update made after the save. So the
+  // draft is dropped in the render the new revision arrives in, never before it: clearing it on
+  // the save's return would show the stored values once more.
+  const revision = environment?.revision ?? null;
+  const [seen, setSeen] = useState(revision);
+  if (seen !== revision) {
+    setSeen(revision);
+    setDraft(null);
+    setOpened(null);
+    setSaving(false);
+  }
   // A workspace that was never configured starts from the image the deployment approves.
   const current = fieldsOf(stored);
   const fields =
@@ -104,11 +115,9 @@ function Devbox() {
       setMessage(result.reason);
       return;
     }
-    await router.invalidate();
-    setDraft(null);
-    setOpened(null);
-    setSaving(false);
+    // Every save is a new revision, and its arrival ends the draft and the saving state.
     setMessage(null);
+    await router.invalidate();
   };
   // The list the select offers comes back with the page, so a change reloads it.
   const changeImages = async (result: { ok: true } | { ok: false; reason: string }) => {
