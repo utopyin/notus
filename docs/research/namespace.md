@@ -71,6 +71,10 @@ A warm wake retained the resource, VM, epoch and historical readiness timestamp.
 
 These live checks used the actual runtime image and authenticated Control callbacks with an isolated Bun SQLite host, not Cloudflare. Separate native-workerd tests executed the actual Api/Task host in 41 checks with mocked external responses. Cleanup expired the isolated devbox and reconciled Fetch 404. No Worker deployment or Slack readiness enablement is implied by these probes.
 
+### Image build API probe, 2026-09-17
+
+`namespace.cloud.image.v1beta.ImageService` at `https://global.namespaceapis.com` answers plain Connect unary calls with a tenant token, the transport `@notus/namespace` already speaks, so a Worker could call it. It does not build yet. With a user session's tenant token, `ListBlueprints` returned 200. `CreateBlueprint` with an inline Dockerfile `FROM` the approved base digest, then `Build`, both returned 200, and the blueprint stayed at `status.imageRef: "building-from-dockerfile"`, `builderRef: "placeholder"` with an unchanged `statusUpdatedAt` for over ten minutes. The `aptBasedImage` variant behaved the same with `"building-from-apt-based-image"`. Both probe blueprints were removed; nothing else in the workspace was touched. The request carries no build arguments, so a future caller must substitute the base reference into the Dockerfile text itself. The automation token's grants for this service are untested. Until the service builds, a workspace's own image is built outside Notus with `devbox image build` and approved by its digest; see the [dashboard plan](../plans/dashboard.md).
+
 ## Lifetime and persistence
 
 - [Idle detection](https://namespace.so/docs/devbox/managing#how-idleness-is-detected) uses active SSH, a recently created session, or any file under `/.namespace/tasks`. [Busy builds and agents can still stop](https://namespace.so/docs/guides/devbox/long-running-tasks). CPU load, old sessions, HTTP activity, and pending promises are not documented keepalives.
