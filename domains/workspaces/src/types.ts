@@ -21,6 +21,18 @@ export const EnvironmentRevision = Schema.Struct({
 });
 export interface EnvironmentRevision extends Schema.Schema.Type<typeof EnvironmentRevision> {}
 
+/** An image reference a workspace admin approved. Only the provider package reads `ref`. */
+export const ImageLabel = Schema.String.check(Schema.isMaxLength(80));
+export const WorkspaceImage = Schema.Struct({
+  workspaceId: Schema.NonEmptyString,
+  provider: Schema.NonEmptyString,
+  ref: Schema.NonEmptyString.check(Schema.isMaxLength(1024)),
+  label: ImageLabel,
+  addedBy: Schema.NonEmptyString,
+  addedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export interface WorkspaceImage extends Schema.Schema.Type<typeof WorkspaceImage> {}
+
 export const StartGrant = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   initiatorId: Schema.NonEmptyString,

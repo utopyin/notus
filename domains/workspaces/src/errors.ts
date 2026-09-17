@@ -9,6 +9,12 @@ export class EnvironmentError extends Schema.TaggedError<EnvironmentError>()(
   },
 ) {}
 
+/** Excludes rows and underlying causes, like the environment's error. */
+export class ImageError extends Schema.TaggedError<ImageError>()("Workspaces.ImageError", {
+  operation: Schema.Literals(["approved", "list", "add", "remove"]),
+  reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden"]),
+}) {}
+
 export class AccessError extends Schema.TaggedError<AccessError>()("Workspaces.AccessError", {
   operation: Schema.String,
   cause: Schema.Defect(),

@@ -45,6 +45,29 @@ export const environmentRevisions = sqliteTable(
 );
 
 /**
+ * A devbox image the workspace's admins approved, beside the ones the deployment approves. The
+ * reference is the provider's own string; this table never interprets it.
+ */
+export const images = sqliteTable(
+  "workspace_images",
+  {
+    /** key(workspaceId, provider, ref) */
+    key: text().primaryKey(),
+    workspaceId: text().notNull(),
+    provider: text().notNull(),
+    ref: text().notNull(),
+    label: text().notNull().default(""),
+    addedBy: text().notNull(),
+    addedAt: integer().notNull(),
+  },
+  (table) => [
+    index("workspace_images_workspace").on(table.workspaceId),
+    check("workspace_images_provider", sql`length(${table.provider}) > 0`),
+    check("workspace_images_ref", sql`length(${table.ref}) BETWEEN 1 AND 1024`),
+  ],
+);
+
+/**
  * A platform installed for a workspace: a Slack team, a GitHub App installation. An installation
  * belongs to one workspace, so its events route to exactly one place.
  */
