@@ -69,6 +69,18 @@ docker build --platform=linux/amd64 -f apps/devbox/Dockerfile.derived \
   -t notus-project:local apps/devbox
 ```
 
+[Dockerfile.dotfiles](Dockerfile.dotfiles) is a derived image carrying a personal dotfiles setup. Root clones the dotfiles repository at a pinned commit and installs its APT manifest; the `devbox` user then runs the repository's `bin/bootstrap --unattended`, which stows the configuration and installs the Mise toolset without signing in to anything. `NOTUS_BASE_IMAGE` and `DOTFILES_REF` default to pinned values in the file because `devbox image build` passes no build arguments; bump them there, or override them in a docker build. The optional `github_token` build secret only raises GitHub's API rate limit while Mise resolves releases and is not written to a layer:
+
+```sh
+docker build --platform=linux/amd64 -f apps/devbox/Dockerfile.dotfiles \
+  --build-arg NOTUS_BASE_IMAGE="$ACTUAL_BASE_OCI_REF" \
+  --build-arg DOTFILES_REF="$DOTFILES_COMMIT_SHA" \
+  --secret id=github_token,env=GITHUB_TOKEN \
+  -t notus-dotfiles:local apps/devbox
+```
+
+The `devbox` login shell becomes zsh, which is where the Mise tools are on `PATH`. Register it with [capabilities.dotfiles.json](capabilities.dotfiles.json), the canonical capabilities with `"shell": "/usr/bin/zsh"`, so Namespace's own terminals and SSH sessions open zsh too; the base has no zsh, so the canonical file keeps bash. Read the registered image back, since registration has dropped the `shell` field before. Operator commands and Herdr terminals still run bash with the fixed environment described above, so they do not see those tools. Mise tools declared as `latest` resolve at build time; record the resulting OCI digest. Sign in on the live box with `dot init`.
+
 Keep `USER devbox` in both images. Namespace's generated username metadata mishandles the numeric `1001:1001` form, despite its validity in Docker. The named form preserves UID/GID 1001 and fixed the observed container-creation failure.
 
 Register the derived image with the same canonical `capabilities.json` again, inspect effective metadata, and supply the startup session at Create as described above. OCI inheritance is not Namespace registration. Project-specific dependencies belong in the derived image, without credentials baked into layers.

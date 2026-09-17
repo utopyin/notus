@@ -1,0 +1,8 @@
+{
+  "remoteUser": "devbox",
+  "shell": "/usr/bin/zsh",
+  "workspaceDir": "/workspaces",
+  "privileged": false,
+  "setupDockerClient": false,
+  "sessions": [{ "name": "notus", "command": "exec /usr/local/bin/notus-devbox start" }]
+}

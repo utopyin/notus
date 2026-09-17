@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+# Derived image with a personal dotfiles setup: zsh, stowed config, and Mise-managed
+# developer tools, installed by the dotfiles repository's own `dot init --unattended`.
+# `devbox image build` passes no build arguments, so both pins default here; a docker build can
+# still override them. The base is the published digest the deployment approves.
+ARG NOTUS_BASE_IMAGE=nscr.io/<tenant>/notus/base-herdr-0.9.0-biv7fr@sha256:842eb60bc674ec90e36f3e10dfa0e265522ad6dd5647f71833b099b415df5134
+FROM ${NOTUS_BASE_IMAGE}
+ARG DOTFILES_REPO=<dotfiles-repo>
+# A full commit SHA. Mise tools declared as "latest" still resolve at build time, so record the
+# resulting OCI digest rather than expecting identical rebuilds.
+ARG DOTFILES_REF=8ff696e7c05608c7c870bb76fa36924fbd297b8d
+# Tools this image already pins in /usr/local/bin; Mise must not shadow them in zsh.
+ARG DOTFILES_SKIP_TOOLS=herdr,codex
+USER root
+RUN test -n "$DOTFILES_REF" \
+    && git clone "$DOTFILES_REPO" /home/devbox/.dotfiles \
+    && git -C /home/devbox/.dotfiles checkout --quiet --detach "$DOTFILES_REF" \
+    && chown -R 1001:1001 /home/devbox/.dotfiles \
+    && apt-get update \
+    && grep -Ev '^[[:space:]]*(#|$)' /home/devbox/.dotfiles/packages/ubuntu.apt \
+       | xargs apt-get install -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    # SSH clients announce en_US.UTF-8; without it zsh miscounts prompt glyphs.
+    && locale-gen en_US.UTF-8 \
+    && usermod --shell /usr/bin/zsh devbox \
+    # The base creates these parents as root; the dotfiles need ~/.local/bin and ~/.local/share.
+    && chown 1001:1001 /home/devbox/.local /home/devbox/.local/state
+USER devbox
+# No sudo exists here: root installed the APT manifest above, so the unattended init finds
+# nothing missing. It skips GitHub sign-in and Git identity; never bake in credentials.
+# The optional secret only raises GitHub's API rate limit while Mise resolves releases.
+RUN --mount=type=secret,id=github_token,uid=1001,required=false \
+    if [ -s /run/secrets/github_token ]; then \
+      GITHUB_TOKEN=$(cat /run/secrets/github_token); export GITHUB_TOKEN; \
+    fi \
+    && cd /home/devbox/.dotfiles \
+    && USER=devbox ./bin/bootstrap --unattended --skip-tools "$DOTFILES_SKIP_TOOLS" \
+    && rm -rf /home/devbox/.cache
+WORKDIR /workspaces
+# Publish with capabilities.dotfiles.json as native BlueprintSpec metadata: the canonical
+# capabilities with zsh as the shell, which only this image has. Inheritance is not registration.
