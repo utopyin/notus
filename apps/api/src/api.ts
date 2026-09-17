@@ -638,7 +638,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
             Effect.flatMap((environments) => environments.view(workspaceId, me.userId)),
             Effect.map((environment) => ({
               environment: Option.getOrNull(environment),
-              approvedImages: approved ? [approved.approvedImageRef] : [],
+              approvedImages: approved?.approvedImageRefs ?? [],
             })),
           ),
         ),
@@ -659,7 +659,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
               });
             yield* validateRestricted({
               config,
-              approvedImageRef: approved.approvedImageRef,
+              approvedImageRefs: approved.approvedImageRefs,
               approvedImageSource: approved.approvedImageSource,
             }).pipe(
               Effect.mapError((error): DashboardFailure => ({

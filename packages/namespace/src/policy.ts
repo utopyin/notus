@@ -64,11 +64,11 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
       message: "Restricted launch requires a host-audited image source and metadata",
     });
   }
-  yield* Schema.decodeEffect(imageRef)(input.approvedImageRef).pipe(
+  yield* Schema.decodeUnknownEffect(Schema.NonEmptyArray(imageRef))(input.approvedImageRefs).pipe(
     Effect.mapError(
       () =>
         new ConfigError({
-          message: "Approved image must be an explicit immutable OCI sha256 reference",
+          message: "Approved images must be explicit immutable OCI sha256 references",
         }),
     ),
   );
@@ -78,9 +78,9 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
         new ConfigError({ message: "Unsupported or conflicting restricted native configuration" }),
     ),
   );
-  if (config.raw.imageRef !== input.approvedImageRef) {
+  if (!input.approvedImageRefs.includes(config.raw.imageRef as string)) {
     return yield* new ConfigError({
-      message: "Configuration must select the exact approved imageRef",
+      message: "Configuration must select one of the approved images",
     });
   }
   return config;

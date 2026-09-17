@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as SchemaGetter from "effect/SchemaGetter";
 
 // Alchemy captures these Config reads during construction and reifies them
 // from Worker secret bindings at runtime. Never read process.env in handlers.
@@ -108,19 +109,30 @@ export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
 });
 
+/** One reference, or several separated by commas: every image the deployment audited. */
+const ApprovedImages = Schema.String.pipe(
+  Schema.decodeTo(Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(1)), {
+    decode: SchemaGetter.transform((text: string) =>
+      text
+        .split(",")
+        .map((ref) => ref.trim())
+        .filter((ref) => ref !== ""),
+    ),
+    encode: SchemaGetter.transform((refs: ReadonlyArray<string>) => refs.join(",")),
+  }),
+);
+
 /**
- * The image this deployment approves for workspace devboxes, with the audit that approved it.
+ * The images this deployment approves for workspace devboxes, with the audit that approved them.
  * Null where no devbox can start; the dashboard then offers no image to select.
  */
 export const approvedImageConfig = Effect.gen(function* () {
-  const ref = yield* Config.option(
-    Config.schema(Schema.NonEmptyString, "NOTUS_APPROVED_IMAGE_REF"),
-  );
+  const refs = yield* Config.option(Config.schema(ApprovedImages, "NOTUS_APPROVED_IMAGE_REF"));
   const audit = yield* Config.option(
     Config.schema(Schema.Literal("audited-no-checkout-or-startup"), "NOTUS_IMAGE_AUDIT"),
   );
-  return Option.isSome(ref) && Option.isSome(audit)
-    ? { approvedImageRef: ref.value, approvedImageSource: audit.value }
+  return Option.isSome(refs) && Option.isSome(audit)
+    ? { approvedImageRefs: refs.value, approvedImageSource: audit.value }
     : null;
 });
 
@@ -128,7 +140,7 @@ export const approvedImageConfig = Effect.gen(function* () {
 export const providerConfig = Effect.gen(function* () {
   return {
     credential: yield* Config.redacted("NAMESPACE_CONTROL_TOKEN"),
-    approvedImageRef: yield* Config.schema(Schema.NonEmptyString, "NOTUS_APPROVED_IMAGE_REF"),
+    approvedImageRefs: yield* Config.schema(ApprovedImages, "NOTUS_APPROVED_IMAGE_REF"),
     // Set only after auditing both executable contents and provider registration metadata.
     imageAudit: yield* Config.schema(
       Schema.Literal("audited-no-checkout-or-startup"),

@@ -325,7 +325,7 @@ export const layerNoDeps = Layer.effect(
           });
         }
         const result = yield* resource("Create", yield* rpc("Create", body));
-        if (result.name !== input.name || result.image?.ref !== input.approvedImageRef)
+        if (result.name !== input.name || result.image?.ref !== raw.imageRef)
           return yield* new ControlError({
             operation: "Create",
             reason: "identityMismatch",

@@ -69,9 +69,14 @@ export const NamespaceForm: FC<{
   disabled: boolean;
   onChange: (change: Partial<Fields>) => void;
 }> = ({ fields, approvedImages, disabled, onChange }) => {
-  // The deployment approves one image; the workspace can only follow it.
-  const approved = approvedImages[0] ?? null;
-  const stale = approved !== null && fields.imageRef !== approved;
+  // Only images the deployment audited can be selected; a stored one that no longer is still shows.
+  const imageApproved = approvedImages.includes(fields.imageRef);
+  const imageItems = [
+    ...approvedImages.map((value) => ({ value, label: shortValue(value) })),
+    ...(fields.imageRef && !imageApproved
+      ? [{ value: fields.imageRef, label: `${shortValue(fields.imageRef)} (no longer approved)` }]
+      : []),
+  ];
   const unusedNames = environmentNames.filter(
     (name) => !fields.variables.some((item) => item.name === name),
   );
@@ -83,7 +88,7 @@ export const NamespaceForm: FC<{
     <div className="flex flex-col gap-8">
       <Section
         title="Image"
-        description="What the devbox boots from. The deployment approves one image, audited before it is set; a workspace follows it."
+        description="What the devbox boots from. Only images the deployment audited and approved can be selected."
       >
         <div className="sm:col-span-2">
           <Field
@@ -95,30 +100,31 @@ export const NamespaceForm: FC<{
                 : "This deployment approves no image, so no devbox can start."
             }
           >
-            <Input
-              id="image"
-              readOnly
-              className="font-mono"
-              value={shortValue(fields.imageRef)}
-              placeholder="No image approved"
-            />
+            <Select
+              items={imageItems}
+              value={fields.imageRef || null}
+              disabled={disabled || imageItems.length === 0}
+              onValueChange={(value) => {
+                if (typeof value === "string") onChange({ imageRef: value });
+              }}
+            >
+              <SelectTrigger id="image" className="font-mono">
+                <SelectValue placeholder="No image approved" />
+              </SelectTrigger>
+              <SelectContent>
+                {imageItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value} className="font-mono">
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          {stale ? (
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <p className="text-muted-foreground text-xs">
-                The deployment now approves {shortValue(approved)}. Tasks keep starting from the
-                image above until this one is selected.
-              </p>
-              {disabled ? null : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onChange({ imageRef: approved })}
-                >
-                  Use the approved image
-                </Button>
-              )}
-            </div>
+          {fields.imageRef && !imageApproved ? (
+            <p className="text-muted-foreground mt-2 text-xs">
+              This image is no longer approved. Tasks keep starting from it until an approved one is
+              selected.
+            </p>
           ) : null}
         </div>
       </Section>

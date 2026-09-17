@@ -54,7 +54,7 @@ export const execution = (
     Layer.provide([
       authority,
       Layer.succeed(Devbox.NamespacePolicy, {
-        approvedImageRef: provider.approvedImageRef,
+        approvedImageRefs: provider.approvedImageRefs,
         approvedImageSource: provider.imageAudit,
       }),
       Layer.succeed(NamespaceConfig.Service, {
