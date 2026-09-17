@@ -21,7 +21,12 @@ export class Authority extends Context.Service<
 /** Configuration of this Namespace implementation, not a shared machine model. */
 export class NamespacePolicy extends Context.Service<
   NamespacePolicy,
-  Pick<RestrictedInput, "approvedImageRefs" | "approvedImageSource">
+  Pick<RestrictedInput, "approvedImageSource"> & {
+    /** Every image the workspace may launch: the deployment's, then its admins' own. */
+    readonly approvedImageRefs: (
+      workspaceId: string,
+    ) => Effect.Effect<RestrictedInput["approvedImageRefs"]>;
+  }
 >()("@notus/executions/Devbox.NamespacePolicy") {}
 
 export interface Interface {
@@ -91,7 +96,7 @@ export const layerNoDeps = Layer.effect(
               name: claim.providerName,
               operationId: claim.bootstrap.operationId,
               config: claim.environment.config,
-              approvedImageRefs: policy.approvedImageRefs,
+              approvedImageRefs: yield* policy.approvedImageRefs(claim.environment.workspaceId),
               approvedImageSource: policy.approvedImageSource,
               bootstrap: { controlUrl: authority.controlUrl, credential },
             });

@@ -4,6 +4,7 @@ import { Sealed } from "@notus/cloudflare/sealed";
 import { Inbox } from "@notus/control/inbox";
 import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
+import { Images } from "@notus/workspaces/images";
 import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import type { Admission } from "@notus/platform/source";
@@ -133,6 +134,8 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ),
             ).pipe(
               Layer.provideMerge(RuntimeLayers.execution(runtime, provider)),
+              // A workspace's own approved images live in the shared database.
+              Layer.provide(Images.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw)))),
               Layer.provide(cryptoLayer),
             ),
           ).pipe(Effect.orDie);

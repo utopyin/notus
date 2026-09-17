@@ -2,6 +2,7 @@ import * as Auth from "@notus/control/runtime/auth";
 import { Devbox } from "@notus/executions/devbox";
 import { DevboxFailure } from "@notus/executions/errors";
 import { Config as NamespaceConfig } from "@notus/namespace/config";
+import { Images } from "@notus/workspaces/images";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { RuntimeConfig, providerConfig } from "./config";
@@ -53,10 +54,25 @@ export const execution = (
   const native = Devbox.layer.pipe(
     Layer.provide([
       authority,
-      Layer.succeed(Devbox.NamespacePolicy, {
-        approvedImageRefs: provider.approvedImageRefs,
-        approvedImageSource: provider.imageAudit,
-      }),
+      Layer.effect(
+        Devbox.NamespacePolicy,
+        Effect.gen(function* () {
+          const images = yield* Images.Service;
+          return Devbox.NamespacePolicy.of({
+            approvedImageSource: provider.imageAudit,
+            // A failed read leaves the deployment's list: a workspace image is then refused, never
+            // an unapproved one launched.
+            approvedImageRefs: (workspaceId) =>
+              images.approved(workspaceId, "namespace").pipe(
+                Effect.tapError((error) =>
+                  Effect.logWarning(`devbox.workspace_images_failed ${error.reason}`),
+                ),
+                Effect.orElseSucceed((): ReadonlyArray<string> => []),
+                Effect.map((own) => [...provider.approvedImageRefs, ...own]),
+              ),
+          });
+        }),
+      ),
       Layer.succeed(NamespaceConfig.Service, {
         credential: provider.credential,
         timeoutMs: provider.timeoutMs,
