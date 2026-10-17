@@ -909,9 +909,12 @@ sequenceDiagram
   W-->>A: platform URL with state = nonce
   A->>P: consent
   P->>W: GET /platforms/platform/install?state and code or installation_id
-  W->>WS: takeInstallIntent(nonce)
+  W-->>A: 302 to the same path on the dashboard origin, for the session cookie
+  A->>DW: GET /platforms/platform/install with the cookie
+  DW->>W: dashboardCompleteInstall(cookie, platform, query)
+  W->>WS: takeInstallIntent(nonce): only the user who began it completes it
   W->>P: adapter completes: Slack oauth.v2.access, GitHub App JWT installation lookup
-  W->>WS: install: record installation and credential, move it here if another workspace held it
+  W->>WS: install: record installation and credential, refused if another workspace holds it
   W-->>A: 302 to the workspace Platforms page
   end
 ```

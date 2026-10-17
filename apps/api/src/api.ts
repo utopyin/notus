@@ -189,14 +189,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Identities.layer,
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
-    // The platform's redirect after an install; it needs the dashboard's origin to land on.
+    // The platform's redirect after an install; it moves on to the dashboard's origin.
     const install = dashboard.origin
-      ? Install.callback(dashboard.origin).pipe(
-          Effect.scoped,
-          Effect.provide(dashboardLayer),
-          Effect.provideService(RuntimeContext, runtime),
-          Effect.orDie,
-        )
+      ? Install.bounce(dashboard.origin)
       : Effect.succeed(HttpServerResponse.empty({ status: 404 }));
     /** Which platforms this deployment can install; the dashboard offers exactly these. */
     const installable: ReadonlyArray<Platform> = [
@@ -558,6 +553,19 @@ export default class Api extends Cloudflare.Worker<Api>()(
             });
             return { url };
           }),
+        ),
+      /**
+       * The platform's redirect, bounced to the dashboard so it arrives with the session cookie:
+       * only the user who began the install completes it. Answers where to send the browser.
+       */
+      dashboardCompleteInstall: (cookie: string, platform: string, search: string) =>
+        authorized(cookie, (me) =>
+          dashboard.origin
+            ? Install.complete(dashboard.origin, me.userId, platform, search).pipe(
+                Effect.provideService(RuntimeContext, runtime),
+                Effect.map((location) => ({ location })),
+              )
+            : Effect.fail<DashboardFailure>({ _tag: "Unconfigured", reason: "unconfigured" }),
         ),
       dashboardUninstall: (
         cookie: string,

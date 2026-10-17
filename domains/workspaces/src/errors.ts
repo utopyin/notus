@@ -47,6 +47,7 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()(
       "expired",
       "last-admin",
       "not-installed",
+      "installed-elsewhere",
     ]),
   },
 ) {}

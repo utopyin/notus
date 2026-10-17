@@ -16,38 +16,57 @@ const redirect = (location: string) =>
   HttpServerResponse.empty({ status: 302, headers: { location } });
 
 /**
- * The platform's redirect after an administrator installed it. The nonce it carries names the
- * intent; the adapter turns the rest of the query into an installation; the workspace records it.
- * Every outcome lands on the dashboard, with a reason when nothing was installed.
+ * The platform's redirect after an administrator installed it, on this Worker's public origin.
+ * The session cookie lives on the dashboard's origin, so the request moves there unchanged; the
+ * dashboard hands it back with the cookie through `complete`.
  */
-export const callback = (dashboardOrigin: string) =>
+export const bounce = (dashboardOrigin: string) =>
   Effect.gen(function* () {
-    const platforms = yield* Platforms.Service;
-    const workspaces = yield* Workspaces.Service;
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = new URL(request.url, "https://notus.invalid");
     const platform = /^\/platforms\/([a-z]+)\/install$/.exec(url.pathname)?.[1];
     if (request.method !== "GET" || platform === undefined || !Schema.is(Platform)(platform))
       return HttpServerResponse.empty({ status: 404 });
+    return redirect(`${dashboardOrigin}/platforms/${platform}/install${url.search}`);
+  });
+
+/**
+ * Completes an install for the signed-in user. The nonce names the intent, which only the user
+ * who began it may complete: anyone else holding the platform's redirect gets nothing. The
+ * adapter turns the rest of the query into an installation; the workspace records it. Every
+ * outcome is a dashboard location, with a reason when nothing was installed.
+ */
+export const complete = (
+  dashboardOrigin: string,
+  userId: string,
+  platform: string,
+  search: string,
+) =>
+  Effect.gen(function* () {
+    const platforms = yield* Platforms.Service;
+    const workspaces = yield* Workspaces.Service;
     const home = `${dashboardOrigin}/`;
-    const state = url.searchParams.get("state");
-    if (!state) return redirect(`${home}?install=missing-state`);
+    if (!Schema.is(Platform)(platform)) return `${home}?install=wrong-platform`;
+    const query = new URLSearchParams(search);
+    const state = query.get("state");
+    if (!state) return `${home}?install=missing-state`;
     const now = yield* Clock.currentTimeMillis;
     const intent = yield* workspaces
       .takeInstallIntent(state, now)
       .pipe(Effect.mapError(() => "expired-intent" as const));
-    if (intent.platform !== platform) return redirect(`${home}?install=wrong-platform`);
+    if (intent.platform !== platform) return `${home}?install=wrong-platform`;
+    if (intent.userId !== userId) return `${home}?install=wrong-user`;
     const view = yield* workspaces
       .view(intent.workspaceId, intent.userId)
       .pipe(Effect.mapError(() => "unknown-workspace" as const));
     const back = `${dashboardOrigin}/${view.workspace.slug}/platforms/${platform}`;
-    if (url.searchParams.get("error"))
-      return redirect(`${back}?install=${encodeURIComponent(url.searchParams.get("error") ?? "")}`);
+    if (query.get("error"))
+      return `${back}?install=${encodeURIComponent(query.get("error") ?? "")}`;
     const scope = yield* platforms
       .forPlatform(platform)
       .pipe(Effect.mapError(() => "unregistered" as const));
     const installed = yield* scope.installing
-      .complete({ state, redirectUri: redirectUriOf(dashboardOrigin, platform) }, url.searchParams)
+      .complete({ state, redirectUri: redirectUriOf(dashboardOrigin, platform) }, query)
       .pipe(
         Effect.mapError(
           (error) =>
@@ -58,11 +77,11 @@ export const callback = (dashboardOrigin: string) =>
       .install(intent, installed, now)
       .pipe(Effect.mapError((error) => `${platform} ${error.reason}`));
     yield* Effect.logInfo(`install.completed ${platform}`);
-    return redirect(`${back}?installed=${platform}`);
+    return `${back}?installed=${platform}`;
   }).pipe(
     Effect.catch((reason) =>
       Effect.logWarning(`install.failed ${String(reason)}`).pipe(
-        Effect.as(redirect(`${dashboardOrigin}/?install=${encodeURIComponent(String(reason))}`)),
+        Effect.as(`${dashboardOrigin}/?install=${encodeURIComponent(String(reason))}`),
       ),
     ),
   );

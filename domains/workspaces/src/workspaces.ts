@@ -575,16 +575,11 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))),
           storage("install"),
         );
-      // An installation belongs to one workspace: the one whose admin last installed it. The
-      // previous holder's scopes through it are dropped with it.
+      // An installation belongs to one workspace. Another workspace's admin cannot take it over;
+      // moving it starts with uninstalling it there.
       const previous = existing[0]?.workspaceId;
       if (previous !== undefined && previous !== intent.workspaceId)
-        yield* store
-          .batch([
-            sql`DELETE FROM workspace_scopes WHERE workspaceId = ${previous}
-            AND platform = ${intent.platform} AND installationId = ${installed.installationId}`,
-          ])
-          .pipe(storage("install"));
+        return yield* fail("install", "installed-elsewhere");
       const credential = yield* Schema.encodeEffect(credentialJson)(installed.credential).pipe(
         Effect.flatMap((json) => sealed.seal(json)),
         Effect.mapError(() => fail("install", "invalid-input")),

@@ -22,6 +22,7 @@ import { Route as AuthSplatRouteImport } from './routes/auth.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as SlugPlatformsIndexRouteImport } from './routes/$slug.platforms.index'
 import { Route as SlugPlatformsPlatformRouteImport } from './routes/$slug.platforms.$platform'
+import { Route as PlatformsPlatformInstallRouteImport } from './routes/platforms.$platform.install'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -88,6 +89,12 @@ const SlugPlatformsPlatformRoute = SlugPlatformsPlatformRouteImport.update({
   path: '/platforms/$platform',
   getParentRoute: () => SlugRoute,
 } as any)
+const PlatformsPlatformInstallRoute =
+  PlatformsPlatformInstallRouteImport.update({
+    id: '/platforms/$platform/install',
+    path: '/platforms/$platform/install',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -116,6 +124,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms': typeof SlugPlatformsIndexRoute
 }
 export interface FileRoutesById {
@@ -132,6 +141,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
 export interface FileRouteTypes {
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug/'
     | '/$slug/platforms/$platform'
+    | '/platforms/$platform/install'
     | '/$slug/platforms/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -163,6 +174,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug'
     | '/$slug/platforms/$platform'
+    | '/platforms/$platform/install'
     | '/$slug/platforms'
   id:
     | '__root__'
@@ -178,6 +190,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug/'
     | '/$slug/platforms/$platform'
+    | '/platforms/$platform/install'
     | '/$slug/platforms/'
   fileRoutesById: FileRoutesById
 }
@@ -189,6 +202,7 @@ export interface RootRouteChildren {
   WelcomeRoute: typeof WelcomeRoute
   AuthSplatRoute: typeof AuthSplatRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  PlatformsPlatformInstallRoute: typeof PlatformsPlatformInstallRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -284,6 +298,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugPlatformsPlatformRouteImport
       parentRoute: typeof SlugRoute
     }
+    '/platforms/$platform/install': {
+      id: '/platforms/$platform/install'
+      path: '/platforms/$platform/install'
+      fullPath: '/platforms/$platform/install'
+      preLoaderRoute: typeof PlatformsPlatformInstallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -315,6 +336,7 @@ const rootRouteChildren: RootRouteChildren = {
   WelcomeRoute: WelcomeRoute,
   AuthSplatRoute: AuthSplatRoute,
   InviteTokenRoute: InviteTokenRoute,
+  PlatformsPlatformInstallRoute: PlatformsPlatformInstallRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
