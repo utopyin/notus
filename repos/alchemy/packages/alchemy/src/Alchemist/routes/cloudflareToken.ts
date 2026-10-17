@@ -1,12 +1,12 @@
+/* oxlint-disable alchemy/package-boundaries -- package split phase 2: provider-specific routes; become plugin `stateStores` / `cli` */
 import * as accounts from "@distilled.cloud/cloudflare/accounts";
-import {
-  apiKeyCredentials,
-  apiTokenCredentials,
-} from "@distilled.cloud/cloudflare/Credentials";
+import { apiKeyCredentials, apiTokenCredentials } from "@distilled.cloud/cloudflare/Credentials";
 import * as user from "@distilled.cloud/cloudflare/user";
+/* oxlint-enable alchemy/package-boundaries */
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
+/* oxlint-disable alchemy/package-boundaries -- package split phase 2: provider-specific routes; become plugin `stateStores` / `cli` */
 import {
   selectableScopes,
   tokenPolicies,
@@ -14,6 +14,7 @@ import {
   type TokenPolicy,
 } from "../../Cloudflare/Auth/TokenPolicy.ts";
 import * as CloudflareCredentials from "../../Cloudflare/Credentials.ts";
+/* oxlint-enable alchemy/package-boundaries */
 import { AlchemistInvalidInput, type Diagnostic } from "../Errors.ts";
 
 export interface GlobalCredentials {
@@ -26,10 +27,8 @@ export interface Account {
   readonly name: string;
 }
 
-export type {
-  PermissionGroup,
-  TokenPolicy,
-} from "../../Cloudflare/Auth/TokenPolicy.ts";
+// oxlint-disable-next-line alchemy/package-boundaries -- package split phase 2: provider-specific routes; become plugin `stateStores` / `cli`
+export type { PermissionGroup, TokenPolicy } from "../../Cloudflare/Auth/TokenPolicy.ts";
 
 export interface TokenCatalog {
   readonly accounts: ReadonlyArray<Account>;
@@ -69,9 +68,9 @@ export interface CreatedToken {
 }
 
 /** Cloudflare accepted the create call but returned no usable token. */
-export class CloudflareTokenError extends Data.TaggedError(
-  "CloudflareTokenError",
-)<{ readonly message: string }> {}
+export class CloudflareTokenError extends Data.TaggedError("CloudflareTokenError")<{
+  readonly message: string;
+}> {}
 
 /** Authenticate the surrounding effect with the user's Global API Key. */
 const withGlobalKey = (credentials: GlobalCredentials) =>
@@ -79,7 +78,7 @@ const withGlobalKey = (credentials: GlobalCredentials) =>
     CloudflareCredentials.Credentials,
     Effect.succeed(
       apiKeyCredentials({
-        apiKey: Redacted.value(credentials.apiKey),
+        apiKey: credentials.apiKey,
         email: credentials.email,
       }),
     ),
@@ -122,17 +121,13 @@ export const catalog = Effect.fn("Alchemist.cloudflare.token.catalog")(
 );
 
 /** Resolve the selected permission groups into concrete token policies. */
-export const plan = Effect.fn("Alchemist.cloudflare.token.plan")(function* (
-  input: PlanInput,
-) {
+export const plan = Effect.fn("Alchemist.cloudflare.token.plan")(function* (input: PlanInput) {
   const tokenCatalog = yield* catalog(input.credentials);
   const selected =
     input.permissionGroupIds === "all"
       ? tokenCatalog.permissionGroups
       : yield* Effect.forEach(input.permissionGroupIds, (id) => {
-          const group = tokenCatalog.permissionGroups.find(
-            (candidate) => candidate.id === id,
-          );
+          const group = tokenCatalog.permissionGroups.find((candidate) => candidate.id === id);
           if (group === undefined) {
             return Effect.fail(
               new AlchemistInvalidInput({
@@ -143,18 +138,13 @@ export const plan = Effect.fn("Alchemist.cloudflare.token.plan")(function* (
           }
           return Effect.succeed(group);
         });
-  const currentUser = yield* user
-    .getUser({})
-    .pipe(withGlobalKey(input.credentials));
+  const currentUser = yield* user.getUser({}).pipe(withGlobalKey(input.credentials));
   const resolved = tokenPolicies(input.accountIds, currentUser.id, selected);
   if (resolved.length === 0) {
-    return yield* Effect.fail(
-      new AlchemistInvalidInput({
-        field: "permissionGroupIds",
-        message:
-          "No selected permission groups can be expressed as token policies.",
-      }),
-    );
+    return yield* new AlchemistInvalidInput({
+      field: "permissionGroupIds",
+      message: "No selected permission groups can be expressed as token policies.",
+    });
   }
   return {
     name: input.name,
@@ -174,11 +164,9 @@ export const create = Effect.fn("Alchemist.cloudflare.token.create")(
       policies: input.plan.policies as TokenPolicy[],
     });
     if (!result.value) {
-      return yield* Effect.fail(
-        new CloudflareTokenError({
-          message: "Cloudflare did not return a token value.",
-        }),
-      );
+      return yield* new CloudflareTokenError({
+        message: "Cloudflare did not return a token value.",
+      });
     }
     const granted = (result.policies ?? []).reduce(
       (count, policy) => count + (policy.permissionGroups?.length ?? 0),
@@ -187,10 +175,10 @@ export const create = Effect.fn("Alchemist.cloudflare.token.create")(
     const verificationStatus = yield* user.verifyToken({}).pipe(
       Effect.provideService(
         CloudflareCredentials.Credentials,
-        Effect.succeed(apiTokenCredentials({ apiToken: result.value })),
+        Effect.succeed(apiTokenCredentials({ apiToken: Redacted.make(result.value) })),
       ),
       Effect.map(({ status }) => status),
-      Effect.catch(() => Effect.succeed(undefined)),
+      Effect.orElseSucceed(() => undefined),
     );
     return {
       id: result.id ?? "unknown",

@@ -1,6 +1,7 @@
 import * as ag from "@distilled.cloud/aws/api-gateway";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as AWSBindings from "../AWSBindings.ts";
 import { registerApiGatewayBinding } from "./BindingHttp.ts";
 import { UpdateApiKey, type UpdateApiKeyRequest } from "./UpdateApiKey.ts";
 
@@ -12,7 +13,7 @@ import { UpdateApiKey, type UpdateApiKeyRequest } from "./UpdateApiKey.ts";
 export const UpdateApiKeyHttp = Layer.effect(
   UpdateApiKey,
   Effect.gen(function* () {
-    const updateApiKey = yield* ag.updateApiKey;
+    const updateApiKey = yield* AWSBindings.withCredentials(ag.updateApiKey);
     return Effect.fn(function* () {
       yield* registerApiGatewayBinding({
         cap: "AWS.ApiGateway.UpdateApiKey",
@@ -20,9 +21,7 @@ export const UpdateApiKeyHttp = Layer.effect(
         verb: "PATCH",
         paths: (region) => [`arn:aws:apigateway:${region}::/apikeys/*`],
       });
-      return Effect.fn("AWS.ApiGateway.UpdateApiKey")(function* (
-        request: UpdateApiKeyRequest,
-      ) {
+      return Effect.fn("AWS.ApiGateway.UpdateApiKey")(function* (request: UpdateApiKeyRequest) {
         return yield* updateApiKey(request);
       });
     });

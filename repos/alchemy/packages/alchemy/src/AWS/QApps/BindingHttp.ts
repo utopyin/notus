@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { QApp } from "./QApp.ts";
 
 /**
@@ -33,12 +32,7 @@ import type { QApp } from "./QApp.ts";
  * app's `instanceId` (and, with `injectAppId`, its `appId`); the deploy-time
  * half grants `iamActions` on the app ARN and its session sub-resources.
  */
-export const makeQAppHttpBinding = <
-  I extends { instanceId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeQAppHttpBinding = <I extends { instanceId: string }, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"StartQAppSession"`.
@@ -52,42 +46,34 @@ export const makeQAppHttpBinding = <
   injectAppId?: boolean;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (app: QApp) {
       const instanceId = yield* app.instanceId;
       const appId = yield* app.appId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.QApps.${options.capability}(${app}))`(
+        yield* AWSBindings.bind`AWS.QApps.${options.capability}(${app})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [
-                    Output.interpolate`${app.appArn}`,
-                    Output.interpolate`${app.appArn}/*`,
-                  ],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [Output.interpolate`${app.appArn}`, Output.interpolate`${app.appArn}/*`],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.QApps.${options.capability}(${app.LogicalId})`)(
-        function* (request?: Omit<I, "instanceId" | "appId">) {
-          const input = options.injectAppId
-            ? {
-                ...request,
-                instanceId: yield* instanceId,
-                appId: yield* appId,
-              }
-            : { ...request, instanceId: yield* instanceId };
-          return yield* op(input as I);
-        },
-      );
+      return Effect.fn(`AWS.QApps.${options.capability}(${app.LogicalId})`)(function* (
+        request?: Omit<I, "instanceId" | "appId">,
+      ) {
+        const input = options.injectAppId
+          ? {
+              ...request,
+              instanceId: yield* instanceId,
+              appId: yield* appId,
+            }
+          : { ...request, instanceId: yield* instanceId };
+        return yield* op(input as I);
+      });
     });
   });
 
@@ -98,12 +84,7 @@ export const makeQAppHttpBinding = <
  * ARNs are service-assigned and not derivable from a bound Q App, so the
  * deploy-time half grants `iamActions` on `Resource: ["*"]`.
  */
-export const makeQAppsInstanceHttpBinding = <
-  I extends { instanceId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeQAppsInstanceHttpBinding = <I extends { instanceId: string }, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"ListLibraryItems"`.
@@ -115,30 +96,25 @@ export const makeQAppsInstanceHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (app: QApp) {
       const instanceId = yield* app.instanceId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.QApps.${options.capability}(${app}))`(
+        yield* AWSBindings.bind`AWS.QApps.${options.capability}(${app})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.QApps.${options.capability}(${app.LogicalId})`)(
-        function* (request?: Omit<I, "instanceId">) {
-          return yield* op({ ...request, instanceId: yield* instanceId } as I);
-        },
-      );
+      return Effect.fn(`AWS.QApps.${options.capability}(${app.LogicalId})`)(function* (
+        request?: Omit<I, "instanceId">,
+      ) {
+        return yield* op({ ...request, instanceId: yield* instanceId } as I);
+      });
     });
   });

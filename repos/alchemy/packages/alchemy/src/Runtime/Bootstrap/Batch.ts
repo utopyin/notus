@@ -3,20 +3,17 @@
  * entry imports this module and the user's `main`, nothing else — see
  * {@link ./Process.ts} for why.
  */
+/* oxlint-disable alchemy/package-boundaries -- package split phase 3: per-cloud runtime bootstrap; moves into its provider */
 import * as Credentials from "@distilled.cloud/aws/Credentials";
 import * as Region from "@distilled.cloud/aws/Region";
+/* oxlint-enable alchemy/package-boundaries */
 import { BunServices } from "@effect/platform-bun";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import {
-  entrypointLayer,
-  resolveProgram,
-  runProcess,
-  stackFromEnv,
-} from "./Process.ts";
+import { entrypointLayer, resolveProgram, runProcess, stackFromEnv } from "./Process.ts";
 
 /**
  * Run the bundled job to completion: no HTTP server, and the process exits 0
@@ -33,15 +30,12 @@ export const bootstrap = (entrypoint: unknown): Promise<void> => {
     Effect.provide(
       entrypointLayer(entrypoint).pipe(
         Layer.provideMerge(stackFromEnv),
-        Layer.provideMerge(Credentials.fromEnv()),
+        // The role's credentials come from the container credentials endpoint,
+        // not `AWS_ACCESS_KEY_ID`.
+        Layer.provideMerge(Credentials.fromContainerMetadata()),
         Layer.provideMerge(Region.fromEnv()),
         Layer.provideMerge(platform),
-        Layer.provideMerge(
-          Layer.succeed(
-            ConfigProvider.ConfigProvider,
-            ConfigProvider.fromEnv(),
-          ),
-        ),
+        Layer.provideMerge(Layer.succeed(ConfigProvider.ConfigProvider, ConfigProvider.fromEnv())),
       ),
     ),
     Effect.scoped,

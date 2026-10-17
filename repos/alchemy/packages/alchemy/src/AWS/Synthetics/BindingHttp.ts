@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Canary } from "./Canary.ts";
 
 /**
@@ -25,12 +24,7 @@ import type { Canary } from "./Canary.ts";
  * {@link Canary}. The runtime callable injects the canary's name as the
  * request's `Name`; the deploy-time half grants `actions` on the canary ARN.
  */
-export const makeSyntheticsCanaryHttpBinding = <
-  I extends { Name: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeSyntheticsCanaryHttpBinding = <I extends { Name: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.Synthetics.GetCanaryRuns`. */
   tag: string;
   /** The distilled operation; `Name` is injected from the resource. */
@@ -39,23 +33,20 @@ export const makeSyntheticsCanaryHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (canary: Canary) {
       const Name = yield* canary.canaryName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${canary}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [canary.canaryArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${canary})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [canary.canaryArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${canary.LogicalId})`)(function* (
         request?: Omit<I, "Name">,
@@ -80,22 +71,19 @@ export const makeSyntheticsAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

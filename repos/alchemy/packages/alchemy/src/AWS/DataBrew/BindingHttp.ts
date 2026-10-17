@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Job } from "./Job.ts";
 import type { Project } from "./Project.ts";
 import type { Recipe } from "./Recipe.ts";
@@ -22,12 +21,7 @@ import type { Recipe } from "./Recipe.ts";
  * injects the bound {@link Job}'s name as `Name` and the deploy-time half
  * grants `actions` on the job ARN.
  */
-export const makeDataBrewJobHttpBinding = <
-  I extends { Name?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeDataBrewJobHttpBinding = <I extends { Name?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DataBrew.StartJobRun`. */
   tag: string;
   /** The distilled operation; `Name` is injected from the job. */
@@ -36,28 +30,23 @@ export const makeDataBrewJobHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* <J extends Job>(job: J) {
       // Outputs yield a DEFERRED effect — resolve again per invocation below.
       const JobName = yield* job.jobName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${job}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${job.jobArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${job})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${job.jobArn}`],
+            },
+          ],
+        });
       }
-      return Effect.fn(`${options.tag}(${job.LogicalId})`)(function* (
-        request?: Omit<I, "Name">,
-      ) {
+      return Effect.fn(`${options.tag}(${job.LogicalId})`)(function* (request?: Omit<I, "Name">) {
         return yield* op({ ...request, Name: yield* JobName } as I);
       });
     });
@@ -68,12 +57,7 @@ export const makeDataBrewJobHttpBinding = <
  * callable injects the bound {@link Project}'s name as `Name` and the
  * deploy-time half grants `actions` on the project ARN.
  */
-export const makeDataBrewProjectHttpBinding = <
-  I extends { Name?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeDataBrewProjectHttpBinding = <I extends { Name?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DataBrew.StartProjectSession`. */
   tag: string;
   /** The distilled operation; `Name` is injected from the project. */
@@ -82,23 +66,20 @@ export const makeDataBrewProjectHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* <P extends Project>(project: P) {
       const ProjectName = yield* project.projectName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${project}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${project.projectArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${project})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${project.projectArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${project.LogicalId})`)(function* (
         request?: Omit<I, "Name">,
@@ -113,12 +94,7 @@ export const makeDataBrewProjectHttpBinding = <
  * callable injects the bound {@link Recipe}'s name as `Name` and the
  * deploy-time half grants `actions` on the recipe ARN.
  */
-export const makeDataBrewRecipeHttpBinding = <
-  I extends { Name?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeDataBrewRecipeHttpBinding = <I extends { Name?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DataBrew.PublishRecipe`. */
   tag: string;
   /** The distilled operation; `Name` is injected from the recipe. */
@@ -127,23 +103,20 @@ export const makeDataBrewRecipeHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* <Rec extends Recipe>(recipe: Rec) {
       const RecipeName = yield* recipe.recipeName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${recipe}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${recipe.recipeArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${recipe})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${recipe.recipeArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${recipe.LogicalId})`)(function* (
         request?: Omit<I, "Name">,

@@ -1,7 +1,7 @@
 import * as lf from "@distilled.cloud/aws/lakeformation";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
-import { isResolved } from "../../Diff.ts";
+import { havePropsChanged, isResolved } from "../../Diff.ts";
 import * as Provider from "../../Provider.ts";
 import { Resource } from "../../Resource.ts";
 import { AWSEnvironment } from "../Environment.ts";
@@ -67,17 +67,10 @@ export const LFTagProvider = () =>
   Provider.effect(
     LFTag,
     Effect.gen(function* () {
-      const observe = Effect.fn(function* (
-        tagKey: string,
-        catalogId: string | undefined,
-      ) {
+      const observe = Effect.fn(function* (tagKey: string, catalogId: string | undefined) {
         return yield* lf
           .getLFTag({ TagKey: tagKey, CatalogId: catalogId })
-          .pipe(
-            Effect.catchTag("EntityNotFoundException", () =>
-              Effect.succeed(undefined),
-            ),
-          );
+          .pipe(Effect.catchTag("EntityNotFoundException", () => Effect.succeed(undefined)));
       });
 
       return LFTag.Provider.of({
@@ -86,9 +79,7 @@ export const LFTagProvider = () =>
         list: () =>
           Effect.gen(function* () {
             const { accountId } = yield* AWSEnvironment.current;
-            const pages = yield* lf.listLFTags
-              .pages({})
-              .pipe(Stream.runCollect);
+            const pages = yield* lf.listLFTags.pages({}).pipe(Stream.runCollect);
             return Array.from(pages)
               .flatMap((page) => page.LFTags ?? [])
               .map((tag) => ({
@@ -120,7 +111,13 @@ export const LFTagProvider = () =>
           if ((news.catalogId ?? undefined) !== (olds.catalogId ?? undefined)) {
             return { action: "replace" } as const;
           }
-          // tagValues → update
+          if (havePropsChanged(olds.tagValues, news.tagValues)) {
+            // `tagKey` is unchanged, but consumers that reference it (e.g. an
+            // LFTagAssociation assigning a newly added value) depend on the
+            // new values existing. Withholding it from `stables` makes them
+            // wait for this update instead of racing it.
+            return { action: "update", stables: ["catalogId"] } as const;
+          }
         }),
 
         reconcile: Effect.fn(function* ({ news, session }) {
@@ -167,9 +164,7 @@ export const LFTagProvider = () =>
               TagKey: output.tagKey,
               CatalogId: output.catalogId,
             })
-            .pipe(
-              Effect.catchTag("EntityNotFoundException", () => Effect.void),
-            );
+            .pipe(Effect.catchTag("EntityNotFoundException", () => Effect.void));
         }),
       });
     }),

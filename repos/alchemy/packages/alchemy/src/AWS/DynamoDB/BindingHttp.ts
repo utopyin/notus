@@ -1,7 +1,9 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import type { Output as OutputType } from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import type { Input } from "../../Input.ts";
+import type * as Output from "../../Output.ts";
+import * as AWSBindings from "../AWSBindings.ts";
+import type { PolicyStatement } from "../IAM/Policy.ts";
+import { regionFromArn } from "../Lambda/BindingHttp.ts";
 import type { Table } from "./Table.ts";
 
 /**
@@ -11,8 +13,57 @@ import type { Table } from "./Table.ts";
  * service is a thin `Layer.effect(Cap, make…HttpBinding({ … }))` over one of
  * the builders below. Everything except the operation, the IAM action list,
  * and the granted ARNs is boilerplate. Genuinely-different bindings
- * (multi-table batches/transactions, restores, the batched sink) stay bespoke.
+ * (multi-table batches/transactions, restores, the batched sink) stay
+ * bespoke but share {@link grantTables} / {@link tablesRegion}.
+ *
+ * Every binding works on any host (see `AWSBindings.ts`):
+ *
+ * - on a native AWS host the deploy-time grant goes on the host's role and
+ *   requests use the ambient `Credentials` / `Region`;
+ * - on an external host the grant goes on the least-privilege role minted
+ *   for the host, and each operation is resolved with
+ *   `AWSBindings.withCredentials` to sign with the assumed role in the bound
+ *   table's region (parsed from its ARN).
  */
+
+/**
+ * Grant the host `policyStatements` under `label`, recorded as
+ * `Allow(<host>, <label>)` (see `AWSBindings.bind`). Deploy-only: the grant
+ * sits behind the `__ALCHEMY_RUNTIME__` guard so the bundler drops it.
+ */
+export const grantTables = (label: string, policyStatements: () => Input<PolicyStatement>[]) =>
+  Effect.gen(function* () {
+    if (!globalThis.__ALCHEMY_RUNTIME__) {
+      yield* AWSBindings.bind`${label}`({ policyStatements: policyStatements() });
+    }
+  });
+
+/**
+ * The region an external host signs requests in, for
+ * `AWSBindings.withCredentials`: the region of the bound tables, parsed from
+ * their ARNs (which this binds onto the host). Tables bound together must
+ * share one region.
+ *
+ * The ARN is used rather than `Table.region` because tables whose state
+ * predates that attribute keep their old attributes until their next update.
+ */
+export const tablesRegion = Effect.fn(function* (tables: readonly Table[]) {
+  const arns: Effect.Effect<string>[] = [];
+  for (const table of tables) {
+    arns.push(yield* table.tableArn);
+  }
+  return Effect.gen(function* () {
+    const regions = [...new Set((yield* Effect.all(arns)).map(regionFromArn))];
+    if (regions.length !== 1) {
+      return yield* Effect.die(
+        new Error(
+          `DynamoDB tables bound together must share one AWS region, got: ${regions.join(", ")}`,
+        ),
+      );
+    }
+    return regions[0]!;
+  });
+});
 
 /**
  * Build the impl Effect for an account-level operation (`ListTables`,
@@ -23,29 +74,26 @@ import type { Table } from "./Table.ts";
 export const makeAccountHttpBinding = <I, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DynamoDB.ListTables`. */
   tag: string;
-  /** The distilled operation, invoked with the caller's request as-is. */
+  /**
+   * The distilled operation, invoked with the caller's request as-is.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the stack's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on `*`. */
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
-      }
+      yield* grantTables(`${options.tag}()`, () => [
+        {
+          Effect: "Allow",
+          Action: [...options.actions],
+          Resource: ["*"],
+        },
+      ]);
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
       });
@@ -57,40 +105,32 @@ export const makeAccountHttpBinding = <I, A, E, R>(options: {
  * injects the bound {@link Table}'s physical name as `TableName` and the
  * deploy-time half grants `actions` on `resources` (default: the table ARN).
  */
-export const makeTableHttpBinding = <
-  I extends { TableName?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeTableHttpBinding = <I extends { TableName?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DynamoDB.GetItem`. */
   tag: string;
-  /** The distilled operation; `TableName` is injected from the table. */
+  /**
+   * The distilled operation; `TableName` is injected from the table.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the table's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on `resources`. */
   actions: readonly string[];
   /** ARNs the actions are granted on. @default the table ARN */
-  resources?: (table: Table) => (string | OutputType<string>)[];
+  resources?: (table: Table) => (string | Output.Output<string>)[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
-
     return Effect.fn(function* (table: Table) {
       const TableName = yield* table.tableName;
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${table}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: options.resources?.(table) ?? [table.tableArn],
-              },
-            ],
-          });
-        }
-      }
+      // resolved per bind because an external host signs in the table's own region
+      const op = yield* AWSBindings.withCredentials(options.operation, tablesRegion([table]));
+      yield* grantTables(`${options.tag}(${table.LogicalId})`, () => [
+        {
+          Effect: "Allow",
+          Action: [...options.actions],
+          Resource: options.resources?.(table) ?? [table.tableArn],
+        },
+      ]);
       return Effect.fn(`${options.tag}(${table.LogicalId})`)(function* (
         request?: Omit<I, "TableName">,
       ) {
@@ -119,35 +159,33 @@ export const makeTableArnHttpBinding = <
   tag: string;
   /** The request field the table ARN is injected under. */
   key: K;
-  /** The distilled operation; the table ARN is injected under `key`. */
+  /**
+   * The distilled operation; the table ARN is injected under `key`.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the table's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on `resources`. */
   actions: readonly string[];
   /** ARNs the actions are granted on. @default the table ARN */
-  resources?: (table: Table) => (string | OutputType<string>)[];
+  resources?: (table: Table) => (string | Output.Output<string>)[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
-
     return Effect.fn(function* (table: Table) {
       const TableArn = yield* table.tableArn;
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${table}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: options.resources?.(table) ?? [table.tableArn],
-              },
-            ],
-          });
-        }
-      }
-      return Effect.fn(`${options.tag}(${table.LogicalId})`)(function* (
-        request?: Omit<I, K>,
-      ) {
+      // resolved per bind because an external host signs in the table's own region
+      const op = yield* AWSBindings.withCredentials(
+        options.operation,
+        Effect.succeed(Effect.map(TableArn, regionFromArn)),
+      );
+      yield* grantTables(`${options.tag}(${table.LogicalId})`, () => [
+        {
+          Effect: "Allow",
+          Action: [...options.actions],
+          Resource: options.resources?.(table) ?? [table.tableArn],
+        },
+      ]);
+      return Effect.fn(`${options.tag}(${table.LogicalId})`)(function* (request?: Omit<I, K>) {
         return yield* op({
           ...request,
           [options.key]: yield* TableArn,
@@ -159,40 +197,35 @@ export const makeTableArnHttpBinding = <
 /**
  * Build the impl Effect for an operation whose request carries its own
  * identifiers (a PartiQL statement, a backup or export ARN): the bound
- * {@link Table} only scopes the deploy-time IAM grant; the request passes
- * through unchanged.
+ * {@link Table} only scopes the deploy-time IAM grant (and, on an external
+ * host, the signing region); the request passes through unchanged.
  */
 export const makeTableIamHttpBinding = <I, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DynamoDB.ExecuteStatement`. */
   tag: string;
-  /** The distilled operation, invoked with the caller's request as-is. */
+  /**
+   * The distilled operation, invoked with the caller's request as-is.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the table's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on `resources`. */
   actions: readonly string[];
   /** ARNs the actions are granted on. */
-  resources: (table: Table) => (string | OutputType<string>)[];
+  resources: (table: Table) => (string | Output.Output<string>)[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
-
     return Effect.fn(function* (table: Table) {
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${table}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: options.resources(table),
-              },
-            ],
-          });
-        }
-      }
-      return Effect.fn(`${options.tag}(${table.LogicalId})`)(function* (
-        request: I,
-      ) {
+      // resolved per bind because an external host signs in the table's own region
+      const op = yield* AWSBindings.withCredentials(options.operation, tablesRegion([table]));
+      yield* grantTables(`${options.tag}(${table.LogicalId})`, () => [
+        {
+          Effect: "Allow",
+          Action: [...options.actions],
+          Resource: options.resources(table),
+        },
+      ]);
+      return Effect.fn(`${options.tag}(${table.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });

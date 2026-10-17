@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Profile } from "./Profile.ts";
 
 /**
@@ -21,12 +20,7 @@ import type { Profile } from "./Profile.ts";
  * common AWS List-action pattern of not supporting resource-level
  * permissions (a profile-ARN-scoped grant is rejected with AccessDenied).
  */
-export const makeProfilesHttpBinding = <
-  I extends { ProfileId?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeProfilesHttpBinding = <I extends { ProfileId?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.Route53Profiles.ListProfileAssociations`. */
   tag: string;
   /** The distilled operation. */
@@ -35,23 +29,20 @@ export const makeProfilesHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (profile: Profile) {
       const ProfileId = yield* profile.profileId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${profile}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${profile})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${profile.LogicalId})`)(function* (
         request?: Omit<I, "ProfileId">,

@@ -1,9 +1,8 @@
 import type { Credentials } from "@distilled.cloud/aws/Credentials";
 import { Region as AwsRegion } from "@distilled.cloud/aws/Region";
 import * as Effect from "effect/Effect";
-import type * as HttpClient from "effect/unstable/http/HttpClient";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import type * as HttpClient from "effect/http/HttpClient";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Certificate } from "./Certificate.ts";
 
 /**
@@ -66,29 +65,24 @@ export const makeAcmCertificateHttpBinding = <Req extends object, Out, Err>(
   config: AcmHttpBindingConfig<Req, Out, Err>,
 ) =>
   Effect.gen(function* () {
-    const op = yield* withAcmRegion(config.operation);
+    const op = yield* config.operation.pipe(withAcmRegion, AWSBindings.withCredentials);
 
     return Effect.fn(function* (certificate: Certificate) {
       const CertificateArn = yield* certificate.certificateArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ACM.${config.capability}(${certificate}))`(
+        yield* AWSBindings.bind`AWS.ACM.${config.capability}(${certificate})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...config.iamActions],
-                  Resource: [certificate.certificateArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...config.iamActions],
+              Resource: [certificate.certificateArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.ACM.${config.capability}(${certificate.LogicalId})`,
-      )(function* (request?: Omit<Req, "CertificateArn">) {
+      return Effect.fn(`AWS.ACM.${config.capability}(${certificate.LogicalId})`)(function* (
+        request?: Omit<Req, "CertificateArn">,
+      ) {
         // Sound: at instantiation `Req` always contains `CertificateArn: string`
         // (every certificate-scoped distilled request does), so
         // `Omit<Req, "CertificateArn"> & { CertificateArn: string }` is exactly
@@ -123,11 +117,7 @@ export interface AcmAccountHttpBindingConfig<Req extends object, Out, Err> {
   /**
    * The distilled ACM operation implementing the capability.
    */
-  operation: Effect.Effect<
-    (input: Req) => Effect.Effect<Out, Err>,
-    never,
-    AcmRequirements
-  >;
+  operation: Effect.Effect<(input: Req) => Effect.Effect<Out, Err>, never, AcmRequirements>;
 }
 
 /**
@@ -138,26 +128,21 @@ export const makeAcmAccountHttpBinding = <Req extends object, Out, Err>(
   config: AcmAccountHttpBindingConfig<Req, Out, Err>,
 ) =>
   Effect.gen(function* () {
-    const op = yield* withAcmRegion(config.operation);
+    const op = yield* config.operation.pipe(withAcmRegion, AWSBindings.withCredentials);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ACM.${config.capability}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...config.iamActions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`AWS.ACM.${config.capability}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...config.iamActions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
-      return Effect.fn(`AWS.ACM.${config.capability}`)(function* (
-        request?: Req,
-      ) {
+      return Effect.fn(`AWS.ACM.${config.capability}`)(function* (request?: Req) {
         // Call-site pin — see makeAcmCertificateHttpBinding above.
         return yield* withAcmRegion(op(request ?? ({} as Req)));
       });

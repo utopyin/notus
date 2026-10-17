@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { WirelessDevice } from "./WirelessDevice.ts";
 import type { WirelessGateway } from "./WirelessGateway.ts";
 
@@ -41,33 +40,25 @@ export const makeIotWirelessDeviceHttpBinding = <I, A, E, R, Req>(options: {
   resourceScope?: "device" | "any";
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (device: WirelessDevice) {
       // Output yields a DEFERRED effect — resolve again per invocation below.
       const DeviceId = yield* device.wirelessDeviceId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.IoTWireless.${options.capability}(${device}))`(
+        yield* AWSBindings.bind`AWS.IoTWireless.${options.capability}(${device})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource:
-                    options.resourceScope === "any"
-                      ? ["*"]
-                      : [device.wirelessDeviceArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: options.resourceScope === "any" ? ["*"] : [device.wirelessDeviceArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.IoTWireless.${options.capability}(${device.LogicalId})`,
-      )(function* (request: Req) {
+      return Effect.fn(`AWS.IoTWireless.${options.capability}(${device.LogicalId})`)(function* (
+        request: Req,
+      ) {
         const wirelessDeviceId = yield* DeviceId;
         return yield* op(options.prepare(request, wirelessDeviceId));
       });
@@ -91,29 +82,24 @@ export const makeIotWirelessGatewayHttpBinding = <I, A, E, R, Req>(options: {
   prepare: (request: Req, wirelessGatewayId: string) => I;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (gateway: WirelessGateway) {
       const GatewayId = yield* gateway.wirelessGatewayId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.IoTWireless.${options.capability}(${gateway}))`(
+        yield* AWSBindings.bind`AWS.IoTWireless.${options.capability}(${gateway})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [gateway.wirelessGatewayArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [gateway.wirelessGatewayArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.IoTWireless.${options.capability}(${gateway.LogicalId})`,
-      )(function* (request: Req) {
+      return Effect.fn(`AWS.IoTWireless.${options.capability}(${gateway.LogicalId})`)(function* (
+        request: Req,
+      ) {
         const wirelessGatewayId = yield* GatewayId;
         return yield* op(options.prepare(request, wirelessGatewayId));
       });
@@ -136,28 +122,21 @@ export const makeIotWirelessAccountHttpBinding = <I, A, E, R, Req>(options: {
   prepare: (request: Req) => I;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.IoTWireless.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.IoTWireless.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.IoTWireless.${options.capability}`)(function* (
-        request: Req,
-      ) {
+      return Effect.fn(`AWS.IoTWireless.${options.capability}`)(function* (request: Req) {
         return yield* op(options.prepare(request));
       });
     });

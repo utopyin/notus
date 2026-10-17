@@ -32,38 +32,53 @@ import * as Schedule from "effect/Schedule";
  * roles with that AWS-mandated name.
  */
 
-/** Fixed CIDRs of the DMS test VPCs (see the two test files). */
-const VPC_CIDRS = ["10.91.0.0/16", "10.92.0.0/16"];
+/**
+ * A DMS test VPC, identified by its deterministic CIDR and its Alchemy logical
+ * ID. The reaper matches both: other suites reuse these CIDRs (the ElastiCache
+ * provisioned network is also 10.92.0.0/16), and the DMS files run
+ * concurrently, so a CIDR-only match deletes another test's live VPC.
+ */
+export interface DmsTestVpc {
+  readonly cidr: string;
+  readonly logicalId: string;
+}
+
+export const DMS_SUBNET_GROUP_VPC: DmsTestVpc = {
+  cidr: "10.91.0.0/16",
+  logicalId: "DmsVpc",
+};
+export const DMS_REPLICATION_INSTANCE_VPC: DmsTestVpc = {
+  cidr: "10.92.0.0/16",
+  logicalId: "DmsInstVpc",
+};
 
 class OrphanStillPresent extends Data.TaggedError("OrphanStillPresent")<{
   readonly kind: string;
 }> {}
 
 /** ~10 minute ceiling for slow asynchronous releases (DMS instance deletes, ENIs). */
-const slowRelease = Schedule.max([
-  Schedule.spaced("15 seconds"),
-  Schedule.recurs(40),
-]);
+const slowRelease = Schedule.max([Schedule.spaced("15 seconds"), Schedule.recurs(40)]);
 /** ~2 minute ceiling for ordinary dependency-violation races. */
-const dependencyRelease = Schedule.max([
-  Schedule.spaced("10 seconds"),
-  Schedule.recurs(12),
-]);
+const dependencyRelease = Schedule.max([Schedule.spaced("10 seconds"), Schedule.recurs(12)]);
 
-const findTestVpcIds = ec2
-  .describeVpcs({ Filters: [{ Name: "cidr", Values: VPC_CIDRS }] })
-  .pipe(
-    Effect.map((response) =>
-      (response.Vpcs ?? []).flatMap((vpc) => (vpc.VpcId ? [vpc.VpcId] : [])),
-    ),
-  );
+const findTestVpcIds = (vpc: DmsTestVpc) =>
+  ec2
+    .describeVpcs({
+      Filters: [
+        { Name: "cidr", Values: [vpc.cidr] },
+        { Name: "tag:alchemy::id", Values: [vpc.logicalId] },
+      ],
+    })
+    .pipe(
+      Effect.map((response) =>
+        (response.Vpcs ?? []).flatMap((vpc) => (vpc.VpcId ? [vpc.VpcId] : [])),
+      ),
+    );
 
 /** Count replication instances still placed in the given VPCs. */
 const countInstancesIn = (vpcIds: ReadonlySet<string>) =>
   dms.describeReplicationInstances({}).pipe(
-    Effect.catchTag("ResourceNotFoundFault", () =>
-      Effect.succeed({ ReplicationInstances: [] }),
-    ),
+    Effect.catchTag("ResourceNotFoundFault", () => Effect.succeed({ ReplicationInstances: [] })),
     Effect.map(
       (response) =>
         (response.ReplicationInstances ?? []).filter(
@@ -78,15 +93,11 @@ const countInstancesIn = (vpcIds: ReadonlySet<string>) =>
  * Delete any replication instance placed in a test VPC and wait until it is
  * fully gone — its ENIs block subnet/VPC deletion until then.
  */
-const reapReplicationInstances = Effect.fn(function* (
-  vpcIds: ReadonlySet<string>,
-) {
+const reapReplicationInstances = Effect.fn(function* (vpcIds: ReadonlySet<string>) {
   const response = yield* dms
     .describeReplicationInstances({})
     .pipe(
-      Effect.catchTag("ResourceNotFoundFault", () =>
-        Effect.succeed({ ReplicationInstances: [] }),
-      ),
+      Effect.catchTag("ResourceNotFoundFault", () => Effect.succeed({ ReplicationInstances: [] })),
     );
   const arns = (response.ReplicationInstances ?? [])
     .filter(
@@ -100,18 +111,11 @@ const reapReplicationInstances = Effect.fn(function* (
   yield* Effect.forEach(
     arns,
     (ReplicationInstanceArn) =>
-      Effect.logInfo(
-        `DMS reap: deleting replication instance ${ReplicationInstanceArn}`,
-      ).pipe(
-        Effect.andThen(
-          dms.deleteReplicationInstance({ ReplicationInstanceArn }),
-        ),
+      Effect.logInfo(`DMS reap: deleting replication instance ${ReplicationInstanceArn}`).pipe(
+        Effect.andThen(dms.deleteReplicationInstance({ ReplicationInstanceArn })),
         // InvalidResourceStateFault: already deleting — the wait below
         // confirms it actually goes away.
-        Effect.catchTag(
-          ["ResourceNotFoundFault", "InvalidResourceStateFault"],
-          () => Effect.void,
-        ),
+        Effect.catchTag(["ResourceNotFoundFault", "InvalidResourceStateFault"], () => Effect.void),
       ),
     { discard: true },
   );
@@ -121,9 +125,7 @@ const reapReplicationInstances = Effect.fn(function* (
       Effect.flatMap((n) =>
         n === 0
           ? Effect.void
-          : Effect.fail(
-              new OrphanStillPresent({ kind: "DMS replication instances" }),
-            ),
+          : Effect.fail(new OrphanStillPresent({ kind: "DMS replication instances" })),
       ),
     );
   }
@@ -141,16 +143,12 @@ const reapSubnetGroups = Effect.fn(function* (vpcIds: ReadonlySet<string>) {
   const identifiers = (response.ReplicationSubnetGroups ?? [])
     .filter((group): boolean => !!group.VpcId && vpcIds.has(group.VpcId))
     .flatMap((group) =>
-      group.ReplicationSubnetGroupIdentifier
-        ? [group.ReplicationSubnetGroupIdentifier]
-        : [],
+      group.ReplicationSubnetGroupIdentifier ? [group.ReplicationSubnetGroupIdentifier] : [],
     );
   yield* Effect.forEach(
     identifiers,
     (ReplicationSubnetGroupIdentifier) =>
-      Effect.logInfo(
-        `DMS reap: deleting subnet group ${ReplicationSubnetGroupIdentifier}`,
-      ).pipe(
+      Effect.logInfo(`DMS reap: deleting subnet group ${ReplicationSubnetGroupIdentifier}`).pipe(
         Effect.andThen(
           dms.deleteReplicationSubnetGroup({
             ReplicationSubnetGroupIdentifier,
@@ -182,10 +180,7 @@ const sweepNetworkInterfaces = Effect.fn(function* (vpcId: string) {
   yield* Effect.gen(function* () {
     const enis = yield* describe;
     yield* Effect.forEach(
-      enis.filter(
-        (eni): boolean =>
-          eni.Status === "available" && !!eni.NetworkInterfaceId,
-      ),
+      enis.filter((eni): boolean => eni.Status === "available" && !!eni.NetworkInterfaceId),
       (eni) =>
         Effect.logInfo(`DMS reap: deleting ENI ${eni.NetworkInterfaceId}`).pipe(
           Effect.andThen(
@@ -194,10 +189,7 @@ const sweepNetworkInterfaces = Effect.fn(function* (vpcId: string) {
             }),
           ),
           Effect.catchTag(
-            [
-              "InvalidNetworkInterfaceID.NotFound",
-              "InvalidNetworkInterface.InUse",
-            ],
+            ["InvalidNetworkInterfaceID.NotFound", "InvalidNetworkInterface.InUse"],
             () => Effect.void,
           ),
         ),
@@ -209,9 +201,7 @@ const sweepNetworkInterfaces = Effect.fn(function* (vpcId: string) {
     Effect.flatMap((n) =>
       n === 0
         ? Effect.void
-        : Effect.fail(
-            new OrphanStillPresent({ kind: `network interfaces in ${vpcId}` }),
-          ),
+        : Effect.fail(new OrphanStillPresent({ kind: `network interfaces in ${vpcId}` })),
     ),
   );
 });
@@ -235,9 +225,7 @@ const reapVpc = Effect.fn(function* (vpcId: string) {
   yield* Effect.forEach(
     igws,
     (InternetGatewayId) =>
-      Effect.logInfo(
-        `DMS reap: detaching + deleting IGW ${InternetGatewayId}`,
-      ).pipe(
+      Effect.logInfo(`DMS reap: detaching + deleting IGW ${InternetGatewayId}`).pipe(
         Effect.andThen(
           ec2
             .detachInternetGateway({ InternetGatewayId, VpcId: vpcId })
@@ -277,21 +265,12 @@ const reapVpc = Effect.fn(function* (vpcId: string) {
           (AssociationId) =>
             ec2
               .disassociateRouteTable({ AssociationId })
-              .pipe(
-                Effect.catchTag(
-                  "InvalidAssociationID.NotFound",
-                  () => Effect.void,
-                ),
-              ),
+              .pipe(Effect.catchTag("InvalidAssociationID.NotFound", () => Effect.void)),
           { discard: true },
         );
         if (table.RouteTableId) {
-          yield* Effect.logInfo(
-            `DMS reap: deleting route table ${table.RouteTableId}`,
-          ).pipe(
-            Effect.andThen(
-              ec2.deleteRouteTable({ RouteTableId: table.RouteTableId }),
-            ),
+          yield* Effect.logInfo(`DMS reap: deleting route table ${table.RouteTableId}`).pipe(
+            Effect.andThen(ec2.deleteRouteTable({ RouteTableId: table.RouteTableId })),
             Effect.retry({
               while: (e): boolean => e._tag === "DependencyViolation",
               schedule: dependencyRelease,
@@ -336,9 +315,7 @@ const reapVpc = Effect.fn(function* (vpcId: string) {
     .describeSubnets({ Filters: [{ Name: "vpc-id", Values: [vpcId] }] })
     .pipe(
       Effect.map((response) =>
-        (response.Subnets ?? []).flatMap((subnet) =>
-          subnet.SubnetId ? [subnet.SubnetId] : [],
-        ),
+        (response.Subnets ?? []).flatMap((subnet) => (subnet.SubnetId ? [subnet.SubnetId] : [])),
       ),
     );
   yield* Effect.forEach(
@@ -365,17 +342,19 @@ const reapVpc = Effect.fn(function* (vpcId: string) {
 });
 
 /**
- * Delete every leftover DMS fixture resource, in dependency order.
+ * Delete every leftover DMS fixture resource in the given test VPC, in
+ * dependency order.
  * Idempotent: a run against a clean account is a single `describeVpcs`.
  *
  * Requires the AWS provider environment (available inside `test.provider`
  * bodies; wrap with `Core.withProviders` elsewhere).
  */
-export const reapDmsOrphans = Effect.gen(function* () {
-  const vpcIdList = yield* findTestVpcIds;
-  if (vpcIdList.length === 0) return;
-  const vpcIds: ReadonlySet<string> = new Set(vpcIdList);
-  yield* reapReplicationInstances(vpcIds);
-  yield* reapSubnetGroups(vpcIds);
-  yield* Effect.forEach(vpcIdList, reapVpc, { discard: true });
-});
+export const reapDmsOrphans = (vpc: DmsTestVpc) =>
+  Effect.gen(function* () {
+    const vpcIdList = yield* findTestVpcIds(vpc);
+    if (vpcIdList.length === 0) return;
+    const vpcIds: ReadonlySet<string> = new Set(vpcIdList);
+    yield* reapReplicationInstances(vpcIds);
+    yield* reapSubnetGroups(vpcIds);
+    yield* Effect.forEach(vpcIdList, reapVpc, { discard: true });
+  });

@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Secret } from "./Secret.ts";
 
 /**
@@ -18,12 +17,7 @@ import type { Secret } from "./Secret.ts";
  * and the runtime half injects the secret ARN as `SecretId` into every
  * request.
  */
-export const makeSecretHttpBinding = <
-  I extends { SecretId?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeSecretHttpBinding = <I extends { SecretId?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.SecretsManager.GetSecretValue`. */
   tag: string;
   /** The distilled operation. */
@@ -32,23 +26,20 @@ export const makeSecretHttpBinding = <
   actions: readonly `secretsmanager:${string}`[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (secret: Secret) {
       const SecretId = yield* secret.secretArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${secret}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [secret.secretArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${secret})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [secret.secretArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${secret.LogicalId})`)(function* (
         request?: Omit<I, "SecretId">,
@@ -74,22 +65,19 @@ export const makeSecretsManagerAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly `secretsmanager:${string}`[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

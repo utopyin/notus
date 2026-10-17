@@ -50,15 +50,25 @@ export const imageSourceTrigger = Effect.fn(function* (options: {
       isExternal: options.isExternal,
       bootstrap: makeBunBootstrap(source.handler ?? "default"),
     });
+    // Rolldown's first build runs when the watcher starts, before any file
+    // changed; the deploy already built that exact graph. Only a build that
+    // follows a change (`Start`) is a trigger — otherwise the rerun would
+    // re-register the image and reap the revision the engine just handed to
+    // dependents.
+    let changed = false;
     return Bundle.watch(plan.inputOptions, plan.outputOptions, plan.extra).pipe(
       Stream.tap((event) =>
         event._tag === "Error"
-          ? Effect.logWarning(
-              `[alchemy dev] ${id}: rebuild failed: ${event.error.message}`,
-            )
+          ? Effect.logWarning(`[alchemy dev] ${id}: rebuild failed: ${event.error.message}`)
           : Effect.void,
       ),
-      Stream.filter((event) => event._tag === "Success"),
+      Stream.filter((event) => {
+        if (event._tag === "Start") {
+          changed = true;
+          return false;
+        }
+        return event._tag === "Success" && changed;
+      }),
       Stream.debounce("200 millis"),
       Stream.map(() => undefined),
     ) as Stream.Stream<void>;
@@ -73,14 +83,9 @@ export const imageSourceTrigger = Effect.fn(function* (options: {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const context = path.resolve(source.context);
-    const streams: Stream.Stream<unknown, any>[] = [
-      fs.watch(context, { recursive: true }),
-    ];
+    const streams: Stream.Stream<unknown, any>[] = [fs.watch(context, { recursive: true })];
     // A path Dockerfile living OUTSIDE the context dir is watched too.
-    if (
-      source.dockerfile !== undefined &&
-      !isInlineDockerfile(source.dockerfile)
-    ) {
+    if (source.dockerfile !== undefined && !isInlineDockerfile(source.dockerfile)) {
       const dockerfile = path.resolve(source.dockerfile);
       if (!dockerfile.startsWith(`${context}/`)) {
         streams.push(fs.watch(path.dirname(dockerfile)));

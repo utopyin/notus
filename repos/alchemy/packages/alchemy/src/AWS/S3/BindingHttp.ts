@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Bucket } from "./Bucket.ts";
 
 /**
@@ -14,21 +13,24 @@ import type { Bucket } from "./Bucket.ts";
  *
  * - the deploy-time half registers `Allow(host, tag(bucket))` with the
  *   requested actions on the bound bucket (object-level `${arn}/*` or the
- *   bucket ARN itself, per `iamResources`);
- * - the runtime callable injects the resolved bucket name as `Bucket`.
+ *   bucket ARN itself, per `iamResources`). On a native AWS host the
+ *   statements go on the host's role; on an external host they go on the
+ *   least-privilege role minted for it (see `AWSBindings.bind`);
+ * - the runtime callable injects the resolved bucket name as `Bucket`; the
+ *   operation is resolved with `AWSBindings.withCredentials`, so an external
+ *   host signs with its assumed role in the bucket's region.
  *
  * Genuinely-different bindings stay bespoke: `PresignGetObject` /
  * `PresignPutObject` (SigV4 presigners, not API operations).
  */
-export const makeBucketHttpBinding = <
-  I extends { Bucket?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeBucketHttpBinding = <I extends { Bucket?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.S3.GetObject`. */
   tag: string;
-  /** The distilled operation; `Bucket` is injected from the bound bucket. */
+  /**
+   * The distilled operation; `Bucket` is injected from the bound bucket.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the bucket's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on the bound bucket. */
   actions: readonly string[];
@@ -44,48 +46,47 @@ export const makeBucketHttpBinding = <
    * Additionally grant `s3:ListBucket` on the bucket ARN. Required by
    * object-read actions so a missing key surfaces as `NoSuchKey`/`NotFound`
    * (404) instead of `AccessDenied` (403).
-   * @see https://repost.aws/articles/ARe3OTZ3SCTWWqGtiJ6aHn8Q/why-does-s-3-return-403-instead-of-404-when-the-object-doesnt-exist
+   * @see https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html
+   * @see https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-policy-actions.html
    */
   listBucket?: boolean;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
-
     return Effect.fn(function* <B extends Bucket>(bucket: B) {
       const BucketName = yield* bucket.bucketName;
+      const BucketRegion = yield* bucket.region;
+      // resolved per bind because an external host signs in the bucket's own region
+      const op = yield* AWSBindings.withCredentials(
+        options.operation,
+        Effect.succeed(BucketRegion),
+      );
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${bucket}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource:
-                  options.iamResources === "bucket"
-                    ? [bucket.bucketArn]
-                    : [Output.interpolate`${bucket.bucketArn}/*`],
-              },
-              ...(options.listBucket
-                ? [
-                    {
-                      Effect: "Allow" as const,
-                      Action: ["s3:ListBucket"],
-                      Resource: [bucket.bucketArn],
-                    },
-                  ]
-                : []),
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${bucket})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource:
+                options.iamResources === "bucket"
+                  ? [bucket.bucketArn]
+                  : [Output.interpolate`${bucket.bucketArn}/*`],
+            },
+            ...(options.listBucket
+              ? [
+                  {
+                    Effect: "Allow" as const,
+                    Action: ["s3:ListBucket"],
+                    Resource: [bucket.bucketArn],
+                  },
+                ]
+              : []),
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${bucket.LogicalId})`)(function* (
         request?: Omit<I, "Bucket">,
       ) {
-        return yield* op({
-          ...request,
-          Bucket: yield* BucketName,
-        } as I);
+        return yield* op({ ...request, Bucket: yield* BucketName } as I);
       });
     });
   });

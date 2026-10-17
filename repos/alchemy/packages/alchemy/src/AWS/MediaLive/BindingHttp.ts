@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Channel } from "./Channel.ts";
 import type { Input } from "./Input.ts";
 
@@ -23,12 +22,7 @@ import type { Input } from "./Input.ts";
  * channel's ARN, and the runtime half injects the channel's id into every
  * request as `ChannelId`.
  */
-export const makeMediaLiveChannelHttpBinding = <
-  I extends { ChannelId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeMediaLiveChannelHttpBinding = <I extends { ChannelId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.MediaLive.StartChannel`. */
   tag: string;
   /** The distilled operation; `ChannelId` is injected from the channel. */
@@ -37,23 +31,20 @@ export const makeMediaLiveChannelHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (channel: Channel) {
       const ChannelId = yield* channel.channelId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${channel}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [channel.channelArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${channel})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [channel.channelArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${channel.LogicalId})`)(function* (
         request?: Omit<I, "ChannelId">,
@@ -70,12 +61,7 @@ export const makeMediaLiveChannelHttpBinding = <
  * input's ARN, and the runtime half injects the input's id into every
  * request as `InputId`.
  */
-export const makeMediaLiveInputHttpBinding = <
-  I extends { InputId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeMediaLiveInputHttpBinding = <I extends { InputId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.MediaLive.DescribeInput`. */
   tag: string;
   /** The distilled operation; `InputId` is injected from the input. */
@@ -84,23 +70,20 @@ export const makeMediaLiveInputHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (input: Input) {
       const InputId = yield* input.inputId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${input}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [input.inputArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${input})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [input.inputArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${input.LogicalId})`)(function* (
         request?: Omit<I, "InputId">,
@@ -126,22 +109,19 @@ export const makeMediaLiveAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

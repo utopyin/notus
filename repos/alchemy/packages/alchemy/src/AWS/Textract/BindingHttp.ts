@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Adapter } from "./Adapter.ts";
 
 /**
@@ -33,28 +32,21 @@ export const makeTextractHttpBinding = <I extends object, A, E, R>(options: {
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.Textract.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.Textract.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.Textract.${options.capability}`)(function* (
-        request?: I,
-      ) {
+      return Effect.fn(`AWS.Textract.${options.capability}`)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
       });
     });
@@ -67,12 +59,7 @@ export const makeTextractHttpBinding = <I extends object, A, E, R>(options: {
  * children), and the runtime callable injects the adapter's `AdapterId`
  * into every request.
  */
-export const makeTextractAdapterHttpBinding = <
-  I extends { AdapterId?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeTextractAdapterHttpBinding = <I extends { AdapterId?: string }, A, E, R>(options: {
   /** Short capability name, e.g. `"GetAdapter"`. */
   capability: string;
   /** IAM actions granted on the adapter ARN + `/versions/*`. */
@@ -81,34 +68,29 @@ export const makeTextractAdapterHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* <Ad extends Adapter>(adapter: Ad) {
       const AdapterId = yield* adapter.adapterId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.Textract.${options.capability}(${adapter}))`(
+        yield* AWSBindings.bind`AWS.Textract.${options.capability}(${adapter})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [
-                    Output.interpolate`${adapter.adapterArn}`,
-                    Output.interpolate`${adapter.adapterArn}/versions/*`,
-                  ],
-                },
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [
+                Output.interpolate`${adapter.adapterArn}`,
+                Output.interpolate`${adapter.adapterArn}/versions/*`,
               ],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.Textract.${options.capability}(${adapter.LogicalId})`,
-      )(function* (request?: Omit<I, "AdapterId">) {
+      return Effect.fn(`AWS.Textract.${options.capability}(${adapter.LogicalId})`)(function* (
+        request?: Omit<I, "AdapterId">,
+      ) {
         return yield* op({
-          ...(request ?? {}),
+          ...request,
           AdapterId: yield* AdapterId,
         } as I);
       });

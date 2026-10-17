@@ -1,10 +1,9 @@
 import type * as sqs from "@distilled.cloud/aws/sqs";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { makeBatchedSink } from "../internal/BatchedSink.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import { makeBatchedSink } from "../../Util/BatchedSink.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Queue } from "./Queue.ts";
 import { QueueSink, type QueueSinkEntry } from "./QueueSink.ts";
 import { SendMessageBatch } from "./SendMessageBatch.ts";
@@ -25,9 +24,7 @@ const selectFailed = (
     return [];
   }
   const indices = new Set(
-    failed
-      .filter((entry) => entry.SenderFault === senderFault)
-      .map((entry) => Number(entry.Id)),
+    failed.filter((entry) => entry.SenderFault === senderFault).map((entry) => Number(entry.Id)),
   );
   return batch.filter((_, index) => indices.has(index));
 };
@@ -39,41 +36,36 @@ export const QueueSinkHttp = Layer.effect(
 
     return Effect.fn(function* (queue: Queue) {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.SQS.QueueSink(${queue}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: ["sqs:SendMessage", "sqs:SendMessageBatch"],
-                Resource: [Output.interpolate`${queue.queueArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`AWS.SQS.QueueSink(${queue})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: ["sqs:SendMessage", "sqs:SendMessageBatch"],
+              Resource: [Output.interpolate`${queue.queueArn}`],
+            },
+          ],
+        });
       }
       const sendBatch = yield* sendMessageBatch(queue);
-      return makeBatchedSink<
-        QueueSinkEntry,
-        sqs.SendMessageBatchResult,
-        sqs.SendMessageBatchError
-      >({
-        maxRecords: 10,
-        maxBytes: 262_144,
-        sizeOf: (entry) => encoder.encode(entry.MessageBody).length,
-        send: (batch) =>
-          sendBatch({
-            Entries: batch.map((entry, index) => ({
-              ...entry,
-              Id: `${index}`,
-            })),
-          }),
-        // SenderFault=false failures (throttling, internal errors) are
-        // transient — re-submit them on the bounded schedule.
-        unprocessed: (out, batch) => selectFailed(out.Failed, batch, false),
-        // SenderFault=true failures are permanent — drop and surface.
-        rejected: (out, batch) => selectFailed(out.Failed, batch, true),
-      });
+      return makeBatchedSink<QueueSinkEntry, sqs.SendMessageBatchResult, sqs.SendMessageBatchError>(
+        {
+          maxRecords: 10,
+          maxBytes: 262_144,
+          sizeOf: (entry) => encoder.encode(entry.MessageBody).length,
+          send: (batch) =>
+            sendBatch({
+              Entries: batch.map((entry, index) => ({
+                ...entry,
+                Id: `${index}`,
+              })),
+            }),
+          // SenderFault=false failures (throttling, internal errors) are
+          // transient — re-submit them on the bounded schedule.
+          unprocessed: (out, batch) => selectFailed(out.Failed, batch, false),
+          // SenderFault=true failures are permanent — drop and surface.
+          rejected: (out, batch) => selectFailed(out.Failed, batch, true),
+        },
+      );
     });
   }),
 );

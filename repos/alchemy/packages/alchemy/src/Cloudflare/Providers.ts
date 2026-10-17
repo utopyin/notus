@@ -1,4 +1,3 @@
-import { Retry } from "@distilled.cloud/cloudflare";
 import * as Layer from "effect/Layer";
 import { CredentialsStoreLive } from "../Auth/Credentials.ts";
 import { ProfileStoreLive } from "../Auth/Profile.ts";
@@ -7,6 +6,7 @@ import { DockerLive } from "../Docker/Docker.ts";
 import { KeyPair, KeyPairProvider } from "../KeyPair.ts";
 import * as Provider from "../Provider.ts";
 import { Random, RandomProvider } from "../Random.ts";
+import { Http1FetchHttpClient } from "../Util/Http1Dispatcher.ts";
 import * as Access from "./Access.ts";
 import * as AccessApp from "./Access/Application.ts";
 import * as Bookmark from "./Access/Bookmark.ts";
@@ -18,6 +18,7 @@ import * as AccessIdp from "./Access/IdentityProvider.ts";
 import * as AccessInfraTarget from "./Access/InfrastructureTarget.ts";
 import * as AccessKeyConfig from "./Access/KeyConfiguration.ts";
 import * as McpPortal from "./Access/McpPortal.ts";
+import * as McpServer from "./Access/McpServer.ts";
 import * as AccessOrg from "./Access/Organization.ts";
 import * as AccessPol from "./Access/Policy.ts";
 import * as AccessSvcToken from "./Access/ServiceToken.ts";
@@ -31,6 +32,7 @@ import * as ApiShield from "./ApiShield/index.ts";
 import * as ApiToken from "./ApiToken/index.ts";
 import * as Argo from "./Argo/index.ts";
 import { CloudflareAuth } from "./Auth/AuthProvider.ts";
+import * as Basin from "./Basin/index.ts";
 import * as BotManagement from "./BotManagement/index.ts";
 import * as Cache from "./Cache/index.ts";
 import * as Calls from "./Calls/index.ts";
@@ -70,6 +72,7 @@ import * as Hyperdrive from "./Hyperdrive/index.ts";
 import * as Iam from "./Iam/index.ts";
 import * as Images from "./Images/index.ts";
 import * as Intel from "./Intel/index.ts";
+import * as K2 from "./K2/index.ts";
 import * as KeylessCertificate from "./KeylessCertificate/index.ts";
 import * as KV from "./KV/index.ts";
 import * as LeakedCredentialCheck from "./LeakedCredentialCheck/index.ts";
@@ -126,9 +129,7 @@ import * as Zone from "./Zone/index.ts";
 
 export { Credentials } from "@distilled.cloud/cloudflare/Credentials";
 
-export class Providers extends Provider.ProviderCollection<Providers>()(
-  "Cloudflare",
-) {}
+export class Providers extends Provider.ProviderCollection<Providers>()("Cloudflare") {}
 
 export type ProviderRequirements = Layer.Services<ReturnType<typeof providers>>;
 
@@ -158,6 +159,7 @@ export const providers = () =>
       Addressing.ServiceBinding,
       AI.CustomTopics,
       AI.Dataset,
+      AI.Model,
       AI.Evaluation,
       AI.Gateway,
       AI.GatewayDynamicRouting,
@@ -177,6 +179,7 @@ export const providers = () =>
       ApiToken.UserApiToken,
       Argo.SmartRouting,
       Argo.TieredCaching,
+      Basin.Table,
       Bookmark.Bookmark,
       BotManagement.BotManagement,
       Cache.OriginCloudRegion,
@@ -194,6 +197,7 @@ export const providers = () =>
       Configuration.Configuration,
       Connectivity.DirectoryService,
       Containers.ContainerPlatform,
+      Containers.DurableObjectApplication,
       ContentScanning.ContentScanning,
       ContentScanning.Expression,
       CustomCertificates.CustomCertificate,
@@ -256,9 +260,12 @@ export const providers = () =>
       Images.Variant,
       Intel.IndicatorFeed,
       Intel.IndicatorFeedPermission,
+      K2.Stream,
+      K2.Subscription,
       KeylessCertificate.KeylessCertificate,
       KeyPair,
       KV.Namespace,
+      KV.InstantNamespace,
       LeakedCredentialCheck.LeakedCredentialCheck,
       LeakedCredentialCheck.LeakedCredentialDetection,
       List.List,
@@ -286,6 +293,7 @@ export const providers = () =>
       MagicTransit.MagicStaticRoute,
       ManagedTransforms.ManagedTransforms,
       McpPortal.McpPortal,
+      McpServer.McpServer,
       MtlsCertificate.MtlsCertificate,
       NetworkInterconnects.NetworkInterconnectSettings,
       Organization.Organization,
@@ -313,6 +321,7 @@ export const providers = () =>
       R2.BucketEventNotification,
       R2.BucketSippy,
       R2.DataCatalog,
+      R2.SuperSlurperJob,
       Random,
       RealtimeKit.App,
       RealtimeKit.Preset,
@@ -341,6 +350,7 @@ export const providers = () =>
       Spectrum.Application,
       Speed.TestSchedule,
       Ssl.CertificatePack,
+      Ssl.CertificateTransparencyAlerting,
       Ssl.UniversalSsl,
       Stream.LiveInput,
       Stream.LiveInputOutput,
@@ -405,6 +415,7 @@ export const providers = () =>
         Addressing.ServiceBindingProvider(),
         AI.CustomTopicsProvider(),
         AI.DatasetProvider(),
+        AI.ModelProvider(),
         AI.DynamicRoutingProvider(),
         AI.EvaluationProvider(),
         AI.GatewayProviderProvider(),
@@ -441,6 +452,7 @@ export const providers = () =>
         Configuration.ConfigurationProvider(),
         Connectivity.DirectoryServiceProvider(),
         Containers.ContainerProvider(),
+        Containers.DurableObjectApplicationProvider(),
         ContentScanning.ContentScanningProvider(),
         ContentScanning.ExpressionProvider(),
         CustomCertificates.CustomCertificateProvider(),
@@ -508,8 +520,11 @@ export const providers = () =>
           Images.VariantProvider(),
           Intel.IndicatorFeedPermissionProvider(),
           Intel.IndicatorFeedProvider(),
+          K2.StreamProvider(),
+          K2.SubscriptionProvider(),
           KeylessCertificate.KeylessCertificateProvider(),
           KV.NamespaceProvider(),
+          KV.InstantNamespaceProvider(),
           LeakedCredentialCheck.LeakedCredentialCheckProvider(),
           LeakedCredentialCheck.LeakedCredentialDetectionProvider(),
           List.ListProvider(),
@@ -535,6 +550,7 @@ export const providers = () =>
           MagicTransit.MagicStaticRouteProvider(),
           ManagedTransforms.ManagedTransformsProvider(),
           McpPortal.McpPortalProvider(),
+          McpServer.McpServerProvider(),
           MtlsCertificate.MtlsCertificateProvider(),
           NetworkInterconnects.NetworkInterconnectSettingsProvider(),
           Organization.OrganizationProvider(),
@@ -562,6 +578,7 @@ export const providers = () =>
           R2.BucketProvider(),
           R2.BucketSippyProvider(),
           R2.DataCatalogProvider(),
+          R2.SuperSlurperJobProvider(),
           RealtimeKit.AppProvider(),
           RealtimeKit.PresetProvider(),
           RealtimeKit.WebhookProvider(),
@@ -589,6 +606,7 @@ export const providers = () =>
           Spectrum.ApplicationProvider(),
           Speed.TestScheduleProvider(),
           Ssl.CertificatePackProvider(),
+          Ssl.CertificateTransparencyAlertingProvider(),
           Ssl.UniversalSslProvider(),
           Stream.LiveInputOutputProvider(),
           Stream.LiveInputProvider(),
@@ -608,6 +626,7 @@ export const providers = () =>
           Tunnel.WarpConnectorProvider(),
         ),
         Layer.mergeAll(
+          Basin.TableProvider(),
           Turnstile.WidgetProvider(),
           UrlNorm.UrlNormalizationProvider(),
           Vectorize.IndexProvider(),
@@ -644,6 +663,8 @@ export const providers = () =>
         Command.providers(),
         KeyPairProvider(),
         RandomProvider(),
+        // DNS-01 solver for `ACME.Certificate` over this account's zones.
+        Dns.AcmeDnsSolverLive,
       ),
     ),
     // Plan-executable data-source capabilities (`Binding.Service.execute`).
@@ -660,25 +681,25 @@ export const providers = () =>
 /**
  * The foundation every effect tree that talks to the Cloudflare API
  * shares — credentials resolved through the Alchemy auth provider,
- * account environment, Access, profile + credential store — plus a
- * blanket retry policy applied to every Cloudflare API call.
+ * account environment, Access, profile + credential store.
  *
  * Used by {@link providers} and the Cloudflare state store
  * ({@link ../Cloudflare/StateStore/State.ts state}) so that provider
- * lifecycle operations and state-store init/bootstrap probes retry
- * transient failures the same way; without it the state-store
- * subdomain/script/secrets probes run on the SDK's shorter default
- * policy and surface throttling ("Please wait and consider throttling
- * your request speed") to users.
+ * lifecycle operations and state-store init/bootstrap probes run under
+ * the same services.
  *
- * The policy is the SDK's `Retry.makeDefault` (throttling / 5xx /
- * network, server retry-after hints, bounded backoff). The
- * Cloudflare-specific misleadingly-tagged transient cases that used
- * to live here as a custom factory (10001 "internal error", 10001
- * "Unable to authenticate request", 10000 "Authentication error"
- * under load) are now tagged retryable at the source in the SDK's
- * global error map, so `makeDefault`'s transient detection covers
- * them.
+ * No retry policy is installed here: every Cloudflare API call already
+ * runs under the SDK's `makeDefault` (throttling / 5xx / network, server
+ * retry-after hints, bounded backoff) when no policy is in context, and
+ * the Cloudflare-specific misleadingly-tagged transient cases (10001
+ * "internal error", 10001 "Unable to authenticate request", 10000
+ * "Authentication error" under load) are tagged retryable at the source
+ * in the SDK's global error map, so that default covers them.
+ *
+ * Every request goes out over HTTP/1.1 ({@link Http1FetchHttpClient}):
+ * Node 26's `fetch` negotiates HTTP/2 by default and funnels the engine's
+ * unbounded fan-out onto one session, where undici 8's HTTP/2 path has
+ * been resetting streams under load. HTTP/1.1 measured no slower here.
  */
 export const CloudflareApiLive = () =>
   Credentials.fromAuthProvider().pipe(
@@ -687,5 +708,5 @@ export const CloudflareApiLive = () =>
     Layer.provideMerge(Access.AccessLive),
     Layer.provideMerge(ProfileStoreLive),
     Layer.provideMerge(CredentialsStoreLive),
-    Layer.provideMerge(Layer.succeed(Retry.Retry, Retry.makeDefault)),
+    Layer.provideMerge(Http1FetchHttpClient),
   );

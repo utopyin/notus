@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Graph } from "./Graph.ts";
 
 /**
@@ -18,12 +17,7 @@ import type { Graph } from "./Graph.ts";
  * ARN, and the runtime half injects the graph's `GraphArn` into every
  * request.
  */
-export const makeDetectiveGraphHttpBinding = <
-  I extends { GraphArn: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeDetectiveGraphHttpBinding = <I extends { GraphArn: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.Detective.ListMembers`. */
   tag: string;
   /** The distilled operation. */
@@ -32,23 +26,20 @@ export const makeDetectiveGraphHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (graph: Graph) {
       const GraphArn = yield* graph.graphArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${graph}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [graph.graphArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${graph})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [graph.graphArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${graph.LogicalId})`)(function* (
         request?: Omit<I, "GraphArn">,
@@ -77,22 +68,19 @@ export const makeDetectiveAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

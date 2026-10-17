@@ -1,8 +1,8 @@
 import * as DynamoDB from "@distilled.cloud/aws/dynamodb";
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Layer from "effect/Layer";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
+import { grantTables, tablesRegion } from "./BindingHttp.ts";
 import {
   ExecuteTransaction,
   type ExecuteTransactionRequest,
@@ -12,33 +12,27 @@ import {
 export const ExecuteTransactionHttp = Layer.effect(
   ExecuteTransaction,
   Effect.gen(function* () {
-    const executeTransaction = yield* DynamoDB.executeTransaction;
-
     return Effect.fn(function* (...tables: ExecuteTransactionTables) {
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const sortedTables = [...tables].sort((a, b) =>
-          a.LogicalId.localeCompare(b.LogicalId),
-        );
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.DynamoDB.ExecuteTransaction(${sortedTables}))`(
-            {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [
-                    "dynamodb:PartiQLSelect",
-                    "dynamodb:PartiQLInsert",
-                    "dynamodb:PartiQLUpdate",
-                    "dynamodb:PartiQLDelete",
-                  ],
-                  Resource: sortedTables.map((table) => table.tableArn),
-                },
-              ],
-            },
-          );
-        }
-      }
+      const sortedTables = [...tables].sort((a, b) => a.LogicalId.localeCompare(b.LogicalId));
+      yield* grantTables(
+        `AWS.DynamoDB.ExecuteTransaction(${sortedTables.map((table) => table.LogicalId).join(", ")})`,
+        () => [
+          {
+            Effect: "Allow",
+            Action: [
+              "dynamodb:PartiQLSelect",
+              "dynamodb:PartiQLInsert",
+              "dynamodb:PartiQLUpdate",
+              "dynamodb:PartiQLDelete",
+            ],
+            Resource: sortedTables.map((table) => table.tableArn),
+          },
+        ],
+      );
+      const executeTransaction = yield* AWSBindings.withCredentials(
+        DynamoDB.executeTransaction,
+        tablesRegion(sortedTables),
+      );
       return Effect.fn(`AWS.DynamoDB.ExecuteTransaction(${tables})`)(function* (
         request: ExecuteTransactionRequest,
       ) {

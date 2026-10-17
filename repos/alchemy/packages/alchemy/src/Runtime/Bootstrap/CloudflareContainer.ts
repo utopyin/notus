@@ -8,18 +8,14 @@
  */
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import { MinimumLogLevel } from "effect/References";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+// oxlint-disable-next-line alchemy/package-boundaries -- package split phase 3: per-cloud runtime bootstrap; moves into its provider
 import { CloudflareEnvironment } from "../../Cloudflare/CloudflareEnvironment.ts";
 import { reifyBoundConfigProvider } from "../../Runtime.ts";
-import {
-  entrypointLayer,
-  resolveProgram,
-  runProcess,
-  stackConstant,
-} from "./Process.ts";
+import { entrypointLayer, resolveProgram, runProcess, stackConstant } from "./Process.ts";
 
 export interface ContainerBootstrapOptions {
   /** Stack identity baked in at deploy time. */
@@ -49,9 +45,7 @@ export const bootstrapContainer = (
   const program = resolveProgram("default", { telemetry: true }).pipe(
     Effect.provide(
       entrypointLayer(entrypoint).pipe(
-        Layer.provideMerge(
-          stackConstant(options.stack.name, options.stack.stage),
-        ),
+        Layer.provideMerge(stackConstant(options.stack.name, options.stack.stage)),
         Layer.provideMerge(runtime.httpServer),
         // Capability bindings that talk to Cloudflare's HTTP API from inside
         // the container (e.g. R2/KV/Queue `*Http` bindings) resolve their
@@ -78,9 +72,7 @@ export const bootstrapContainer = (
             reifyBoundConfigProvider(ConfigProvider.fromEnv(), process.env),
           ),
         ),
-        Layer.provideMerge(
-          Layer.succeed(MinimumLogLevel, process.env.DEBUG ? "Debug" : "Info"),
-        ),
+        Layer.provideMerge(Layer.succeed(MinimumLogLevel, process.env.DEBUG ? "Debug" : "Info")),
       ),
     ),
     Effect.scoped,

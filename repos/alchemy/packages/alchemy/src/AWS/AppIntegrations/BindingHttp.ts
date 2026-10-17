@@ -1,14 +1,13 @@
+import * as Effect from "effect/Effect";
 /**
  * Shared HTTP-binding scaffolding for the AppIntegrations service.
  * NOT exported from the service barrel — each `{Op}Http.ts` is a thin
  * one-call `Layer.effect(Cap, makeAppIntegrations*HttpBinding({ ... }))`.
  */
-import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type { Input } from "../../Input.ts";
 import type { Output } from "../../Output.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { AWSEnvironment } from "../Environment.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
 
 /** Deploy-time environment handed to the `resources` IAM builder. */
 export interface AppIntegrationsIamEnv {
@@ -33,11 +32,7 @@ export const makeAppIntegrationsHttpBinding = <
   /** Capability name used in the bind sid and runtime span. */
   name: string;
   /** The distilled AppIntegrations operation backing the binding. */
-  operation: Effect.Effect<
-    (input: WireReq) => Effect.Effect<Out, Err>,
-    never,
-    OpR
-  >;
+  operation: Effect.Effect<(input: WireReq) => Effect.Effect<Out, Err>, never, OpR>;
   /** Wire key the resolved resource identifier is injected under. */
   requestKey: IdKey;
   /** The resource attribute used as the wire identifier. */
@@ -55,43 +50,37 @@ export const makeAppIntegrationsHttpBinding = <
   dependentActions?: string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (resource: Res) {
       const Identifier = yield* options.identifier(resource);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          const { accountId, region } =
-            yield* AWSEnvironment.current as unknown as Effect.Effect<{
-              accountId: string;
-              region: string;
-            }>;
-          yield* host.bind`Allow(${host}, AWS.AppIntegrations.${options.name}(${resource}))`(
+        const { accountId, region } = yield* AWSEnvironment.current as unknown as Effect.Effect<{
+          accountId: string;
+          region: string;
+        }>;
+        yield* AWSBindings.bind`AWS.AppIntegrations.${options.name}(${resource})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: options.iamActions,
-                  Resource: options.resources(resource, { region, accountId }),
-                },
-                ...(options.dependentActions?.length
-                  ? [
-                      {
-                        Effect: "Allow" as const,
-                        Action: options.dependentActions,
-                        Resource: ["*"],
-                      },
-                    ]
-                  : []),
-              ],
+              Effect: "Allow",
+              Action: options.iamActions,
+              Resource: options.resources(resource, { region, accountId }),
             },
-          );
-        }
+            ...(options.dependentActions?.length
+              ? [
+                  {
+                    Effect: "Allow" as const,
+                    Action: options.dependentActions,
+                    Resource: ["*"],
+                  },
+                ]
+              : []),
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.AppIntegrations.${options.name}(${resource.LogicalId})`,
-      )(function* (request?: Omit<WireReq, IdKey>) {
+      return Effect.fn(`AWS.AppIntegrations.${options.name}(${resource.LogicalId})`)(function* (
+        request?: Omit<WireReq, IdKey>,
+      ) {
         // The identifier key is re-added on top of the caller's request, so
         // the widened spread is exactly a WireReq.
         return yield* op({
@@ -107,46 +96,30 @@ export const makeAppIntegrationsHttpBinding = <
  * binding (no resource argument): grant the IAM actions on `*` at deploy time
  * and forward requests to the operation at runtime.
  */
-export const makeAppIntegrationsAccountHttpBinding = <
-  WireReq,
-  Out,
-  Err,
-  OpR,
->(options: {
+export const makeAppIntegrationsAccountHttpBinding = <WireReq, Out, Err, OpR>(options: {
   /** Capability name used in the bind sid and runtime span. */
   name: string;
   /** The distilled AppIntegrations operation backing the binding. */
-  operation: Effect.Effect<
-    (input: WireReq) => Effect.Effect<Out, Err>,
-    never,
-    OpR
-  >;
+  operation: Effect.Effect<(input: WireReq) => Effect.Effect<Out, Err>, never, OpR>;
   /** IAM actions granted on the host at deploy time. */
   iamActions: string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.AppIntegrations.${options.name}())`(
+        yield* AWSBindings.bind`AWS.AppIntegrations.${options.name}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: options.iamActions,
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: options.iamActions,
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.AppIntegrations.${options.name}`)(function* (
-        request?: WireReq,
-      ) {
+      return Effect.fn(`AWS.AppIntegrations.${options.name}`)(function* (request?: WireReq) {
         // List requests are all-optional structs; an absent request is the
         // empty request.
         return yield* op((request ?? {}) as WireReq);

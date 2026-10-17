@@ -1,15 +1,11 @@
 import type * as Firehose from "@distilled.cloud/aws/firehose";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { makeBatchedSink } from "../internal/BatchedSink.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import { makeBatchedSink } from "../../Util/BatchedSink.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { DeliveryStream } from "./DeliveryStream.ts";
-import {
-  DeliveryStreamSink,
-  type DeliveryStreamSinkRecord,
-} from "./DeliveryStreamSink.ts";
+import { DeliveryStreamSink, type DeliveryStreamSinkRecord } from "./DeliveryStreamSink.ts";
 import { PutRecordBatch } from "./PutRecordBatch.ts";
 
 /**
@@ -26,22 +22,15 @@ export const DeliveryStreamSinkHttp = Layer.effect(
 
     return Effect.fn(function* (deliveryStream: DeliveryStream) {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.Firehose.DeliveryStreamSink(${deliveryStream}))`(
+        yield* AWSBindings.bind`AWS.Firehose.DeliveryStreamSink(${deliveryStream})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: ["firehose:PutRecordBatch"],
-                  Resource: [
-                    Output.interpolate`${deliveryStream.deliveryStreamArn}`,
-                  ],
-                },
-              ],
+              Effect: "Allow",
+              Action: ["firehose:PutRecordBatch"],
+              Resource: [Output.interpolate`${deliveryStream.deliveryStreamArn}`],
             },
-          );
-        }
+          ],
+        });
       }
       const send = yield* putRecordBatch(deliveryStream);
       return makeBatchedSink<
@@ -61,9 +50,7 @@ export const DeliveryStreamSinkHttp = Layer.effect(
           if (!out.FailedPutCount) {
             return [];
           }
-          return batch.filter(
-            (_, index) => out.RequestResponses[index]?.ErrorCode !== undefined,
-          );
+          return batch.filter((_, index) => out.RequestResponses[index]?.ErrorCode !== undefined);
         },
       });
     });

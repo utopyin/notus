@@ -2,8 +2,7 @@ import { Endpoint } from "@distilled.cloud/aws";
 import * as mgmt from "@distilled.cloud/aws/apigatewaymanagementapi";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import {
   ManageConnections,
   type DeleteConnectionRequest,
@@ -35,27 +34,22 @@ import type { ApiGatewayV2Stage } from "./Stage.ts";
 export const ManageConnectionsHttp = Layer.effect(
   ManageConnections,
   Effect.gen(function* () {
-    const postToConnection = yield* mgmt.postToConnection;
-    const getConnection = yield* mgmt.getConnection;
-    const deleteConnection = yield* mgmt.deleteConnection;
+    const postToConnection = yield* AWSBindings.withCredentials(mgmt.postToConnection);
+    const getConnection = yield* AWSBindings.withCredentials(mgmt.getConnection);
+    const deleteConnection = yield* AWSBindings.withCredentials(mgmt.deleteConnection);
 
     return Effect.fn(function* <S extends ApiGatewayV2Stage>(stage: S) {
       const CallbackUrl = yield* stage.callbackUrl;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ApiGatewayV2.ManageConnections(${stage}))`(
+        yield* AWSBindings.bind`AWS.ApiGatewayV2.ManageConnections(${stage})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: ["execute-api:ManageConnections"],
-                  Resource: [stage.connectionsArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: ["execute-api:ManageConnections"],
+              Resource: [stage.connectionsArn],
             },
-          );
-        }
+          ],
+        });
       }
 
       // The management API is served from the stage's own callback
@@ -65,31 +59,27 @@ export const ManageConnectionsHttp = Layer.effect(
         effect: Effect.Effect<A, E>,
         endpoint: string,
       ): Effect.Effect<A, E> =>
-        Effect.provideService(
-          effect,
-          Endpoint.Endpoint,
-          Effect.succeed(endpoint),
-        );
+        Effect.provideService(effect, Endpoint.Endpoint, Effect.succeed(endpoint));
 
       return {
-        postToConnection: Effect.fn(
-          `AWS.ApiGatewayV2.PostToConnection(${stage.LogicalId})`,
-        )(function* (request: PostToConnectionRequest) {
-          const endpoint = yield* CallbackUrl;
-          return yield* withEndpoint(postToConnection(request), endpoint);
-        }),
-        getConnection: Effect.fn(
-          `AWS.ApiGatewayV2.GetConnection(${stage.LogicalId})`,
-        )(function* (request: GetConnectionRequest) {
+        postToConnection: Effect.fn(`AWS.ApiGatewayV2.PostToConnection(${stage.LogicalId})`)(
+          function* (request: PostToConnectionRequest) {
+            const endpoint = yield* CallbackUrl;
+            return yield* withEndpoint(postToConnection(request), endpoint);
+          },
+        ),
+        getConnection: Effect.fn(`AWS.ApiGatewayV2.GetConnection(${stage.LogicalId})`)(function* (
+          request: GetConnectionRequest,
+        ) {
           const endpoint = yield* CallbackUrl;
           return yield* withEndpoint(getConnection(request), endpoint);
         }),
-        deleteConnection: Effect.fn(
-          `AWS.ApiGatewayV2.DeleteConnection(${stage.LogicalId})`,
-        )(function* (request: DeleteConnectionRequest) {
-          const endpoint = yield* CallbackUrl;
-          return yield* withEndpoint(deleteConnection(request), endpoint);
-        }),
+        deleteConnection: Effect.fn(`AWS.ApiGatewayV2.DeleteConnection(${stage.LogicalId})`)(
+          function* (request: DeleteConnectionRequest) {
+            const endpoint = yield* CallbackUrl;
+            return yield* withEndpoint(deleteConnection(request), endpoint);
+          },
+        ),
       };
     });
   }),

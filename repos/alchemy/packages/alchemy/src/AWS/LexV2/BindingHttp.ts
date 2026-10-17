@@ -1,9 +1,8 @@
 import type { Credentials } from "@distilled.cloud/aws/Credentials";
 import type { Region as AwsRegion } from "@distilled.cloud/aws/Region";
 import * as Effect from "effect/Effect";
-import type * as HttpClient from "effect/unstable/http/HttpClient";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import type * as HttpClient from "effect/http/HttpClient";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { BotAlias } from "./BotAlias.ts";
 
 /**
@@ -35,9 +34,7 @@ export interface LexAliasHttpBindingConfig<Req extends object, Out, Err> {
    * The distilled `lex-runtime-v2` operation implementing the capability.
    */
   operation: Effect.Effect<
-    (
-      input: Req & { botId: string; botAliasId: string },
-    ) => Effect.Effect<Out, Err>,
+    (input: Req & { botId: string; botAliasId: string }) => Effect.Effect<Out, Err>,
     never,
     LexRequirements
   >;
@@ -54,35 +51,30 @@ export const makeLexAliasHttpBinding = <Req extends object, Out, Err>(
   config: LexAliasHttpBindingConfig<Req, Out, Err>,
 ) =>
   Effect.gen(function* () {
-    const op = yield* config.operation;
+    const op = yield* AWSBindings.withCredentials(config.operation);
 
     return Effect.fn(function* (alias: BotAlias) {
       const BotId = yield* alias.botId;
       const BotAliasId = yield* alias.botAliasId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.LexV2.${config.capability}(${alias}))`(
+        yield* AWSBindings.bind`AWS.LexV2.${config.capability}(${alias})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...config.iamActions],
-                  Resource: [alias.botAliasArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...config.iamActions],
+              Resource: [alias.botAliasArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.LexV2.${config.capability}(${alias.LogicalId})`)(
-        function* (request: Req) {
-          return yield* op({
-            ...request,
-            botId: yield* BotId,
-            botAliasId: yield* BotAliasId,
-          });
-        },
-      );
+      return Effect.fn(`AWS.LexV2.${config.capability}(${alias.LogicalId})`)(function* (
+        request: Req,
+      ) {
+        return yield* op({
+          ...request,
+          botId: yield* BotId,
+          botAliasId: yield* BotAliasId,
+        });
+      });
     });
   });

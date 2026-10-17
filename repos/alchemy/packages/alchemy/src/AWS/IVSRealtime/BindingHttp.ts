@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Stage } from "./Stage.ts";
 
 /**
@@ -22,15 +21,13 @@ export const COMPOSITION_ARN_WILDCARD = "arn:aws:ivs:*:*:composition/*";
  * Encoder configurations referenced by a composition's destinations are
  * runtime data, so StartComposition grants include this wildcard.
  */
-export const ENCODER_CONFIGURATION_ARN_WILDCARD =
-  "arn:aws:ivs:*:*:encoder-configuration/*";
+export const ENCODER_CONFIGURATION_ARN_WILDCARD = "arn:aws:ivs:*:*:encoder-configuration/*";
 
 /**
  * Storage configurations referenced by a composition's S3 destinations are
  * runtime data, so StartComposition grants include this wildcard.
  */
-export const STORAGE_CONFIGURATION_ARN_WILDCARD =
-  "arn:aws:ivs:*:*:storage-configuration/*";
+export const STORAGE_CONFIGURATION_ARN_WILDCARD = "arn:aws:ivs:*:*:storage-configuration/*";
 
 /**
  * Build the impl Effect for an IVS Real-Time operation scoped to a
@@ -65,28 +62,23 @@ export const makeIvsRealtimeStageHttpBinding = <
   prepare?: (request: Req) => Omit<I, K>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (stage: Stage) {
       // Output yields a DEFERRED effect — resolve again per invocation below.
       const StageArn = yield* stage.stageArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${stage}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [stage.stageArn, ...(options.extraResources ?? [])],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${stage})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [stage.stageArn, ...(options.extraResources ?? [])],
+            },
+          ],
+        });
       }
-      return Effect.fn(`${options.tag}(${stage.LogicalId})`)(function* (
-        request?: Req,
-      ) {
+      return Effect.fn(`${options.tag}(${stage.LogicalId})`)(function* (request?: Req) {
         const stageArn = yield* StageArn;
         const wire = options.prepare
           ? options.prepare((request ?? {}) as Req)
@@ -119,36 +111,31 @@ export const makeIvsRealtimeReplicationHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (sourceStage: Stage, destinationStage: Stage) {
       const SourceStageArn = yield* sourceStage.stageArn;
       const DestinationStageArn = yield* destinationStage.stageArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${sourceStage}, ${destinationStage}))`(
+        yield* AWSBindings.bind`${options.tag}(${sourceStage}, ${destinationStage})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.actions],
-                  Resource: [sourceStage.stageArn, destinationStage.stageArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [sourceStage.stageArn, destinationStage.stageArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `${options.tag}(${sourceStage.LogicalId}, ${destinationStage.LogicalId})`,
-      )(function* (request: Omit<I, "sourceStageArn" | "destinationStageArn">) {
-        return yield* op({
-          ...request,
-          sourceStageArn: yield* SourceStageArn,
-          destinationStageArn: yield* DestinationStageArn,
-        } as I);
-      });
+      return Effect.fn(`${options.tag}(${sourceStage.LogicalId}, ${destinationStage.LogicalId})`)(
+        function* (request: Omit<I, "sourceStageArn" | "destinationStageArn">) {
+          return yield* op({
+            ...request,
+            sourceStageArn: yield* SourceStageArn,
+            destinationStageArn: yield* DestinationStageArn,
+          } as I);
+        },
+      );
     });
   });
 
@@ -172,22 +159,19 @@ export const makeIvsRealtimeAccountHttpBinding = <I, A, E, R>(options: {
   resources?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [...(options.resources ?? ["*"])],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [...(options.resources ?? ["*"])],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

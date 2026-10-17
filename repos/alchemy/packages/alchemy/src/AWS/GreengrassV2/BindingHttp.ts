@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { ComponentVersion } from "./ComponentVersion.ts";
 import type { Deployment } from "./Deployment.ts";
 
@@ -19,12 +18,7 @@ import type { Deployment } from "./Deployment.ts";
  * bound component version's ARN, and the runtime half injects the component
  * version's `arn` into every request.
  */
-export const makeGreengrassComponentHttpBinding = <
-  I extends { arn: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeGreengrassComponentHttpBinding = <I extends { arn: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.GreengrassV2.GetComponent`. */
   tag: string;
   /** The distilled operation. */
@@ -33,23 +27,20 @@ export const makeGreengrassComponentHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (component: ComponentVersion) {
       const Arn = yield* component.arn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${component}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [component.arn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${component})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [component.arn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${component.LogicalId})`)(function* (
         request?: Omit<I, "arn">,
@@ -90,33 +81,29 @@ export const makeGreengrassDeploymentHttpBinding = <
   dependentActions?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (deployment: Deployment) {
       const DeploymentId = yield* deployment.deploymentId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${deployment}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [deployment.deploymentArn],
-              },
-              ...(options.dependentActions !== undefined &&
-              options.dependentActions.length > 0
-                ? [
-                    {
-                      Effect: "Allow" as const,
-                      Action: [...options.dependentActions],
-                      Resource: ["*"],
-                    },
-                  ]
-                : []),
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${deployment})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [deployment.deploymentArn],
+            },
+            ...(options.dependentActions !== undefined && options.dependentActions.length > 0
+              ? [
+                  {
+                    Effect: "Allow" as const,
+                    Action: [...options.dependentActions],
+                    Resource: ["*"],
+                  },
+                ]
+              : []),
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${deployment.LogicalId})`)(function* (
         request?: Omit<I, "deploymentId">,
@@ -143,22 +130,19 @@ export const makeGreengrassAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

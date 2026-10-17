@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { EnabledBaseline } from "./EnabledBaseline.ts";
 import type { EnabledControl } from "./EnabledControl.ts";
 import type { LandingZone } from "./LandingZone.ts";
@@ -20,10 +19,7 @@ import type { LandingZone } from "./LandingZone.ts";
  */
 
 /** The Control Tower resources that resource-scoped bindings can target. */
-export type ControlTowerBindable =
-  | EnabledControl
-  | EnabledBaseline
-  | LandingZone;
+export type ControlTowerBindable = EnabledControl | EnabledBaseline | LandingZone;
 
 /**
  * Build the implementation effect for a resource-scoped capability: the
@@ -58,29 +54,24 @@ export const makeControlTowerHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (resource: Res) {
       const Identifier = yield* options.identifier(resource);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ControlTower.${options.capability}(${resource}))`(
+        yield* AWSBindings.bind`AWS.ControlTower.${options.capability}(${resource})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [options.identifier(resource)],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [options.identifier(resource)],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.ControlTower.${options.capability}(${resource.LogicalId})`,
-      )(function* (request?: Omit<I, K>) {
+      return Effect.fn(`AWS.ControlTower.${options.capability}(${resource.LogicalId})`)(function* (
+        request?: Omit<I, K>,
+      ) {
         return yield* op({
           ...request,
           [options.requestKey]: yield* Identifier,
@@ -95,12 +86,7 @@ export const makeControlTowerHttpBinding = <
  * APIs). The deploy-time half grants `iamActions` on `Resource: ["*"]`
  * because these operations are not resource-scoped.
  */
-export const makeControlTowerAccountHttpBinding = <
-  I extends object,
-  A,
-  E,
-  R,
->(options: {
+export const makeControlTowerAccountHttpBinding = <I extends object, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"ListBaselines"`.
@@ -116,28 +102,21 @@ export const makeControlTowerAccountHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ControlTower.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.ControlTower.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.ControlTower.${options.capability}`)(function* (
-        request?: I,
-      ) {
+      return Effect.fn(`AWS.ControlTower.${options.capability}`)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
       });
     });

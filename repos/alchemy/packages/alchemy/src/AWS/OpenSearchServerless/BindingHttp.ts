@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Collection } from "./Collection.ts";
 
 /**
@@ -19,12 +18,7 @@ import type { Collection } from "./Collection.ts";
  * callable injects the bound {@link Collection}'s ID as `id` and the
  * deploy-time half grants `actions` on the collection's ARN.
  */
-export const makeAossCollectionHttpBinding = <
-  I extends { id?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeAossCollectionHttpBinding = <I extends { id?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.OpenSearchServerless.CreateIndex`. */
   tag: string;
   /** The distilled operation; `id` is injected from the collection. */
@@ -33,23 +27,20 @@ export const makeAossCollectionHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (collection: Collection) {
       const CollectionId = yield* collection.collectionId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${collection}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${collection.collectionArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${collection})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${collection.collectionArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${collection.LogicalId})`)(function* (
         request: Omit<I, "id">,
@@ -77,22 +68,19 @@ export const makeAossAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

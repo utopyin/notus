@@ -15,8 +15,8 @@ import * as Binding from "../../Binding.ts";
 import type { Input } from "../../Input.ts";
 import type * as Output from "../../Output.ts";
 import type { ResourceLike } from "../../Resource.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { AWSEnvironment } from "../Environment.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
 
 /** Region/account available to an IAM grant factory. */
 export interface AppConfigIamContext {
@@ -54,11 +54,7 @@ export const makeAppConfigHttpBinding = <
   service: Binding.Service<Self, Identifier, Shape>,
   options: {
     /** The distilled AppConfig operation backing the capability. */
-    operation: Effect.Effect<
-      (input: WireIn) => Effect.Effect<Out, Err>,
-      never,
-      OpReq
-    >;
+    operation: Effect.Effect<(input: WireIn) => Effect.Effect<Out, Err>, never, OpReq>;
     /** Derive identifiers + IAM grant from the bound resources. */
     spec: (...args: Parameters<Shape>) => AppConfigHttpBindingSpec;
   },
@@ -66,13 +62,11 @@ export const makeAppConfigHttpBinding = <
   Layer.effect(
     service,
     Effect.gen(function* () {
-      const operation = yield* options.operation;
+      const operation = yield* AWSBindings.withCredentials(options.operation);
 
       return Effect.fn(function* (...args: Parameters<Shape>) {
         const { identifiers, iam } = options.spec(...args);
-        const label = (args as ResourceLike[])
-          .map((arg) => arg.LogicalId)
-          .join(", ");
+        const label = (args as ResourceLike[]).map((arg) => arg.LogicalId).join(", ");
 
         // Outputs yield DEFERRED effects — resolving them here registers the
         // attributes on the host environment; re-yield per invocation below.
@@ -82,32 +76,23 @@ export const makeAppConfigHttpBinding = <
         }
 
         if (!globalThis.__ALCHEMY_RUNTIME__) {
-          const host = yield* Binding.Host;
-          if (isBindingHost(host)) {
-            const { accountId, region } =
-              yield* AWSEnvironment.current as unknown as Effect.Effect<{
-                accountId: string;
-                region: string;
-              }>;
-            const { actions, resources } = iam({ accountId, region });
-            yield* host.bind(
-              `Allow(${host.LogicalId}, ${service.key}(${label}))`,
+          const { accountId, region } = yield* AWSEnvironment.current as unknown as Effect.Effect<{
+            accountId: string;
+            region: string;
+          }>;
+          const { actions, resources } = iam({ accountId, region });
+          yield* AWSBindings.bind`${service.key}(${label})`({
+            policyStatements: [
               {
-                policyStatements: [
-                  {
-                    Effect: "Allow",
-                    Action: actions,
-                    Resource: resources,
-                  },
-                ],
+                Effect: "Allow",
+                Action: actions,
+                Resource: resources,
               },
-            );
-          }
+            ],
+          });
         }
 
-        return Effect.fn(`${service.key}(${label})`)(function* (
-          request: object,
-        ) {
+        return Effect.fn(`${service.key}(${label})`)(function* (request: object) {
           const ids: Record<string, string> = {};
           for (const [key, effect] of resolved) {
             ids[key] = yield* effect;

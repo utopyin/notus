@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Budget } from "./Budget.ts";
 import type { BudgetAction } from "./BudgetAction.ts";
 
@@ -22,8 +21,7 @@ import type { BudgetAction } from "./BudgetAction.ts";
 /**
  * Build the impl Effect for a budget-scoped operation: the runtime callable
  * injects the bound {@link Budget}'s `AccountId` and `BudgetName` and the
- * deploy-time half grants `actions` on the budget ARN (or, for budget-action
- * listings, on `budget/{name}/action/*` via `actionWildcard`).
+ * deploy-time half grants `actions` on the budget ARN.
  */
 export const makeBudgetHttpBinding = <
   I extends { AccountId: string; BudgetName: string },
@@ -37,36 +35,23 @@ export const makeBudgetHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on the budget ARN. */
   actions: readonly string[];
-  /**
-   * Grant on `{budgetArn}/action/*` instead of the budget ARN — the
-   * budget-action listing operations authorize on the budgetAction resource
-   * type, whose IDs are unknowable at deploy time.
-   */
-  actionWildcard?: boolean;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (budget: Budget) {
       const AccountId = yield* budget.accountId;
       const BudgetName = yield* budget.budgetName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${budget}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [
-                  options.actionWildcard
-                    ? Output.interpolate`${budget.budgetArn}/action/*`
-                    : Output.interpolate`${budget.budgetArn}`,
-                ],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${budget})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${budget.budgetArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${budget.LogicalId})`)(function* (
         request?: Omit<I, "AccountId" | "BudgetName">,
@@ -100,25 +85,22 @@ export const makeBudgetActionHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (action: BudgetAction) {
       const AccountId = yield* action.accountId;
       const BudgetName = yield* action.budgetName;
       const ActionId = yield* action.actionId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${action}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${action.actionArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${action})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${action.actionArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${action.LogicalId})`)(function* (
         request: Omit<I, "AccountId" | "BudgetName" | "ActionId">,

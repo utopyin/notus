@@ -1,14 +1,9 @@
 import type * as cloudwatch from "@distilled.cloud/aws/cloudwatch";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
-import { makeBatchedSink } from "../internal/BatchedSink.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
-import {
-  MetricSink,
-  type MetricSinkDatum,
-  type MetricSinkProps,
-} from "./MetricSink.ts";
+import { makeBatchedSink } from "../../Util/BatchedSink.ts";
+import * as AWSBindings from "../AWSBindings.ts";
+import { MetricSink, type MetricSinkDatum, type MetricSinkProps } from "./MetricSink.ts";
 import { PutMetricData } from "./PutMetricData.ts";
 
 const encoder = new TextEncoder();
@@ -27,21 +22,16 @@ export const MetricSinkHttp = Layer.effect(
 
     return Effect.fn(function* (props: MetricSinkProps) {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.CloudWatch.MetricSink(${props.Namespace}))`(
+        yield* AWSBindings.bind`AWS.CloudWatch.MetricSink(${props.Namespace})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  // PutMetricData does not support resource-level permissions.
-                  Action: ["cloudwatch:PutMetricData"],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              // PutMetricData does not support resource-level permissions.
+              Action: ["cloudwatch:PutMetricData"],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
       const put = yield* putMetricData();
       return makeBatchedSink<

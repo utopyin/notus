@@ -1,19 +1,14 @@
-import * as AWS from "@/AWS";
-import {
-  Policy,
-  PolicyAttachment,
-  Root,
-  RootPolicyType,
-} from "@/AWS/Organizations";
-import * as Provider from "@/Provider";
-import { isResourceState, State, type ResourceState } from "@/State";
-import * as Test from "@/Test/Alchemy";
 import * as organizations from "@distilled.cloud/aws/organizations";
 import { expect } from "alchemy-test";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
+import * as AWS from "@/AWS";
+import { Policy, PolicyAttachment, Root, RootPolicyType } from "@/AWS/Organizations";
+import * as Provider from "@/Provider";
+import { isResourceState, State, type ResourceState } from "@/State";
+import * as OrganizationLease from "./OrganizationLease.ts";
 
-const { test } = Test.make({ providers: AWS.providers() });
+const { test } = OrganizationLease.make({ providers: AWS.providers() }, "shared");
 
 // `list()` enumerates every (policyId, targetId) attachment by fanning out over
 // all policy types (listPolicies per type) and listing each policy's targets
@@ -21,25 +16,28 @@ const { test } = Test.make({ providers: AWS.providers() });
 // account isn't an org management account / delegated administrator, the typed
 // AccessDeniedException / AWSOrganizationsNotInUseException catches degrade the
 // result to [], so the assertion holds without deploying anything.
-test.provider("list enumerates policy attachments", () =>
-  Effect.gen(function* () {
-    const provider = yield* Provider.findProvider(PolicyAttachment);
-    const all = yield* provider.list();
+test.provider(
+  "list enumerates policy attachments",
+  () =>
+    Effect.gen(function* () {
+      const provider = yield* Provider.findProvider(PolicyAttachment);
+      const all = yield* provider.list();
 
-    expect(Array.isArray(all)).toBe(true);
+      expect(Array.isArray(all)).toBe(true);
 
-    for (const attachment of all) {
-      expect(typeof attachment.policyId).toBe("string");
-      expect(typeof attachment.targetId).toBe("string");
-    }
-  }),
+      for (const attachment of all) {
+        expect(typeof attachment.policyId).toBe("string");
+        expect(typeof attachment.targetId).toBe("string");
+      }
+    }),
+  { tags: ["provider:aws", "provider:aws:organizations", "live"] },
 );
 
 // Regression test for https://github.com/alchemy-run/alchemy/issues/736.
 //
 // An interrupted first deploy persists the attachment as `status: "creating"`
 // with no attributes — and the Output-valued props (`policyId` from the Policy
-// resource, `targetId` from the RootPolicyType resource) do not survive the
+// resource, `targetId` from the Root or RootPolicyType resource) do not survive the
 // state round-trip: they deserialize as `undefined`. Plan's creating-recovery
 // branch then calls `provider.read` with those junk props, which crashed in
 // `listTargetsForPolicy({ PolicyId: undefined })` and wedged the stack.
@@ -74,9 +72,7 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
           const targets = yield* organizations
             .listTargetsForPolicy({ PolicyId: leftover.Id })
             .pipe(
-              Effect.catchTag("PolicyNotFoundException", () =>
-                Effect.succeed({ Targets: [] }),
-              ),
+              Effect.catchTag("PolicyNotFoundException", () => Effect.succeed({ Targets: [] })),
             );
           for (const target of targets.Targets ?? []) {
             if (target.TargetId == null) continue;
@@ -109,21 +105,38 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
         }
       });
       yield* cleanLeftoverPolicies;
-      yield* Effect.addFinalizer(() =>
-        cleanLeftoverPolicies.pipe(Effect.ignore),
-      );
+      yield* Effect.addFinalizer(() => cleanLeftoverPolicies.pipe(Effect.ignore));
 
       yield* stack.destroy();
+
+      const scpEnabled = organizations
+        .listRoots({})
+        .pipe(
+          Effect.map((page) =>
+            (page.Roots ?? []).some((root) =>
+              (root.PolicyTypes ?? []).some(
+                (summary) =>
+                  summary.Type === "SERVICE_CONTROL_POLICY" && summary.Status === "ENABLED",
+              ),
+            ),
+          ),
+        );
+      // Own the SCP policy type only if it was disabled before the test:
+      // destroying an adopted enablement would detach every SCP in the
+      // organization.
+      const ownScpType = !(yield* scpEnabled);
 
       const deployStack = (includeAttachment: boolean) =>
         stack.deploy(
           Effect.gen(function* () {
             // Import-style resource — adopts the single organization root.
             const root = yield* Root("WedgedRoot", {});
-            const scpType = yield* RootPolicyType("WedgedScpType", {
-              rootId: root.rootId,
-              policyType: "SERVICE_CONTROL_POLICY",
-            });
+            const targetId = ownScpType
+              ? (yield* RootPolicyType("WedgedScpType", {
+                  rootId: root.rootId,
+                  policyType: "SERVICE_CONTROL_POLICY",
+                })).rootId
+              : root.rootId;
             // Allow-all SCP — attaching it alongside the AWS-managed
             // FullAWSAccess policy changes nothing about effective access.
             const policy = yield* Policy("WedgedScp", {
@@ -140,29 +153,20 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
             return yield* PolicyAttachment("WedgedAttachment", {
               // Both identity props are Output-valued — the #736 shape.
               policyId: policy.policyId,
-              // Thread the RootPolicyType's output so the attachment plans
-              // after SERVICE_CONTROL_POLICY is enabled on the root.
-              targetId: scpType.rootId,
+              // When the test owns the policy type, thread its output so the
+              // attachment plans after SERVICE_CONTROL_POLICY is enabled.
+              targetId,
             });
           }),
         );
 
-      // Stage 1: enable the policy type + create the SCP, WITHOUT the
+      // Stage 1: enable the policy type (if owned) + create the SCP, WITHOUT the
       // attachment. `enablePolicyType` completes asynchronously
       // (PENDING_ENABLE), and `attachPolicy` rejects with the typed
       // `PolicyTypeNotEnabledException` until it lands — so wait (bounded)
       // for ENABLED before deploying the attachment.
       yield* deployStack(false);
-      yield* organizations.listRoots({}).pipe(
-        Effect.map((page) =>
-          (page.Roots ?? []).some((root) =>
-            (root.PolicyTypes ?? []).some(
-              (summary) =>
-                summary.Type === "SERVICE_CONTROL_POLICY" &&
-                summary.Status === "ENABLED",
-            ),
-          ),
-        ),
+      yield* scpEnabled.pipe(
         Effect.repeat({
           schedule: Schedule.spaced("3 seconds"),
           until: (enabled) => enabled,
@@ -173,9 +177,7 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
       // Stage 2: deploy the attachment itself.
       const created = yield* deployStack(true);
       if (created === undefined) {
-        return yield* Effect.die(
-          new Error("stage-2 deploy returned no attachment"),
-        );
+        return yield* Effect.die(new Error("stage-2 deploy returned no attachment"));
       }
 
       // Rewrite the attachment's persisted row into the wedged shape an
@@ -185,20 +187,15 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
       const stage = stack.stage;
       const fqns = yield* state.list({ stack: stack.name, stage });
       const rows = yield* Effect.forEach(fqns, (fqn) =>
-        state
-          .get({ stack: stack.name, stage, fqn })
-          .pipe(Effect.map((row) => ({ fqn, row }))),
+        state.get({ stack: stack.name, stage, fqn }).pipe(Effect.map((row) => ({ fqn, row }))),
       );
       const wedged = rows.find(
         (r): r is { fqn: string; row: ResourceState } =>
-          isResourceState(r.row) &&
-          r.row.resourceType === "AWS.Organizations.PolicyAttachment",
+          isResourceState(r.row) && r.row.resourceType === "AWS.Organizations.PolicyAttachment",
       );
       if (!wedged) {
         return yield* Effect.die(
-          new Error(
-            "no AWS.Organizations.PolicyAttachment state row found after deploy",
-          ),
+          new Error("no AWS.Organizations.PolicyAttachment state row found after deploy"),
         );
       }
       yield* state.set({
@@ -225,5 +222,8 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
 
       yield* stack.destroy();
     }),
-  { timeout: 240_000 },
+  {
+    tags: ["provider:aws", "provider:aws:organizations", "live"],
+    timeout: 240_000,
+  },
 );

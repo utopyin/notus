@@ -10,7 +10,7 @@
  * What the helper owns (identically for every consumer):
  *
  * - **RPC-sidecar hosting** via {@link RpcProvider.effect} with the shared
- *   AWS dev sidecar entry ([Local.ts](./Local.ts)), so the provider and its
+ *   AWS provider group ([Local.ts](./Local.ts)), so the provider and its
  *   watch fibers survive exec-process hot reloads during `alchemy dev`.
  * - **Live-provider delegation** — builds the caller's LIVE provider layer
  *   inside the floci override context ({@link flociServices} + optional
@@ -39,25 +39,23 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import { havePropsChanged, isResolved, stripEffects } from "../../Diff.ts";
+import { diffBindings, havePropsChanged, isResolved, stripEffects } from "../../Diff.ts";
 import { canonicalHash } from "../../Local/LocalProvider.ts";
 import * as RpcProvider from "../../Local/RpcProvider.ts";
 import type { Platform } from "../../Platform.ts";
 import type { ProviderService } from "../../Provider.ts";
-import type { ResourceClassLike, ResourceLike } from "../../Resource.ts";
+import type { ResourceBinding, ResourceClassLike, ResourceLike } from "../../Resource.ts";
+import { moduleExtension } from "../../Util/Node.ts";
 import { flociServices } from "./FlociServices.ts";
 import { withProviderContext } from "./ProviderContext.ts";
 
 /**
- * The AWS dev sidecar entry URL ([Local.ts](./Local.ts)) — every
+ * The AWS provider group module ([Local.ts](./Local.ts)) — every
  * {@link makeDevWatchProvider} consumer passes this so all floci dev
- * providers share ONE sidecar process.
+ * providers are served from the same group by the dev sidecar.
  */
-export const flociSidecarEntry = () =>
-  import.meta.resolve(
-    import.meta.url.endsWith(".ts") ? "./Local.ts" : "./Local.js",
-    import.meta.url,
-  );
+export const flociProvidersUrl = () =>
+  import.meta.resolve(`./Local${moduleExtension(import.meta.url)}`, import.meta.url);
 
 /** A diff decision produced by {@link DevWatchSpec.replaceOn}. */
 export interface DevReplaceDecision {
@@ -85,6 +83,19 @@ export interface DevWatchContext<Props, Attrs> {
    * on the same logical id.
    */
   readonly rerunReconcile: Effect.Effect<Attrs, unknown>;
+  /**
+   * {@link rerunReconcile}, gated on a staleness check that runs INSIDE the
+   * per-id lock against the freshest attributes. A trigger can fire while an
+   * engine reconcile for the same id holds the lock; by the time the lock
+   * frees, that reconcile may already have published exactly the content the
+   * trigger saw, and re-running would register a redundant revision and reap
+   * the one the engine just recorded. A check made before waiting on the
+   * lock cannot see that. Returns the current attributes untouched when
+   * `isStale` resolves `false`.
+   */
+  readonly rerunReconcileIfStale: (
+    isStale: (current: Attrs) => Effect.Effect<boolean, unknown, any>,
+  ) => Effect.Effect<Attrs, unknown>;
 }
 
 /**
@@ -176,9 +187,7 @@ export interface DevWatchSpec<Props, Attrs> {
    * override services provided; failures are logged, never propagated. A
    * spec with nothing to watch for a given props shape simply returns.
    */
-  readonly startWatch: (
-    ctx: DevWatchContext<Props, Attrs>,
-  ) => Effect.Effect<void, any, any>;
+  readonly startWatch: (ctx: DevWatchContext<Props, Attrs>) => Effect.Effect<void, any, any>;
 }
 
 interface WatchEntry {
@@ -203,12 +212,12 @@ export const makeDevWatchProvider = <
   Attrs = R["Attributes"],
 >(
   cls: ResourceClassLike<R> | Platform<R, any, any, any, any, any>,
-  serverEntryUrl: string,
+  providersUrl: string,
   spec: DevWatchSpec<Props, Attrs>,
 ) =>
   RpcProvider.effect(
     cls,
-    serverEntryUrl,
+    providersUrl,
     Effect.gen(function* () {
       const scope = yield* Effect.scope;
       const ambient = yield* Effect.context<never>();
@@ -221,17 +230,17 @@ export const makeDevWatchProvider = <
         ) as Layer.Layer<any, any, never>,
         scope,
       ).pipe(Effect.orDie);
-      const services = Layer.succeedContext(
-        Context.merge(ambient, overrides),
-      ) as Layer.Layer<any, never, never>;
+      const services = Layer.succeedContext(Context.merge(ambient, overrides)) as Layer.Layer<
+        any,
+        never,
+        never
+      >;
 
       // The live provider machinery, every lifecycle method endpoint-wrapped
       // to the emulator — same F1 combinator the plain `flociDual` resources
       // use, applied to a provider instance we build ourselves.
       const liveCtx = yield* Layer.buildWithScope(
-        spec
-          .liveProvider()
-          .pipe(Layer.provide(services)) as unknown as Layer.Layer<
+        spec.liveProvider().pipe(Layer.provide(services)) as unknown as Layer.Layer<
           any,
           any,
           never
@@ -300,54 +309,59 @@ export const makeDevWatchProvider = <
           attrs,
         };
         watches.set(input.id, entry);
+        // One watcher-driven reconcile, UNLOCKED: callers take the per-id lock.
+        const rerun = Effect.gen(function* () {
+          const previous = entry.attrs as Attrs | undefined;
+          const rerunNews =
+            spec.transformReconcileNews !== undefined
+              ? yield* spec
+                  .transformReconcileNews({
+                    id: input.id,
+                    news: stripEffects(entry.lastInput.news) as Props,
+                  })
+                  .pipe(Effect.provide(services))
+              : entry.lastInput.news;
+          const fresh = yield* wrapped.reconcile(
+            withSafeSession({
+              ...entry.lastInput,
+              news: rerunNews,
+              olds: entry.lastInput.news,
+              output: entry.attrs,
+            }) as any,
+          );
+          entry.attrs = fresh;
+          if (spec.onReconciled !== undefined) {
+            yield* spec
+              .onReconciled({
+                id: input.id,
+                news: stripEffects(entry.lastInput.news) as Props,
+                previous,
+                attrs: fresh as Attrs,
+              })
+              .pipe(Effect.provide(services));
+          }
+          return fresh as Attrs;
+        });
         const ctx: DevWatchContext<Props, Attrs> = {
           id: input.id,
           instanceId: input.instanceId,
           news: strippedNews as Props,
           attrs: attrs as Attrs,
           currentAttrs: Effect.sync(() => entry.attrs as Attrs),
-          rerunReconcile: withLock(input.id)(
-            Effect.gen(function* () {
-              const previous = entry.attrs as Attrs | undefined;
-              const rerunNews =
-                spec.transformReconcileNews !== undefined
-                  ? yield* spec
-                      .transformReconcileNews({
-                        id: input.id,
-                        news: stripEffects(entry.lastInput.news) as Props,
-                      })
-                      .pipe(Effect.provide(services))
-                  : entry.lastInput.news;
-              const fresh = yield* wrapped.reconcile(
-                withSafeSession({
-                  ...entry.lastInput,
-                  news: rerunNews,
-                  olds: entry.lastInput.news,
-                  output: entry.attrs,
-                }) as any,
-              );
-              entry.attrs = fresh;
-              if (spec.onReconciled !== undefined) {
-                yield* spec
-                  .onReconciled({
-                    id: input.id,
-                    news: stripEffects(entry.lastInput.news) as Props,
-                    previous,
-                    attrs: fresh as Attrs,
-                  })
-                  .pipe(Effect.provide(services));
-              }
-              return fresh as Attrs;
-            }),
-          ) as Effect.Effect<Attrs, unknown>,
+          rerunReconcile: withLock(input.id)(rerun) as Effect.Effect<Attrs, unknown>,
+          rerunReconcileIfStale: (isStale) =>
+            withLock(input.id)(
+              Effect.gen(function* () {
+                const current = entry.attrs as Attrs;
+                if (!(yield* isStale(current).pipe(Effect.provide(services)))) return current;
+                return yield* rerun;
+              }),
+            ) as Effect.Effect<Attrs, unknown>,
         };
         const fiber = yield* spec.startWatch(ctx).pipe(
           Effect.provide(services),
           Effect.catchCause((cause) =>
-            Effect.logWarning(
-              `[alchemy dev] ${input.id}: watch loop exited`,
-              cause,
-            ),
+            Effect.logWarning(`[alchemy dev] ${input.id}: watch loop exited`, cause),
           ),
           Effect.forkDetach,
           Scope.provide(scope),
@@ -366,9 +380,7 @@ export const makeDevWatchProvider = <
       });
 
       const normalize = (props: Props | undefined): object | undefined =>
-        props === undefined
-          ? undefined
-          : ((spec.normalizeProps?.(props) ?? props) as object);
+        props === undefined ? undefined : ((spec.normalizeProps?.(props) ?? props) as object);
 
       const provider: any = {
         // read / precreate / list / tail / logs / stables delegate to the
@@ -380,11 +392,15 @@ export const makeDevWatchProvider = <
           olds,
           news: rawNews,
           output,
+          oldBindings = [],
+          newBindings = [],
         }: {
           id: string;
           olds: Props;
           news: Props;
           output: Attrs | undefined;
+          oldBindings?: ResourceBinding[];
+          newBindings?: ResourceBinding[];
         }) {
           // Runtime props (an Effect-native Function's handler, a Layer)
           // arrive as Effects, which `isResolved` classifies as unresolved.
@@ -409,8 +425,7 @@ export const makeDevWatchProvider = <
           const entry = watches.get(id);
           if (
             entry === undefined ||
-            (entry.fiber !== undefined &&
-              entry.fiber.pollUnsafe() !== undefined)
+            (entry.fiber !== undefined && entry.fiber.pollUnsafe() !== undefined)
           ) {
             return { action: "update" as const };
           }
@@ -427,6 +442,13 @@ export const makeDevWatchProvider = <
           if (persistedHash !== watcherHash) {
             return { action: "update" as const };
           }
+          // Binding data (env vars, policy statements) is applied by
+          // reconcile, not the watch loop. An explicit `noop` is final — the
+          // engine does not re-check bindings after it — so a binding-only
+          // change must plan an update here.
+          if (diffBindings(oldBindings, newBindings).some((b) => b.action !== "noop")) {
+            return { action: "update" as const };
+          }
           if (!havePropsChanged(normalize(olds), normalize(news)!)) {
             // Content-only changes are the watch loop's job — the dev diff
             // never bundles or builds.
@@ -437,8 +459,7 @@ export const makeDevWatchProvider = <
         reconcile: Effect.fn(function* (input: any) {
           return yield* withLock(input.id)(
             Effect.gen(function* () {
-              const previous = (input.output ??
-                watches.get(input.id)?.attrs) as Attrs | undefined;
+              const previous = (input.output ?? watches.get(input.id)?.attrs) as Attrs | undefined;
               const reconcileNews =
                 spec.transformReconcileNews !== undefined
                   ? yield* spec
@@ -468,9 +489,7 @@ export const makeDevWatchProvider = <
         }),
         delete: Effect.fn(function* (input: any) {
           yield* stopWatch(input.id, input.instanceId);
-          yield* withLock(input.id)(
-            wrapped.delete(withSafeSession(input) as any),
-          );
+          yield* withLock(input.id)(wrapped.delete(withSafeSession(input) as any));
         }),
       };
       if (typeof (live as any).precreate === "function") {

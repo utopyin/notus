@@ -1,12 +1,15 @@
 import type * as cf from "@cloudflare/workers-types";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type { RuntimeContext } from "../../RuntimeContext.ts";
-import {
-  fromDurableObjectStorage,
-  type DurableObjectStorage,
-} from "./DurableObjectStorage.ts";
+import { fromDurableObjectStorage, type DurableObjectStorage } from "./DurableObjectStorage.ts";
 import { fromWebSocket, type WebSocket } from "./WebSocket.ts";
+import {
+  getLoopbackEntrypoint,
+  makeEntrypointExports,
+  type EntrypointExports,
+} from "./WorkerRuntime.ts";
 
 /**
  * Options for {@link DurableObjectState.abort}.
@@ -33,6 +36,15 @@ export class DurableObjectState extends Context.Service<
       effect: Effect.Effect<A, E, R>,
     ): Effect.Effect<void, never, R | RuntimeContext>;
     /**
+     * The entrypoints of the Worker hosting this Durable Object (workerd's
+     * `ctx.exports`): `yield* ctx.exports.default({ props })` mints a stub to
+     * the host Worker's own Effect handlers that delivers `props` as the
+     * target's `ctx.props`. The `Cloudflare.Fetcher` can be passed to APIs that
+     * route traffic to a Worker entrypoint, such as this object's container
+     * `interceptOutboundHttps`; its `raw` is the native `Fetcher`.
+     */
+    readonly exports: EntrypointExports;
+    /**
      * The raw workerd DurableObjectState, for interop with async APIs.
      */
     readonly raw: cf.DurableObjectState;
@@ -46,13 +58,8 @@ export class DurableObjectState extends Context.Service<
     blockConcurrencyWhile<T, R = never>(
       callback: () => Effect.Effect<T, never, R>,
     ): Effect.Effect<T, never, R | RuntimeContext>;
-    acceptWebSocket(
-      ws: WebSocket,
-      tags?: string[],
-    ): Effect.Effect<void, never, RuntimeContext>;
-    getWebSockets(
-      tag?: string,
-    ): Effect.Effect<WebSocket[], never, RuntimeContext>;
+    acceptWebSocket(ws: WebSocket, tags?: string[]): Effect.Effect<void, never, RuntimeContext>;
+    getWebSockets(tag?: string): Effect.Effect<WebSocket[], never, RuntimeContext>;
     setWebSocketAutoResponse(
       maybeReqResp?: cf.WebSocketRequestResponsePair,
     ): Effect.Effect<void, never, RuntimeContext>;
@@ -67,11 +74,7 @@ export class DurableObjectState extends Context.Service<
     setHibernatableWebSocketEventTimeout(
       timeoutMs?: number,
     ): Effect.Effect<void, never, RuntimeContext>;
-    getHibernatableWebSocketEventTimeout(): Effect.Effect<
-      number | null,
-      never,
-      RuntimeContext
-    >;
+    getHibernatableWebSocketEventTimeout(): Effect.Effect<number | null, never, RuntimeContext>;
     getTags(ws: cf.WebSocket): Effect.Effect<string[], never, RuntimeContext>;
     /**
      * Forcibly reset this Durable Object. A JavaScript `Error` with the
@@ -88,6 +91,19 @@ export class DurableObjectState extends Context.Service<
   }
 >()("Cloudflare.DurableObjectState") {}
 
+/**
+ * Told of every promise the current event hands to `waitUntil`, so the event
+ * keeps its telemetry open until that work settles. Provided per event by
+ * the bridge, and read from the calling fiber, so it works for state
+ * captured when the object was constructed too.
+ *
+ * @internal
+ */
+export class BackgroundWork extends Context.Service<
+  BackgroundWork,
+  (promise: Promise<unknown>) => void
+>()("Cloudflare.DurableObjectState/BackgroundWork") {}
+
 export const fromDurableObjectState = (
   state: cf.DurableObjectState,
 ): DurableObjectState["Service"] => ({
@@ -95,20 +111,22 @@ export const fromDurableObjectState = (
   container: state.container,
   storage: fromDurableObjectStorage(state.storage),
   raw: state,
+  exports: makeEntrypointExports((name, options) =>
+    getLoopbackEntrypoint(state.exports, name, options),
+  ),
   waitUntil: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const context = yield* Effect.context<R>();
       // Register the promise with workerd un-awaited — waitUntil extends the
       // event's lifetime without blocking the caller.
-      yield* Effect.sync(() =>
-        state.waitUntil(
-          Effect.runPromise(effect.pipe(Effect.provide(context))),
-        ),
-      );
+      const track = yield* Effect.serviceOption(BackgroundWork);
+      yield* Effect.sync(() => {
+        const promise = Effect.runPromise(effect.pipe(Effect.provide(context)));
+        if (Option.isSome(track)) track.value(promise);
+        state.waitUntil(promise);
+      });
     }),
-  blockConcurrencyWhile: <T, R = never>(
-    callback: () => Effect.Effect<T, never, R>,
-  ) =>
+  blockConcurrencyWhile: <T, R = never>(callback: () => Effect.Effect<T, never, R>) =>
     Effect.gen(function* () {
       const context = yield* Effect.context<R>();
       // The failure is typed away as before: a rejected gate is the
@@ -121,12 +139,10 @@ export const fromDurableObjectState = (
     }),
   acceptWebSocket: (ws: WebSocket, tags?: string[]) =>
     Effect.sync(() => state.acceptWebSocket(ws.ws, tags)),
-  getWebSockets: (tag?: string) =>
-    Effect.sync(() => state.getWebSockets(tag).map(fromWebSocket)),
+  getWebSockets: (tag?: string) => Effect.sync(() => state.getWebSockets(tag).map(fromWebSocket)),
   setWebSocketAutoResponse: (maybeReqResp?: cf.WebSocketRequestResponsePair) =>
     Effect.sync(() => state.setWebSocketAutoResponse(maybeReqResp)),
-  getWebSocketAutoResponse: () =>
-    Effect.sync(() => state.getWebSocketAutoResponse()),
+  getWebSocketAutoResponse: () => Effect.sync(() => state.getWebSocketAutoResponse()),
   getWebSocketAutoResponseTimestamp: (ws: cf.WebSocket) =>
     Effect.sync(() => state.getWebSocketAutoResponseTimestamp(ws)),
   setHibernatableWebSocketEventTimeout: (timeoutMs?: number) =>

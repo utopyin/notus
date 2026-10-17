@@ -22,10 +22,7 @@ export const extraWorkerSource = (marker: string) =>
   `  fetch: async () => Response.json({ marker: ${JSON.stringify(marker)} }),\n` +
   `};\n`;
 
-export const extraWorkerDeclaration = (
-  logicalId: string,
-  port: "extra" | "extraAlt",
-) =>
+export const extraWorkerDeclaration = (logicalId: string, port: "extra" | "extraAlt") =>
   `    const extraWorker = yield* Cloudflare.Worker(${JSON.stringify(logicalId)}, {\n` +
   `      main: "./src/extra/extra-worker.ts",\n` +
   `      dev: { port: PORTS.${port}, strictPort: true },\n` +
@@ -53,8 +50,8 @@ export const reportFunctionSource = (marker: string) =>
   `import * as Effect from "effect/Effect";\n` +
   `import * as Layer from "effect/Layer";\n` +
   `import * as Stream from "effect/Stream";\n` +
-  `import { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";\n` +
-  `import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";\n` +
+  `import { HttpServerRequest } from "effect/http/HttpServerRequest";\n` +
+  `import * as HttpServerResponse from "effect/http/HttpServerResponse";\n` +
   `\n` +
   `/** Added to (and later removed from) the stack while dev is running. */\n` +
   `export default class ReportFunction extends Lambda.Function<ReportFunction>()(\n` +
@@ -87,8 +84,7 @@ export const reportFunctionImport = `import ReportFunction from "./src/extra/Rep
 
 export const reportFunctionDeclaration = `    const reportFunction = yield* ReportFunction;\n`;
 
-export const reportFunctionOutput =
-  "      reportUrl: reportFunction.functionUrl,\n";
+export const reportFunctionOutput = "      reportUrl: reportFunction.functionUrl,\n";
 
 // ─── A Queue + its consumer + a new Durable Object class, grafted onto
 // the already-running EchoWorker. This adds a resource, an event source,
@@ -118,8 +114,7 @@ export const echoQueueRoutes =
   `        }\n`;
 
 export const echoQueueLayers =
-  `      Cloudflare.Queues.WriteQueueBinding,\n` +
-  `      Cloudflare.Queues.EventSourceLive,\n`;
+  `      Cloudflare.Queues.WriteQueueBinding,\n` + `      Cloudflare.Queues.EventSourceLive,\n`;
 
 export const echoInboxClass =
   `/** Durable Object added to a LIVE worker — this carries a class migration. */\n` +
@@ -167,8 +162,8 @@ export const lambdaArchiveRoutes =
 export const secondImageSource = (marker: string) =>
   `import * as AWS from "alchemy/AWS";\n` +
   `import * as Effect from "effect/Effect";\n` +
-  `import { HttpServerRequest } from "effect/unstable/http/HttpServerRequest";\n` +
-  `import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";\n` +
+  `import { HttpServerRequest } from "effect/http/HttpServerRequest";\n` +
+  `import * as HttpServerResponse from "effect/http/HttpServerResponse";\n` +
   `\n` +
   `export const WorkerImageBuildRole = AWS.IAM.Role("StressWorkerVmBuildRole");\n` +
   `\n` +

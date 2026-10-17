@@ -21,10 +21,7 @@ export const RuntimeSubpathExportPlugin = (): rolldown.Plugin => ({
     const absoluteImporter = /^[A-Za-z]:\//.test(normalizedImporter)
       ? `/${normalizedImporter}`
       : normalizedImporter;
-    const resolved = path.posix.resolve(
-      path.posix.dirname(absoluteImporter),
-      normalizedSource,
-    );
+    const resolved = path.posix.resolve(path.posix.dirname(absoluteImporter), normalizedSource);
     const match = resolved.match(/\/src\/(core|rolldown)\/(.+)\.ts$/);
     if (match === null) {
       return;
@@ -32,13 +29,13 @@ export const RuntimeSubpathExportPlugin = (): rolldown.Plugin => ({
 
     const [, component, modulePath] = match;
     // Wire constants are internal and safe to inline in the Vite bundle.
-    if (component === "core" && modulePath === "proxy/ProxyHeaders.shared") {
+    if (component === "core" && modulePath === "globals/ProxyHeaders.shared") {
       return;
     }
     const subpath =
       modulePath === "index"
         ? component
-        : `${component}/${modulePath.replace(/\/index$/, "")}`;
+        : `${component}/${modulePath.replace(/\.shared$/, "").replace(/\/index$/, "")}`;
     return { id: `${PACKAGE_NAME}/${subpath}`, external: true };
   },
 });

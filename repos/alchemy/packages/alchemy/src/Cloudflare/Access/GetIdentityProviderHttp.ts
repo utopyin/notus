@@ -1,9 +1,9 @@
 import { Credentials } from "@distilled.cloud/cloudflare/Credentials";
 import * as Effect from "effect/Effect";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import type * as HttpClient from "effect/http/HttpClient";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import type * as HttpClient from "effect/unstable/http/HttpClient";
 import * as Binding from "../../Binding.ts";
 import type { RuntimeContext } from "../../RuntimeContext.ts";
 import { AccountApiToken } from "../ApiToken/AccountApiToken.ts";
@@ -11,10 +11,7 @@ import type { PermissionGroupRef } from "../ApiToken/Common.ts";
 import { CloudflareEnvironment } from "../CloudflareEnvironment.ts";
 import { authorizeWith } from "../HttpClientUtils.ts";
 import { isWorker } from "../Workers/Worker.ts";
-import {
-  type FindIdentityProviderOptions,
-  GetIdentityProvider,
-} from "./GetIdentityProvider.ts";
+import { type FindIdentityProviderOptions, GetIdentityProvider } from "./GetIdentityProvider.ts";
 import { findFirst, toAttributes } from "./IdentityProviderLookup.ts";
 
 const PERMISSION_GROUPS: PermissionGroupRef[] = [
@@ -48,7 +45,6 @@ export const GetIdentityProviderHttp = Layer.effect(
   GetIdentityProvider,
   Effect.gen(function* () {
     const Token = yield* AccountApiToken;
-    const env = yield* CloudflareEnvironment;
     const ambientCredentials = yield* Effect.serviceOption(Credentials).pipe(
       Effect.map(Option.getOrUndefined),
     );
@@ -67,7 +63,7 @@ export const GetIdentityProviderHttp = Layer.effect(
         // Worker so the client can authenticate at runtime.
         const token = yield* Token(`${host.LogicalId}Token`);
         if (!globalThis.__ALCHEMY_RUNTIME__) {
-          const { accountId } = yield* env;
+          const { accountId } = yield* CloudflareEnvironment.current;
           yield* token.bind("Cloudflare.Access.GetIdentityProvider", {
             policies: [
               {
@@ -101,7 +97,7 @@ export const GetIdentityProviderHttp = Layer.effect(
           ),
         );
       }
-      const { accountId } = yield* env;
+      const { accountId } = yield* CloudflareEnvironment.current;
       return makeGetIdentityProviderClient(
         {
           authorize: (eff) =>
@@ -117,10 +113,7 @@ export const GetIdentityProviderHttp = Layer.effect(
   }),
 );
 
-const makeGetIdentityProviderClient = (
-  auth: AccessIdpAuth,
-  options: FindIdentityProviderOptions,
-) =>
+const makeGetIdentityProviderClient = (auth: AccessIdpAuth, options: FindIdentityProviderOptions) =>
   Effect.fn("Cloudflare.Access.GetIdentityProvider")(function* () {
     const accountId = yield* auth.accountId;
     const match = yield* auth.authorize(
@@ -132,7 +125,5 @@ const makeGetIdentityProviderClient = (
           (options.type === undefined || idp.type === options.type),
       ),
     );
-    return match
-      ? toAttributes(match, options.zoneId, accountId, undefined)
-      : undefined;
+    return match ? toAttributes(match, options.zoneId, accountId, undefined) : undefined;
   });

@@ -10,8 +10,7 @@ import { Stack } from "../../Stack.ts";
  * The AWS-managed base image MicroVM Dockerfiles build on. The MicroVM build
  * runs the Dockerfile server-side and snapshots the result with Firecracker.
  */
-export const MICROVM_BASE_DOCKER_IMAGE =
-  "public.ecr.aws/lambda/microvms:al2023-minimal";
+export const MICROVM_BASE_DOCKER_IMAGE = "public.ecr.aws/lambda/microvms:al2023-minimal";
 
 /** The default port the in-VM HTTP server listens on. */
 export const DEFAULT_MICROVM_PORT = 8080;
@@ -33,7 +32,9 @@ export const buildMicrovmDockerfile = (
       ? // `bun.sh/install` unpacks a zip, so the minimal MicroVM base needs
         // `unzip` (and `tar`) present before the installer runs.
         "RUN dnf install -y unzip tar && curl -fsSL https://bun.sh/install | bash && ln -s /root/.bun/bin/bun /usr/local/bin/bun && dnf clean all"
-      : "RUN dnf install -y nodejs && dnf clean all";
+      : // AL2023's default `nodejs` is Node 18, which lacks the global WebCrypto
+        // that AWS request signing needs; `nodejs24` also links `node`.
+        "RUN dnf install -y nodejs24 && dnf clean all";
   const runtimeBin = runtime === "bun" ? "bun" : "node";
   return [
     base,
@@ -85,10 +86,7 @@ export const bundleMicrovmProgram = Effect.fn(function* ({
   const realMain = yield* fs.realPath(main);
   const cwd = yield* findCwdForBundle(realMain);
 
-  const buildBundle = Effect.fn(function* (
-    entry: string,
-    plugins?: rolldown.RolldownPluginOption,
-  ) {
+  const buildBundle = Effect.fn(function* (entry: string, plugins?: rolldown.RolldownPluginOption) {
     return yield* Bundle.build(
       {
         ...build?.input,
@@ -103,9 +101,7 @@ export const bundleMicrovmProgram = Effect.fn(function* ({
         platform: "node",
         resolve: {
           conditionNames:
-            runtime === "bun"
-              ? [...Bundle.BUN_CONDITION_NAMES]
-              : [...Bundle.NODE_CONDITION_NAMES],
+            runtime === "bun" ? [...Bundle.BUN_CONDITION_NAMES] : [...Bundle.NODE_CONDITION_NAMES],
           ...build?.input?.resolve,
         },
         plugins: [build?.input?.plugins, plugins],
@@ -148,10 +144,7 @@ await bootstrap(entrypoint, ${JSON.stringify({
 
   const files = bundleOutput.files.map((f) => ({
     path: f.path,
-    content:
-      typeof f.content === "string"
-        ? new TextEncoder().encode(f.content)
-        : f.content,
+    content: typeof f.content === "string" ? new TextEncoder().encode(f.content) : f.content,
   }));
 
   return { files, hash: bundleOutput.hash };

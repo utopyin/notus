@@ -2,6 +2,7 @@ import * as ag from "@distilled.cloud/aws/api-gateway";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Output from "../../Output.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { registerApiGatewayBinding } from "./BindingHttp.ts";
 import { UpdateUsage, type UpdateUsageRequest } from "./UpdateUsage.ts";
 import type { UsagePlan } from "./UsagePlan.ts";
@@ -14,7 +15,7 @@ import type { UsagePlan } from "./UsagePlan.ts";
 export const UpdateUsageHttp = Layer.effect(
   UpdateUsage,
   Effect.gen(function* () {
-    const updateUsage = yield* ag.updateUsage;
+    const updateUsage = yield* AWSBindings.withCredentials(ag.updateUsage);
     return Effect.fn(function* <P extends UsagePlan>(usagePlan: P) {
       const UsagePlanId = yield* usagePlan.id;
       yield* registerApiGatewayBinding({
@@ -25,14 +26,14 @@ export const UpdateUsageHttp = Layer.effect(
           Output.interpolate`arn:aws:apigateway:${region}::/usageplans/${usagePlan.id}/keys/*/usage`,
         ],
       });
-      return Effect.fn(`AWS.ApiGateway.UpdateUsage(${usagePlan.LogicalId})`)(
-        function* (request: UpdateUsageRequest) {
-          return yield* updateUsage({
-            ...request,
-            usagePlanId: yield* UsagePlanId,
-          });
-        },
-      );
+      return Effect.fn(`AWS.ApiGateway.UpdateUsage(${usagePlan.LogicalId})`)(function* (
+        request: UpdateUsageRequest,
+      ) {
+        return yield* updateUsage({
+          ...request,
+          usagePlanId: yield* UsagePlanId,
+        });
+      });
     });
   }),
 );

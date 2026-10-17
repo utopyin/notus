@@ -1,20 +1,14 @@
-import { VpcId } from "@/AWS/EC2";
 import * as EC2 from "@distilled.cloud/aws/ec2";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
+import { VpcId } from "@/AWS/EC2";
 
-class DefaultVpcNotVisible extends Data.TaggedError(
-  "DefaultVpcNotVisible",
-)<{}> {}
+class DefaultVpcNotVisible extends Data.TaggedError("DefaultVpcNotVisible")<{}> {}
 
-class DefaultVpcNetworkNotVisible extends Data.TaggedError(
-  "DefaultVpcNetworkNotVisible",
-)<{}> {}
+class DefaultVpcNetworkNotVisible extends Data.TaggedError("DefaultVpcNetworkNotVisible")<{}> {}
 
-class UnsupportedDefaultVpcCidr extends Data.TaggedError(
-  "UnsupportedDefaultVpcCidr",
-)<{
+class UnsupportedDefaultVpcCidr extends Data.TaggedError("UnsupportedDefaultVpcCidr")<{
   readonly cidrBlock: string;
 }> {}
 
@@ -35,9 +29,7 @@ export const getDefaultVpc = Effect.gen(function* () {
 
   const [baseAddress, prefixString] = vpc.CidrBlock.split("/");
   if (prefixString !== "16") {
-    return yield* Effect.fail(
-      new UnsupportedDefaultVpcCidr({ cidrBlock: vpc.CidrBlock }),
-    );
+    return yield* Effect.fail(new UnsupportedDefaultVpcCidr({ cidrBlock: vpc.CidrBlock }));
   }
 
   const [a, b] = baseAddress.split(".");
@@ -58,8 +50,13 @@ export const getDefaultVpcNetwork = Effect.gen(function* () {
   const vpc = yield* getDefaultVpc;
   const [subnets, groups] = yield* Effect.all(
     [
+      // Only the default-for-AZ subnets: other tests add subnets to the
+      // default VPC concurrently, and those can share one Availability Zone.
       EC2.describeSubnets({
-        Filters: [{ Name: "vpc-id", Values: [vpc.vpcId] }],
+        Filters: [
+          { Name: "vpc-id", Values: [vpc.vpcId] },
+          { Name: "default-for-az", Values: ["true"] },
+        ],
       } as any),
       EC2.describeSecurityGroups({
         Filters: [

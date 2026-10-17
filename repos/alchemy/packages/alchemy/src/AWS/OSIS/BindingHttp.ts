@@ -1,3 +1,9 @@
+import * as Credentials from "@distilled.cloud/aws/Credentials";
+import * as Region from "@distilled.cloud/aws/Region";
+import * as SigV4 from "@distilled.cloud/aws/SigV4";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 /**
  * Shared scaffolding for Amazon OpenSearch Ingestion (OSIS) HTTP bindings.
  *
@@ -16,15 +22,8 @@
  *   SigV4-signed HTTP POST (service `"osis"`) against the pipeline's ingest
  *   endpoint, made with the host Function's own credentials.
  */
-import * as Credentials from "@distilled.cloud/aws/Credentials";
-import * as Region from "@distilled.cloud/aws/Region";
-import { AwsV4Signer } from "aws4fetch";
-import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Redacted from "effect/Redacted";
-import * as Binding from "../../Binding.ts";
 import type * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Pipeline } from "./Pipeline.ts";
 
 /**
@@ -52,27 +51,22 @@ export const makeOsisPipelineHttpBinding = <
   identifier: (pipeline: Pipeline) => Output.Output<string, never>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (pipeline: Pipeline) {
       const Identifier = yield* options.identifier(pipeline);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${pipeline}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [pipeline.pipelineArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${pipeline})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [pipeline.pipelineArn],
+            },
+          ],
+        });
       }
-      return Effect.fn(`${options.tag}(${pipeline.LogicalId})`)(function* (
-        request?: Omit<I, K>,
-      ) {
+      return Effect.fn(`${options.tag}(${pipeline.LogicalId})`)(function* (request?: Omit<I, K>) {
         return yield* op({
           ...request,
           [options.requestKey]: yield* Identifier,
@@ -96,22 +90,19 @@ export const makeOsisAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
@@ -123,9 +114,7 @@ export const makeOsisAccountHttpBinding = <I, A, E, R>(options: {
  * A failed `osis:Ingest` request against a pipeline's ingest endpoint —
  * carries the HTTP status and response body returned by Data Prepper.
  */
-export class PipelineIngestError extends Data.TaggedError(
-  "OsisPipelineIngestError",
-)<{
+export class PipelineIngestError extends Data.TaggedError("OsisPipelineIngestError")<{
   readonly pipelineName: string;
   /** Request path on the ingest endpoint, e.g. `/logs/ingest`. */
   readonly path: string;
@@ -156,31 +145,26 @@ export interface IngestRequest {
  * pipeline's ingest endpoint with the host Function's own credentials.
  */
 export const makeOsisIngestBinding = Effect.gen(function* () {
-  const services = yield* Effect.context<
-    Credentials.Credentials | Region.Region
-  >();
+  const services = yield* AWSBindings.withCredentials(
+    Effect.context<Credentials.Credentials | Region.Region>(),
+  );
 
   return Effect.fn(function* (pipeline: Pipeline) {
     const PipelineName = yield* pipeline.pipelineName;
     const IngestEndpointUrls = yield* pipeline.ingestEndpointUrls;
     if (!globalThis.__ALCHEMY_RUNTIME__) {
-      const host = yield* Binding.Host;
-      if (isBindingHost(host)) {
-        yield* host.bind`Allow(${host}, AWS.OSIS.Ingest(${pipeline}))`({
-          policyStatements: [
-            {
-              Effect: "Allow",
-              Action: ["osis:Ingest"],
-              Resource: [pipeline.pipelineArn],
-            },
-          ],
-        });
-      }
+      yield* AWSBindings.bind`AWS.OSIS.Ingest(${pipeline})`({
+        policyStatements: [
+          {
+            Effect: "Allow",
+            Action: ["osis:Ingest"],
+            Resource: [pipeline.pipelineArn],
+          },
+        ],
+      });
     }
 
-    return Effect.fn(`AWS.OSIS.Ingest(${pipeline.LogicalId})`)(function* (
-      request: IngestRequest,
-    ) {
+    return Effect.fn(`AWS.OSIS.Ingest(${pipeline.LogicalId})`)(function* (request: IngestRequest) {
       const pipelineName = yield* PipelineName;
       const endpoints = yield* IngestEndpointUrls;
       const endpoint = endpoints?.[0];
@@ -200,13 +184,8 @@ export const makeOsisIngestBinding = Effect.gen(function* () {
       // Ingest endpoint URLs are bare hostnames
       // (`{name}-{id}.{region}.osis.amazonaws.com`); sign for the endpoint's
       // own region, parsed from the hostname.
-      const base = endpoint.startsWith("https://")
-        ? endpoint
-        : `https://${endpoint}`;
-      const url = new URL(
-        request.path.startsWith("/") ? request.path : `/${request.path}`,
-        base,
-      );
+      const base = endpoint.startsWith("https://") ? endpoint : `https://${endpoint}`;
+      const url = new URL(request.path.startsWith("/") ? request.path : `/${request.path}`, base);
 
       // Resolve credentials fresh per request (STS sessions rotate).
       const { credentials, region } = yield* Effect.gen(function* () {
@@ -217,28 +196,26 @@ export const makeOsisIngestBinding = Effect.gen(function* () {
         return { credentials, region };
       }).pipe(Effect.provideContext(services));
 
-      const signer = new AwsV4Signer({
+      const body = JSON.stringify(request.events);
+      const signed = yield* SigV4.sign({
         method: "POST",
         url: url.toString(),
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(request.events),
+        body,
         accessKeyId: Redacted.value(credentials.accessKeyId),
-        secretAccessKey: Redacted.value(credentials.secretAccessKey),
-        sessionToken: credentials.sessionToken
-          ? Redacted.value(credentials.sessionToken)
-          : undefined,
+        secretAccessKey: credentials.secretAccessKey,
+        sessionToken: credentials.sessionToken,
         service: "osis",
         region,
         allHeaders: true,
       });
-      const signed = yield* Effect.promise(() => signer.sign());
 
       const response = yield* Effect.tryPromise({
         try: () =>
-          fetch(signed.url.toString(), {
+          fetch(signed.url, {
             method: signed.method,
             headers: signed.headers,
-            body: signed.body as BodyInit | undefined,
+            body,
           }),
         catch: (cause) =>
           new PipelineIngestError({

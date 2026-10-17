@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { withRoute53DomainsRegion } from "./internal.ts";
 
 /**
@@ -17,12 +16,7 @@ import { withRoute53DomainsRegion } from "./internal.ts";
  * served from `us-east-1`, so the captured client is pinned to that region
  * regardless of where the calling function runs.
  */
-export const makeRoute53DomainsHttpBinding = <
-  I extends object,
-  A,
-  E,
-  R,
->(options: {
+export const makeRoute53DomainsHttpBinding = <I extends object, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"CheckDomainAvailability"`.
@@ -36,29 +30,22 @@ export const makeRoute53DomainsHttpBinding = <
   Effect.gen(function* () {
     // Capture the client with the region pinned to us-east-1 — the Route 53
     // Domains API is not served from any other region.
-    const op = yield* withRoute53DomainsRegion(options.operation);
+    const op = yield* options.operation.pipe(withRoute53DomainsRegion, AWSBindings.withCredentials);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.Route53Domains.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.Route53Domains.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  // route53domains has no resource-level IAM
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              // route53domains has no resource-level IAM
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.Route53Domains.${options.capability}`)(function* (
-        request: I,
-      ) {
+      return Effect.fn(`AWS.Route53Domains.${options.capability}`)(function* (request: I) {
         // The region must also be pinned at the call site: the yield-time
         // snapshot is only a fallback — the calling fiber's ambient Region
         // (the host Function's own region) wins over it.

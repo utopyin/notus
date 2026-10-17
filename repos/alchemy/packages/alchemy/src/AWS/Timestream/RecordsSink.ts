@@ -2,7 +2,7 @@ import type * as TSW from "@distilled.cloud/aws/timestream-write";
 import type * as Effect from "effect/Effect";
 import type * as Sink from "effect/Sink";
 import * as Binding from "../../Binding.ts";
-import type { BatchRetryExhaustedError } from "../internal/BatchedSink.ts";
+import type { BatchRetryExhaustedError } from "../../Util/BatchedSink.ts";
 import type { Table } from "./Table.ts";
 
 /**
@@ -22,10 +22,7 @@ export interface RecordsSinkProps {
 }
 
 export type RecordsSinkError =
-  | Exclude<
-      TSW.WriteRecordsError | TSW.DescribeEndpointsError,
-      TSW.RejectedRecordsException
-    >
+  | Exclude<TSW.WriteRecordsError | TSW.DescribeEndpointsError, TSW.RejectedRecordsException>
   | BatchRetryExhaustedError<RecordsSinkRecord>;
 
 /**
@@ -73,15 +70,8 @@ export interface RecordsSink extends Binding.Service<
     table: Table,
     props?: RecordsSinkProps,
   ) => Effect.Effect<
-    Sink.Sink<
-      void,
-      RecordsSinkRecord,
-      readonly RecordsSinkRecord[],
-      RecordsSinkError
-    >
+    Sink.Sink<void, RecordsSinkRecord, readonly RecordsSinkRecord[], RecordsSinkError>
   >
 > {}
 
-export const RecordsSink = Binding.Service<RecordsSink>(
-  "AWS.Timestream.RecordsSink",
-);
+export const RecordsSink = Binding.Service<RecordsSink>("AWS.Timestream.RecordsSink");
