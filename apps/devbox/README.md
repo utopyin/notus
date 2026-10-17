@@ -69,11 +69,12 @@ docker build --platform=linux/amd64 -f apps/devbox/Dockerfile.derived \
   -t notus-project:local apps/devbox
 ```
 
-[Dockerfile.dotfiles](Dockerfile.dotfiles) is a derived image carrying a personal dotfiles setup. Root clones the dotfiles repository at a pinned commit and installs its APT manifest; the `devbox` user then runs the repository's `bin/bootstrap --unattended`, which stows the configuration and installs the Mise toolset without signing in to anything. `NOTUS_BASE_IMAGE` and `DOTFILES_REF` default to pinned values in the file because `devbox image build` passes no build arguments; bump them there, or override them in a docker build. The optional `github_token` build secret only raises GitHub's API rate limit while Mise resolves releases and is not written to a layer:
+[Dockerfile.dotfiles](Dockerfile.dotfiles) is a derived image carrying a personal dotfiles setup. Root clones the dotfiles repository at a pinned commit and installs its APT manifest; the `devbox` user then runs the repository's `bin/bootstrap --unattended`, which stows the configuration and installs the Mise toolset without signing in to anything. `NOTUS_BASE_IMAGE`, `DOTFILES_REPO` and `DOTFILES_REF` are required build arguments with no defaults; `devbox image build` passes none, so build with docker or a local copy that sets them. The optional `github_token` build secret only raises GitHub's API rate limit while Mise resolves releases and is not written to a layer:
 
 ```sh
 docker build --platform=linux/amd64 -f apps/devbox/Dockerfile.dotfiles \
   --build-arg NOTUS_BASE_IMAGE="$ACTUAL_BASE_OCI_REF" \
+  --build-arg DOTFILES_REPO="$DOTFILES_REPO_URL" \
   --build-arg DOTFILES_REF="$DOTFILES_COMMIT_SHA" \
   --secret id=github_token,env=GITHUB_TOKEN \
   -t notus-dotfiles:local apps/devbox

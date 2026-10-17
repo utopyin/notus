@@ -32,4 +32,8 @@ The readiness slice follows the [readiness plan](docs/plans/provisioning.md); th
 
 ## Stages
 
-A stage is either a developer's own, named after `$USER`, or `production`. `bun run deploy` deploys your stage from the ignored `.env.dev`; `bun run deploy:production` deploys production from `.env.production`. Each stage owns its Workers, D1 databases, Durable Objects and hostnames: production serves `notus.run` and `api.notus.run`, a developer stage `<stage>.notus.run` and `api.<stage>.notus.run`, with DNS and certificates managed by Cloudflare as part of the deploy. The rule lives in `@notus/shared/hosts`. Credentials come from the `notus` Alchemy profile, an API token, selected by `ALCHEMY_PROFILE` in the env file; see the [intake results](docs/research/intake-results.md) for the setup notes.
+A stage is either a developer's own, named after `$USER`, or `production`. `bun run deploy` deploys your stage from the ignored `.env.dev` (start from [.env.example](.env.example)); `bun run deploy:production` deploys production from `.env.production`. Each stage owns its Workers, D1 databases, Durable Objects and hostnames: production serves `notus.run` and `api.notus.run`, a developer stage `<stage>.notus.run` and `api.<stage>.notus.run`, with DNS and certificates managed by Cloudflare as part of the deploy. The rule lives in `@notus/shared/hosts`. Credentials come from the `notus` Alchemy profile, an API token, selected by `ALCHEMY_PROFILE` in the env file; see the [intake results](docs/research/intake-results.md) for the setup notes.
+
+## License
+
+[GPL-3.0](LICENSE). The upstream snapshots under `repos/` keep their own licenses.

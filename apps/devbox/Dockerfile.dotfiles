@@ -1,18 +1,17 @@
 # syntax=docker/dockerfile:1
 # Derived image with a personal dotfiles setup: zsh, stowed config, and Mise-managed
 # developer tools, installed by the dotfiles repository's own `dot init --unattended`.
-# `devbox image build` passes no build arguments, so both pins default here; a docker build can
-# still override them. The base is the published digest the deployment approves.
-ARG NOTUS_BASE_IMAGE=nscr.io/<tenant>/notus/base-herdr-0.9.0-biv7fr@sha256:842eb60bc674ec90e36f3e10dfa0e265522ad6dd5647f71833b099b415df5134
+# All three pins are required build arguments: the approved base digest, the dotfiles repository
+# and a full commit SHA in it. Mise tools declared as "latest" still resolve at build time, so
+# record the resulting OCI digest rather than expecting identical rebuilds.
+ARG NOTUS_BASE_IMAGE
 FROM ${NOTUS_BASE_IMAGE}
-ARG DOTFILES_REPO=<dotfiles-repo>
-# A full commit SHA. Mise tools declared as "latest" still resolve at build time, so record the
-# resulting OCI digest rather than expecting identical rebuilds.
-ARG DOTFILES_REF=8ff696e7c05608c7c870bb76fa36924fbd297b8d
+ARG DOTFILES_REPO
+ARG DOTFILES_REF
 # Tools this image already pins in /usr/local/bin; Mise must not shadow them in zsh.
 ARG DOTFILES_SKIP_TOOLS=herdr,codex
 USER root
-RUN test -n "$DOTFILES_REF" \
+RUN test -n "$DOTFILES_REPO" && test -n "$DOTFILES_REF" \
     && git clone "$DOTFILES_REPO" /home/devbox/.dotfiles \
     && git -C /home/devbox/.dotfiles checkout --quiet --detach "$DOTFILES_REF" \
     && chown -R 1001:1001 /home/devbox/.dotfiles \
