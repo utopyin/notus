@@ -93,9 +93,13 @@ export const makeAuth = (dashboard: DashboardConfig) =>
       modelName: "auth_accounts",
       // Linking is an explicit action from the account page by a signed-in user, so the second
       // provider's email need not match: Slack and GitHub emails often differ for one person.
+      // Never implicitly: a sign-in whose email matches an existing user is not that user, since
+      // a Slack workspace owner chooses its members' emails. Trust only lets explicit links through
+      // without a verified email, which GitHub's no-reply stand-in never has.
       accountLinking: {
         enabled: true,
         allowDifferentEmails: true,
+        disableImplicitLinking: true,
         trustedProviders: ["github", "slack"],
       },
     },
