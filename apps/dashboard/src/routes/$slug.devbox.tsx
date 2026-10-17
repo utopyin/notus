@@ -29,6 +29,7 @@ import {
 import { NamespaceForm } from "../devbox/namespace/form";
 import { WorkspaceImages } from "../devbox/namespace/images";
 import { NamespaceMark } from "../devbox/namespace/mark";
+import { NAMESPACE_DESCRIPTOR } from "@notus/compute/descriptors/index";
 import { canonical } from "../lib/json";
 import {
   addImage,
@@ -39,6 +40,9 @@ import {
   type EnvironmentRevision,
 } from "../server/devbox";
 import { useWorkspace } from "./$slug";
+
+/** The one provider card this page renders until it lists every registered provider. */
+const provider = NAMESPACE_DESCRIPTOR.provider;
 
 export const Route = createFileRoute("/$slug/devbox")({
   staticData: {
@@ -52,7 +56,7 @@ export const Route = createFileRoute("/$slug/devbox")({
     const parent = await parentMatchPromise;
     if (!parent.loaderData) return { environment: null, approvedImages: [], workspaceImages: [] };
     const result = await getEnvironment({
-      data: { workspaceId: parent.loaderData.workspace.id },
+      data: { workspaceId: parent.loaderData.workspace.id, provider },
     });
     if (!result.ok) throw new Error(result.reason);
     return result.value;
@@ -90,7 +94,7 @@ function Devbox() {
     setOpened(null);
     setSaving(false);
   }
-  // A workspace that was never configured starts from the image the deployment approves.
+  // A workspace that was never configured starts from its first image, if it has one.
   const current = fieldsOf(stored);
   const fields =
     draft ??
@@ -109,7 +113,9 @@ function Devbox() {
   const save = async () => {
     if (saving || !dirty || problem !== null) return;
     setSaving(true);
-    const result = await saveEnvironment({ data: { workspaceId: view.workspace.id, config } });
+    const result = await saveEnvironment({
+      data: { workspaceId: view.workspace.id, provider, config },
+    });
     if (!result.ok) {
       setSaving(false);
       setMessage(result.reason);
@@ -202,9 +208,9 @@ function Devbox() {
         <CardHeader>
           <CardTitle>Your images</CardTitle>
           <CardDescription className="text-pretty">
-            Images this workspace approves beside the ones the deployment offers. Build yours from
-            the Notus base image, publish it, and add its digest; it then appears in the image field
-            above. Notus does not inspect it: whoever adds an image vouches for what it contains.
+            The images this workspace may launch. Build yours from the Notus base image, publish it,
+            and add its digest; it then appears in the image field above. Notus does not inspect it:
+            whoever adds an image vouches for what it contains.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -214,10 +220,14 @@ function Devbox() {
             disabled={!isAdmin}
             nameOf={nameOf}
             onAdd={async (ref, label) =>
-              changeImages(await addImage({ data: { workspaceId: view.workspace.id, ref, label } }))
+              changeImages(
+                await addImage({ data: { workspaceId: view.workspace.id, provider, ref, label } }),
+              )
             }
             onRemove={async (ref) =>
-              changeImages(await removeImage({ data: { workspaceId: view.workspace.id, ref } }))
+              changeImages(
+                await removeImage({ data: { workspaceId: view.workspace.id, provider, ref } }),
+              )
             }
           />
         </CardContent>

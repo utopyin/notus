@@ -13,7 +13,7 @@ const summary = (status: ProvisioningStatus): string => {
       : `Herdr readiness was last observed at ${DateTime.formatIso(DateTime.makeUnsafe(status.lastReadyAt))}.`;
   const lifecycle =
     status.phase === "ready"
-      ? "The devbox remains assigned. Namespace last reported it running; it may auto-sleep."
+      ? "The devbox remains assigned. Its provider last reported it running; it may sleep while idle."
       : status.phase === "blocked"
         ? `Provisioning is blocked: ${status.blockedReason ?? "unknown"}. ${status.resourceId ? "The devbox assignment is retained." : "No devbox assignment has been confirmed."} No replacement will be created automatically.`
         : "Devbox startup or wake-up is still in progress.";

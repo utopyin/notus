@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as SchemaGetter from "effect/SchemaGetter";
 
 // Alchemy captures these Config reads during construction and reifies them
 // from Worker secret bindings at runtime. Never read process.env in handlers.
@@ -109,43 +108,13 @@ export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
 });
 
-/** One reference, or several separated by commas: every image the deployment audited. */
-const ApprovedImages = Schema.String.pipe(
-  Schema.decodeTo(Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(1)), {
-    decode: SchemaGetter.transform((text: string) =>
-      text
-        .split(",")
-        .map((ref) => ref.trim())
-        .filter((ref) => ref !== ""),
-    ),
-    encode: SchemaGetter.transform((refs: ReadonlyArray<string>) => refs.join(",")),
-  }),
-);
-
 /**
- * The images this deployment approves for workspace devboxes, with the audit that approved them.
- * Null where no devbox can start; the dashboard then offers no image to select.
+ * Read only by the execution host. The one deployment-level provider credential left until
+ * workspaces connect their own (docs/plans/compute.md, increment 2).
  */
-export const approvedImageConfig = Effect.gen(function* () {
-  const refs = yield* Config.option(Config.schema(ApprovedImages, "NOTUS_APPROVED_IMAGE_REF"));
-  const audit = yield* Config.option(
-    Config.schema(Schema.Literal("audited-no-checkout-or-startup"), "NOTUS_IMAGE_AUDIT"),
-  );
-  return Option.isSome(refs) && Option.isSome(audit)
-    ? { approvedImageRefs: refs.value, approvedImageSource: audit.value }
-    : null;
-});
-
-/** Read only by the execution host, not the Slack ingress or the devbox. */
-export const providerConfig = Effect.gen(function* () {
+export const namespaceConfig = Effect.gen(function* () {
   return {
     credential: yield* Config.redacted("NAMESPACE_CONTROL_TOKEN"),
-    approvedImageRefs: yield* Config.schema(ApprovedImages, "NOTUS_APPROVED_IMAGE_REF"),
-    // Set only after auditing both executable contents and provider registration metadata.
-    imageAudit: yield* Config.schema(
-      Schema.Literal("audited-no-checkout-or-startup"),
-      "NOTUS_IMAGE_AUDIT",
-    ),
     timeoutMs: 20_000,
   };
 });

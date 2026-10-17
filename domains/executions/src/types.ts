@@ -1,3 +1,4 @@
+import { Resource } from "@notus/compute/adapter";
 import { ReplyTarget, Source } from "@notus/platform/source";
 import { Environment } from "@notus/workspaces/types";
 import * as Schema from "effect/Schema";
@@ -55,14 +56,7 @@ export const Bootstrap = Schema.Struct({
 });
 export interface Bootstrap extends Schema.Schema.Type<typeof Bootstrap> {}
 
-/** Provider-native image observations stay opaque and are never status payloads. */
-export const Resource = Schema.Struct({
-  id: Schema.NonEmptyString,
-  name: Schema.NonEmptyString,
-  instanceId: Schema.NullOr(Schema.NonEmptyString),
-  image: Schema.NullOr(Schema.Json),
-});
-export interface Resource extends Schema.Schema.Type<typeof Resource> {}
+export { Resource } from "@notus/compute/adapter";
 export const Work = Schema.Literals([
   "create",
   "reconcile-create",
@@ -138,6 +132,8 @@ export interface Enrollment extends Schema.Schema.Type<typeof Enrollment> {}
 /** Internal enrollment context. Never expose this as a task snapshot or callback response. */
 export const EnrollmentContext = Schema.Struct({
   bootstrap: Bootstrap,
+  /** Which provider holds the resource; what the provider-facing checks resolve. */
+  environment: Schema.NullOr(Environment),
   resource: Schema.NullOr(Resource),
   previous: Schema.NullOr(Enrollment),
   phase: Phase,

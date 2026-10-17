@@ -31,6 +31,8 @@
         "@effect/sql-sqlite-do": "catalog:",
         "@notus/accounts": "workspace:*",
         "@notus/cloudflare": "workspace:*",
+        "@notus/compute": "workspace:*",
+        "@notus/compute-namespace": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/control": "workspace:*",
         "@notus/executions": "workspace:*",
@@ -60,6 +62,7 @@
         "@blocknote/react": "0.54.2",
         "@blocknote/shadcn": "0.54.2",
         "@fontsource-variable/geist": "5.3.0",
+        "@notus/compute": "workspace:*",
         "@notus/namespace": "workspace:*",
         "@notus/shared": "workspace:*",
         "@paper-design/shaders-react": "0.0.80",
@@ -121,12 +124,20 @@
         "effect": "catalog:",
       },
     },
+    "domains/compute-namespace": {
+      "name": "@notus/compute-namespace",
+      "dependencies": {
+        "@notus/compute": "workspace:*",
+        "@notus/namespace": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
     "domains/executions": {
       "name": "@notus/executions",
       "dependencies": {
         "@notus/cloudflare": "workspace:*",
+        "@notus/compute": "workspace:*",
         "@notus/contracts": "workspace:*",
-        "@notus/namespace": "workspace:*",
         "@notus/platform": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -206,6 +217,12 @@
         "@effect/sql-d1": "catalog:",
         "@effect/sql-sqlite-do": "catalog:",
         "drizzle-orm": "catalog:",
+        "effect": "catalog:",
+      },
+    },
+    "packages/compute": {
+      "name": "@notus/compute",
+      "dependencies": {
         "effect": "catalog:",
       },
     },
@@ -718,6 +735,10 @@
     "@notus/api": ["@notus/api@workspace:apps/api"],
 
     "@notus/cloudflare": ["@notus/cloudflare@workspace:packages/cloudflare"],
+
+    "@notus/compute": ["@notus/compute@workspace:packages/compute"],
+
+    "@notus/compute-namespace": ["@notus/compute-namespace@workspace:domains/compute-namespace"],
 
     "@notus/contracts": ["@notus/contracts@workspace:packages/contracts"],
 

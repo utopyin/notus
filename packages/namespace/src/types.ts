@@ -53,10 +53,8 @@ export interface Resource extends Schema.Schema.Type<typeof Resource> {}
 
 export interface RestrictedInput {
   readonly config: RawJson;
-  /** Every image the host audited; the configuration must select one of them. */
+  /** Every image the workspace's admins added; the configuration must select one of them. */
   readonly approvedImageRefs: ReadonlyArray<string>;
-  // Host assertion about the approved image and its Namespace metadata, not user JSON.
-  readonly approvedImageSource: "audited-no-checkout-or-startup";
 }
 
 export interface TrustedLaunchInput extends RestrictedInput {

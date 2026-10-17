@@ -7,8 +7,6 @@ import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
 import type { Provider } from "@notus/openai/types";
 import { Environments } from "@notus/workspaces/environments";
-import { imageRefPattern } from "@notus/namespace/restricted";
-import { validateRestricted } from "@notus/namespace/service";
 import { Images } from "@notus/workspaces/images";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import type { ScopeInput } from "@notus/workspaces/workspaces";
@@ -17,6 +15,7 @@ import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { Roles } from "@notus/workspaces/roles";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
+import { configurationOf } from "./compute";
 import * as Install from "./install";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -32,7 +31,6 @@ import { hostnames, zone } from "@notus/shared/hosts";
 import * as Callback from "./callback";
 import { authDatabase, makeAuth } from "./auth";
 import {
-  approvedImageConfig,
   credentialKeyConfig,
   dashboardConfig,
   deploymentConfig,
@@ -60,13 +58,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
-    // What the dashboard may select as a devbox image: exactly what the host would launch.
-    const approved = yield* approvedImageConfig.pipe(Effect.orDie);
-    /** What the Devbox page offers: nothing at all unless the deployment asserts its image audit. */
-    const selectable = (own: ReadonlyArray<{ readonly ref: string }>) =>
-      approved
-        ? [...new Set([...approved.approvedImageRefs, ...own.map((image) => image.ref)])]
-        : [];
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     // Every credential at rest, model login or platform installation, is sealed under this key.
@@ -365,6 +356,16 @@ export default class Api extends Cloudflare.Worker<Api>()(
         Effect.provide(dashboardLayer),
         Effect.orElseSucceed(() => ({ ok: false as const, reason: "failed" })),
       );
+    /** The checks of a provider this deployment runs; any other key is refused before storage. */
+    const compute = (provider: string) => {
+      const configuration = configurationOf(provider);
+      return configuration
+        ? Effect.succeed(configuration)
+        : Effect.fail<DashboardFailure>({
+            _tag: "Environment",
+            reason: "This deployment runs no such devbox provider.",
+          });
+    };
     const authorized = <A>(
       cookie: string,
       run: (me: SignedIn) => Effect.Effect<A, DashboardFailure, DashboardDeps>,
@@ -640,11 +641,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Roles.Service.pipe(Effect.flatMap((roles) => roles.remove(workspaceId, me.userId, name))),
         ),
-      /**
-       * The workspace's devbox configuration and the images it may select: the ones this deployment
-       * approves, then the ones its own admins approved.
-       */
-      dashboardEnvironment: (cookie: string, workspaceId: string) =>
+      /** The workspace's devbox configuration and the templates its admins added for this provider. */
+      dashboardEnvironment: (cookie: string, workspaceId: string, provider: string) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
             const environments = yield* Environments.Service;
@@ -653,7 +651,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const own = yield* images.list(workspaceId, me.userId);
             return {
               environment: Option.getOrNull(environment),
-              approvedImages: selectable(own.filter((image) => image.provider === "namespace")),
+              approvedImages: own
+                .filter((image) => image.provider === provider)
+                .map((image) => image.ref),
               workspaceImages: own,
             };
           }),
@@ -665,59 +665,56 @@ export default class Api extends Cloudflare.Worker<Api>()(
           ),
         ),
       /** The provider's policy decides before anything is stored; its message is what the page shows. */
-      dashboardSaveEnvironment: (cookie: string, workspaceId: string, config: Schema.Json) =>
+      dashboardSaveEnvironment: (
+        cookie: string,
+        workspaceId: string,
+        provider: string,
+        config: Schema.Json,
+      ) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
-            if (!approved)
-              return yield* Effect.fail<DashboardFailure>({
-                _tag: "Environment",
-                reason: "This deployment approves no devbox image.",
-              });
+            const configuration = yield* compute(provider);
             const images = yield* Images.Service;
-            const own = yield* images.approved(workspaceId, "namespace");
-            yield* validateRestricted({
-              config,
-              approvedImageRefs: [...approved.approvedImageRefs, ...own],
-              approvedImageSource: approved.approvedImageSource,
-            }).pipe(
+            const own = yield* images.approved(workspaceId, provider);
+            yield* configuration.validate(config, own).pipe(
               Effect.mapError((error): DashboardFailure => ({
                 _tag: error._tag,
                 reason: error.message,
               })),
             );
             const environments = yield* Environments.Service;
-            return yield* environments.save(workspaceId, me.userId, "namespace", config, me.now);
+            return yield* environments.save(workspaceId, me.userId, provider, config, me.now);
           }),
         ),
       /**
-       * An admin vouches for an image of their own: an immutable reference they built from the
-       * Notus base and published where the provider can pull it. Nothing here inspects the image.
+       * An admin vouches for a template of their own, such as an image they built from the Notus
+       * base and published where the provider can pull it. Nothing here inspects it.
        */
-      dashboardAddImage: (cookie: string, workspaceId: string, ref: string, label: string) =>
+      dashboardAddImage: (
+        cookie: string,
+        workspaceId: string,
+        provider: string,
+        ref: string,
+        label: string,
+      ) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
-            const value = ref.trim();
-            if (value.length > 1024 || !imageRefPattern.test(value))
-              return yield* Effect.fail<DashboardFailure>({
+            const configuration = yield* compute(provider);
+            const value = yield* configuration.validateTemplate(ref).pipe(
+              Effect.mapError((error): DashboardFailure => ({
                 _tag: "Image",
-                reason: "An image is registry/repository@sha256:digest, with no tag.",
-              });
-            const images = yield* Images.Service;
-            return yield* images.add(
-              workspaceId,
-              me.userId,
-              "namespace",
-              value,
-              label.trim(),
-              me.now,
+                reason: error.message,
+              })),
             );
+            const images = yield* Images.Service;
+            return yield* images.add(workspaceId, me.userId, provider, value, label.trim(), me.now);
           }),
         ),
       /** A stored configuration that selected it keeps it, shown as no longer approved. */
-      dashboardRemoveImage: (cookie: string, workspaceId: string, ref: string) =>
+      dashboardRemoveImage: (cookie: string, workspaceId: string, provider: string, ref: string) =>
         authorized(cookie, (me) =>
           Images.Service.pipe(
-            Effect.flatMap((images) => images.remove(workspaceId, me.userId, "namespace", ref)),
+            Effect.flatMap((images) => images.remove(workspaceId, me.userId, provider, ref)),
           ),
         ),
       dashboardConnections: (cookie: string) =>

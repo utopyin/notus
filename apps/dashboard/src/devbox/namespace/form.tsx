@@ -60,7 +60,7 @@ const enforcementItems = [
 
 /**
  * The Namespace configuration as fields. Every value the restricted policy accepts has a field
- * here; the image can only be one the deployment approves. Nothing is validated beyond what the
+ * here; the image can only be one the workspace added. Nothing is validated beyond what the
  * fields themselves say: the policy on the API has the last word and its message is shown.
  */
 export const NamespaceForm: FC<{
@@ -69,7 +69,7 @@ export const NamespaceForm: FC<{
   disabled: boolean;
   onChange: (change: Partial<Fields>) => void;
 }> = ({ fields, approvedImages, disabled, onChange }) => {
-  // Only images the deployment audited can be selected; a stored one that no longer is still shows.
+  // Only the workspace's images can be selected; a stored one that was removed still shows.
   const imageApproved = approvedImages.includes(fields.imageRef);
   const imageItems = [
     ...approvedImages.map((value) => ({ value, label: shortValue(value) })),
@@ -88,7 +88,7 @@ export const NamespaceForm: FC<{
     <div className="flex flex-col gap-8">
       <Section
         title="Image"
-        description="What the devbox boots from. Only images the deployment audited and approved can be selected."
+        description="What the devbox boots from. Only images this workspace added can be selected."
       >
         <div className="sm:col-span-2">
           <Field
@@ -97,7 +97,7 @@ export const NamespaceForm: FC<{
             hint={
               fields.imageRef
                 ? fields.imageRef
-                : "This deployment approves no image, so no devbox can start."
+                : "This workspace has no image yet, so no devbox can start. Add one below."
             }
           >
             <Select

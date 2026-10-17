@@ -105,12 +105,12 @@ export const verify = Effect.fn("Runtime.Server.verify")(function* (
   const provider = yield* Devbox.Service;
   const previousTermination = current.previous
     ? yield* provider
-        .verifyReplacement(current.previous, current.resource)
+        .verifyReplacement(current.environment, current.previous, current.resource)
         .pipe(Effect.mapError(() => fail("pending")))
     : null;
   if (!current.previous) {
     const observed = yield* provider
-      .fetch(current.resource)
+      .fetch(current.environment, current.resource)
       .pipe(Effect.mapError(() => fail("unavailable")));
     if (observed.instanceId !== request.instanceId) return yield* fail("pending");
   }
@@ -185,7 +185,7 @@ export const verifyReadiness = Effect.fn("Runtime.Server.verifyReadiness")(funct
     return yield* fail("unauthorized");
   const provider = yield* Devbox.Service;
   const observed = yield* provider
-    .fetch(current.resource)
+    .fetch(current.environment, current.resource)
     .pipe(Effect.mapError(() => fail("unavailable")));
   if (observed.instanceId !== capability.instanceId) return yield* fail("pending");
 });

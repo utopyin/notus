@@ -43,7 +43,7 @@ import {
   deploymentConfig,
   githubConfig,
   operatorConfig,
-  providerConfig,
+  namespaceConfig,
   runtimeConfig,
 } from "./config";
 import { Connection } from "./connection";
@@ -58,7 +58,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const host = yield* Cloudflare.DurableObjectState;
     const config = yield* deploymentConfig.pipe(Effect.orDie);
     const runtime = yield* runtimeConfig.pipe(Effect.orDie);
-    const provider = runtime ? yield* providerConfig.pipe(Effect.orDie) : null;
+    const namespace = runtime ? yield* namespaceConfig.pipe(Effect.orDie) : null;
     if (config.mode === "readiness" && !runtime)
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
     const operator = yield* operatorConfig.pipe(Effect.orDie);
@@ -74,7 +74,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
       host,
       config,
       runtime,
-      provider,
+      namespace,
       operator,
       github,
       connections,
@@ -90,7 +90,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         host,
         config,
         runtime,
-        provider,
+        namespace,
         operator,
         github,
         connections,
@@ -133,8 +133,8 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Layer.merge(stepsLayer, commandsLayer),
               ),
             ).pipe(
-              Layer.provideMerge(RuntimeLayers.execution(runtime, provider)),
-              // A workspace's own approved images live in the shared database.
+              Layer.provideMerge(RuntimeLayers.execution(runtime, namespace)),
+              // A workspace's own templates live in the shared database.
               Layer.provide(Images.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw)))),
               Layer.provide(cryptoLayer),
             ),

@@ -59,12 +59,7 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
   input: RestrictedInput,
 ): Effect.fn.Return<Configuration, ConfigError> {
   const config = yield* Config.decode(input.config);
-  if (input.approvedImageSource !== "audited-no-checkout-or-startup") {
-    return yield* new ConfigError({
-      message: "Restricted launch requires a host-audited image source and metadata",
-    });
-  }
-  yield* Schema.decodeUnknownEffect(Schema.NonEmptyArray(imageRef))(input.approvedImageRefs).pipe(
+  yield* Schema.decodeEffect(Schema.Array(imageRef))(input.approvedImageRefs).pipe(
     Effect.mapError(
       () =>
         new ConfigError({
@@ -80,7 +75,7 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
   );
   if (!input.approvedImageRefs.includes(config.raw.imageRef as string)) {
     return yield* new ConfigError({
-      message: "Configuration must select one of the approved images",
+      message: "Configuration must select one of the workspace's images",
     });
   }
   return config;

@@ -10,7 +10,7 @@ import { shortValue } from "./fields";
 type Image = EnvironmentView["workspaceImages"][number];
 
 /**
- * The workspace's own images: references its admins approved beside the deployment's. An admin
+ * The workspace's images: the references its admins approved, the only ones it may launch. An admin
  * builds from the Notus base, publishes the image, and adds its digest here.
  */
 export const WorkspaceImages: FC<{

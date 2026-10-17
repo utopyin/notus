@@ -14,6 +14,8 @@
     "@effect/sql-sqlite-do": "catalog:",
     "@notus/accounts": "workspace:*",
     "@notus/cloudflare": "workspace:*",
+    "@notus/compute": "workspace:*",
+    "@notus/compute-namespace": "workspace:*",
     "@notus/contracts": "workspace:*",
     "@notus/control": "workspace:*",
     "@notus/executions": "workspace:*",

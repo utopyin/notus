@@ -1,4 +1,5 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
+import { descriptorOf } from "@notus/compute/descriptors/index";
 import * as Json from "@notus/contracts/json";
 import { and, desc, eq, or } from "drizzle-orm";
 import * as Context from "effect/Context";
@@ -548,7 +549,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       (s.startupDeadline === null || s.phase === "blocked") &&
       s.environment &&
       s.blockedReason !== "external-expired" &&
-      (s.blockedReason !== "provider-rejected" || s.resource !== null)
+      (s.blockedReason !== "provider-rejected" || s.resource !== null) &&
+      // A provider that cannot start a stopped box again gets no wake; the box is what it is.
+      (s.resource === null ||
+        descriptorOf(s.environment.provider)?.capabilities.has("wake:request") === true)
     ) {
       s = {
         ...s,
@@ -567,6 +571,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const s = yield* bind(yield* decodeInput(Bootstrap, input));
     return EnrollmentContext.make({
       bootstrap: s.bootstrap,
+      environment: s.environment,
       resource: s.resource,
       previous: s.enrollment,
       phase: s.phase,
