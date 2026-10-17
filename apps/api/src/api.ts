@@ -444,7 +444,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
           Effect.tapError((error) => Effect.logWarning(`dashboard.me_failed ${error._tag}`)),
           Effect.orElseSucceed(() => null),
         ),
-      /** The signed-in user's sessions without their tokens beyond what revocation needs. */
+      /** The signed-in user's sessions, never their tokens: revocation goes by ID. */
       dashboardSessions: (cookie: string) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
@@ -452,7 +452,6 @@ export default class Api extends Cloudflare.Worker<Api>()(
             return sessions
               .map((session) => ({
                 id: session.id,
-                token: session.token,
                 createdAt: session.createdAt.toISOString(),
                 userAgent: session.userAgent ?? null,
                 current: session.id === me.session.session.id,
@@ -460,6 +459,18 @@ export default class Api extends Cloudflare.Worker<Api>()(
               .sort((a, b) =>
                 a.current ? -1 : b.current ? 1 : b.createdAt.localeCompare(a.createdAt),
               );
+          }).pipe(Effect.provideService(RuntimeContext, runtime)),
+        ),
+      /** Revokes one of the signed-in user's own sessions; the token never leaves this Worker. */
+      dashboardRevokeSession: (cookie: string, sessionId: string) =>
+        authorized(cookie, () =>
+          Effect.gen(function* () {
+            const headers = new Headers({ cookie });
+            const sessions = yield* auth.api.listSessions({ headers });
+            const session = sessions.find((candidate) => candidate.id === sessionId);
+            if (session === undefined)
+              return yield* Effect.fail<DashboardFailure>({ _tag: "Session", reason: "not-found" });
+            yield* auth.api.revokeSession({ headers, body: { token: session.token } });
           }).pipe(Effect.provideService(RuntimeContext, runtime)),
         ),
       dashboardCreateWorkspace: (cookie: string, name: string, slug?: string) =>

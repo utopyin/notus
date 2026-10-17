@@ -18,3 +18,12 @@ export const getSessions = createServerFn({ method: "GET" }).handler(async () =>
   const result = await api.dashboardSessions(cookie);
   return result.ok ? result.value : [];
 });
+
+/** Revokes one of the user's own sessions by ID; its token never reaches the browser. */
+export const revokeSession = createServerFn({ method: "POST" })
+  .inputValidator((input: { sessionId: string }) => input)
+  .handler(async ({ data }) => {
+    const cookie = getRequestHeader("cookie") ?? "";
+    const api = Cloudflare.toRpcAsync<Api>(env.API);
+    return await api.dashboardRevokeSession(cookie, data.sessionId);
+  });

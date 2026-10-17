@@ -25,7 +25,7 @@ import {
   revokeConnection,
   type Connection,
 } from "../server/connections";
-import { getSessions } from "../server/me";
+import { getSessions, revokeSession } from "../server/me";
 
 const root = getRouteApi("__root__");
 
@@ -90,8 +90,9 @@ function Account() {
     if (error) setMessage(error.message ?? "Unlinking failed.");
     else await router.invalidate();
   };
-  const revoke = async (token: string) => {
-    await authClient.revokeSession({ token });
+  const revoke = async (sessionId: string) => {
+    const result = await revokeSession({ data: { sessionId } });
+    if (!result.ok) setMessage("Revoking the session failed.");
     await router.invalidate();
   };
   const providers = [
@@ -170,7 +171,7 @@ function Account() {
                 </span>
               </div>
               {session.current ? null : (
-                <Button variant="ghost" size="sm" onClick={() => revoke(session.token)}>
+                <Button variant="ghost" size="sm" onClick={() => revoke(session.id)}>
                   Revoke
                 </Button>
               )}
