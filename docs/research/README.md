@@ -10,6 +10,7 @@ These notes come from source, test-body, documentation, and package-archive insp
 - [Alchemy](alchemy.md): deployment APIs and source map.
 - [Cloudflare](cloudflare.md): storage, hibernation, and runtime limits.
 - [Namespace](namespace.md): provisioning, bootstrap, credentials, lifetime, and ingress.
+- [Boat](boat.md): documented sandbox lifecycle, bootstrap delivery, missing machine identity, and probe questions.
 - [Herdr](herdr.md): terminal readiness, waits, results, and session continuity.
 - [Plannotator](plannotator.md): strict gate protocol and approval trust boundary.
 - [OpenAI authentication](openai-auth.md): OAuth implementation evidence, subscription access, and automation limits.
