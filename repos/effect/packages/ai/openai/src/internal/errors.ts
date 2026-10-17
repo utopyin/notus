@@ -1,17 +1,17 @@
+import * as AiError from "effect/ai/AiError"
+import type * as Response from "effect/ai/Response"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
+import type * as Sse from "effect/encoding/Sse"
 import { dual } from "effect/Function"
+import type * as HttpClientError from "effect/http/HttpClientError"
+import type * as HttpClientRequest from "effect/http/HttpClientRequest"
+import type * as HttpClientResponse from "effect/http/HttpClientResponse"
 import * as Number from "effect/Number"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
 import * as Redactable from "effect/Redactable"
 import * as Schema from "effect/Schema"
-import * as AiError from "effect/unstable/ai/AiError"
-import type * as Response from "effect/unstable/ai/Response"
-import type * as Sse from "effect/unstable/encoding/Sse"
-import type * as HttpClientError from "effect/unstable/http/HttpClientError"
-import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest"
-import type * as HttpClientResponse from "effect/unstable/http/HttpClientResponse"
 import type { OpenAiErrorMetadata } from "../OpenAiError.ts"
 
 // =============================================================================
@@ -271,14 +271,14 @@ export const mapStatusCodeToReason = ({ status, headers, message, metadata, http
       return new AiError.AuthenticationError({
         kind: "InvalidKey",
         description: errorDescription,
-        metadata,
+        metadata: { openai: metadata },
         http
       })
     case 403:
       return new AiError.AuthenticationError({
         kind: "InsufficientPermissions",
         description: errorDescription,
-        metadata,
+        metadata: { openai: metadata },
         http
       })
     case 404:
@@ -328,13 +328,13 @@ export const mapStatusCodeToReason = ({ status, headers, message, metadata, http
       if (status >= 500) {
         return new AiError.InternalProviderError({
           description: message ?? "Server error",
-          metadata,
+          metadata: { openai: metadata },
           http
         })
       }
       return new AiError.UnknownError({
         description: message,
-        metadata,
+        metadata: { openai: metadata },
         http
       })
   }
