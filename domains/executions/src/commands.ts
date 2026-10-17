@@ -35,7 +35,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (!attempt) return yield* new Conflict({ message: "No active attempt for command" });
     const row = {
-      id: yield* crypto.randomUUIDv4,
+      id: yield* crypto.randomUUIDv4(),
       attemptId: attempt.id,
       generation: attempt.generation,
       stepId,

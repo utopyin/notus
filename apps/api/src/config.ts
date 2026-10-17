@@ -14,7 +14,7 @@ export const deploymentConfig = Effect.gen(function* () {
   return {
     mode,
     /** The Slack app's signing secret: one app, installed per workspace from the dashboard. */
-    signingSecret: yield* Config.redacted("SLACK_SIGNING_SECRET"),
+    signingSecret: yield* Config.Redacted("SLACK_SIGNING_SECRET"),
     simulationDelayMs: 2_000,
     claimTtlMs: 60_000,
   };
@@ -23,9 +23,9 @@ export type DeploymentConfig = Effect.Success<typeof deploymentConfig>;
 
 /** Separate from Slack configuration and never spread into task-domain settings. */
 export const runtimeConfig = Effect.gen(function* () {
-  const url = yield* Config.option(Config.string("NOTUS_CONTROL_URL"));
+  const url = yield* Config.option(Config.String("NOTUS_CONTROL_URL"));
   if (Option.isNone(url)) return null;
-  const encodedKeys = yield* Config.redacted("NOTUS_RUNTIME_KEYS");
+  const encodedKeys = yield* Config.Redacted("NOTUS_RUNTIME_KEYS");
   const decoded = yield* Schema.decodeEffect(
     Schema.fromJsonString(Schema.Record(Schema.String, Schema.NonEmptyString)),
   )(Redacted.value(encodedKeys)).pipe(
@@ -61,7 +61,7 @@ export const operatorConfig = Effect.gen(function* () {
 export type OperatorConfig = Effect.Success<typeof operatorConfig>;
 
 /** Seals every credential at rest: model logins and platform installations. 32 bytes, base64. */
-export const credentialKeyConfig = Config.redacted("NOTUS_CREDENTIAL_KEY");
+export const credentialKeyConfig = Config.Redacted("NOTUS_CREDENTIAL_KEY");
 
 /**
  * The dedicated GitHub App. Installations are workspace data; the key never reaches prompts,
@@ -74,7 +74,7 @@ export const githubConfig = Effect.gen(function* () {
   if (Option.isNone(appId)) return null;
   return {
     appId: String(appId.value),
-    privateKey: yield* Config.redacted("GITHUB_APP_PRIVATE_KEY"),
+    privateKey: yield* Config.Redacted("GITHUB_APP_PRIVATE_KEY"),
   };
 });
 export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
@@ -83,12 +83,12 @@ export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
  * public origin once known. A provider without credentials is simply not offered.
  */
 export const dashboardConfig = Effect.gen(function* () {
-  const slackId = yield* Config.option(Config.string("SLACK_CLIENT_ID"));
-  const slackSecret = yield* Config.option(Config.redacted("SLACK_CLIENT_SECRET"));
-  const githubId = yield* Config.option(Config.string("GITHUB_OAUTH_CLIENT_ID"));
-  const githubSecret = yield* Config.option(Config.redacted("GITHUB_OAUTH_CLIENT_SECRET"));
-  const origin = yield* Config.option(Config.string("NOTUS_DASHBOARD_URL"));
-  const githubAppSlug = yield* Config.option(Config.string("GITHUB_APP_SLUG"));
+  const slackId = yield* Config.option(Config.String("SLACK_CLIENT_ID"));
+  const slackSecret = yield* Config.option(Config.Redacted("SLACK_CLIENT_SECRET"));
+  const githubId = yield* Config.option(Config.String("GITHUB_OAUTH_CLIENT_ID"));
+  const githubSecret = yield* Config.option(Config.Redacted("GITHUB_OAUTH_CLIENT_SECRET"));
+  const origin = yield* Config.option(Config.String("NOTUS_DASHBOARD_URL"));
+  const githubAppSlug = yield* Config.option(Config.String("GITHUB_APP_SLUG"));
   return {
     /** The public name of the GitHub App, for its installation page; absent means no install offer. */
     githubAppSlug: Option.getOrNull(githubAppSlug),
@@ -106,7 +106,7 @@ export const dashboardConfig = Effect.gen(function* () {
 export type DashboardConfig = Effect.Success<typeof dashboardConfig>;
 
 export const webhookConfig = Effect.gen(function* () {
-  return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
+  return Option.getOrNull(yield* Config.option(Config.Redacted("GITHUB_WEBHOOK_SECRET")));
 });
 
 /**
@@ -114,7 +114,7 @@ export const webhookConfig = Effect.gen(function* () {
  * Deployment authority, not workspace data: a workspace still connects its own account.
  */
 export const computeConfig = Effect.gen(function* () {
-  const listed = yield* Config.string("NOTUS_COMPUTE_PROVIDERS").pipe(
+  const listed = yield* Config.String("NOTUS_COMPUTE_PROVIDERS").pipe(
     Config.withDefault("namespace"),
   );
   return yield* Schema.decodeUnknownEffect(Schema.Array(Provider))(

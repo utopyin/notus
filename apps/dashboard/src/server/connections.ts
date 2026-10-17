@@ -25,8 +25,8 @@ export const pollChatGpt = createServerFn({ method: "POST" }).handler(
   async () => await api().dashboardPollChatGpt(cookie()),
 );
 export const linkApiKey = createServerFn({ method: "POST" })
-  .inputValidator((input: { key: string }) => input)
+  .validator((input: { key: string }) => input)
   .handler(async ({ data }) => await api().dashboardLinkApiKey(cookie(), data.key));
 export const revokeConnection = createServerFn({ method: "POST" })
-  .inputValidator((input: { provider: ModelProvider }) => input)
+  .validator((input: { provider: ModelProvider }) => input)
   .handler(async ({ data }) => await api().dashboardRevokeConnection(cookie(), data.provider));

@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64 from "effect/encoding/Base64";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
@@ -27,7 +28,7 @@ export const layer = (key: Redacted.Redacted<string>) =>
   Layer.effect(
     Service,
     Effect.gen(function* () {
-      const bytes = yield* Effect.fromResult(Encoding.decodeBase64(Redacted.value(key))).pipe(
+      const bytes = yield* Effect.fromResult(Base64.decode(Redacted.value(key))).pipe(
         Effect.mapError(() => new SealError({ operation: "key" })),
       );
       if (bytes.length !== 32) return yield* new SealError({ operation: "key" });
@@ -52,16 +53,16 @@ export const layer = (key: Redacted.Redacted<string>) =>
             ),
           catch: () => new SealError({ operation: "seal" }),
         });
-        return `${prefix}.${Encoding.encodeBase64Url(nonce)}.${Encoding.encodeBase64Url(new Uint8Array(ciphertext))}`;
+        return `${prefix}.${Base64Url.encode(nonce)}.${Base64Url.encode(new Uint8Array(ciphertext))}`;
       });
       const open = Effect.fn("Sealed.open")(function* (sealed: string) {
         const [version, nonce, ciphertext] = sealed.split(".");
         if (version !== prefix || nonce === undefined || ciphertext === undefined)
           return yield* new SealError({ operation: "open" });
-        const iv = yield* Effect.fromResult(Encoding.decodeBase64Url(nonce)).pipe(
+        const iv = yield* Effect.fromResult(Base64Url.decode(nonce)).pipe(
           Effect.mapError(() => new SealError({ operation: "open" })),
         );
-        const data = yield* Effect.fromResult(Encoding.decodeBase64Url(ciphertext)).pipe(
+        const data = yield* Effect.fromResult(Base64Url.decode(ciphertext)).pipe(
           Effect.mapError(() => new SealError({ operation: "open" })),
         );
         const plaintext = yield* Effect.tryPromise({

@@ -15,12 +15,12 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClient from "effect/http/HttpClient";
 import { ConnectionError } from "./errors";
 import {
   ConnectionRow,
@@ -150,7 +150,7 @@ export const layerNoDeps = Layer.effect(
     const open = (text: string) => sealed.open(text).pipe(Effect.mapError(() => fail("storage")));
     const fingerprintOf = (material: string) =>
       crypto.digest("SHA-256", new TextEncoder().encode(material)).pipe(
-        Effect.map(Encoding.encodeHex),
+        Effect.map(Hex.encode),
         Effect.mapError(() => fail("storage")),
       );
     const project = (row: ConnectionRow): ConnectionStatus => ({

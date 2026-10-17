@@ -70,10 +70,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     failure: string | null,
   ) {
     yield* db.insert(steps).values({
-      id: yield* crypto.randomUUIDv4,
+      id: yield* crypto.randomUUIDv4(),
       invocationId,
       index,
-      operationId: yield* crypto.randomUUIDv4,
+      operationId: yield* crypto.randomUUIDv4(),
       status,
       attempts: 0,
       dueAt: now,

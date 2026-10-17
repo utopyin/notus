@@ -13,7 +13,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { credentialKeyConfig, dashboardConfig } from "./config";
 import { cryptoLayer } from "./crypto";
 import { SharedDatabase } from "./database";

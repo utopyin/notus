@@ -36,7 +36,7 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
-    const stateRoot = yield* Config.string("NOTUS_STATE_DIR").pipe(
+    const stateRoot = yield* Config.String("NOTUS_STATE_DIR").pipe(
       Config.withDefault("/home/devbox/.local/state/notus"),
     );
     // Read once per runtime graph from Linux, never from launch configuration.

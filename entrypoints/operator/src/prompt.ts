@@ -1,5 +1,5 @@
 import * as DateTime from "effect/DateTime";
-import * as Prompt from "effect/unstable/ai/Prompt";
+import * as Prompt from "effect/ai/Prompt";
 import type { Briefing, Message } from "./types";
 
 const instructions = (briefing: Briefing): string => {

@@ -1,7 +1,7 @@
 import { Bootstrap, Millis, Readiness } from "@notus/executions/types";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
@@ -54,7 +54,7 @@ const codec = Schema.fromJsonString(Capability);
 const invalid = () => new Failure({ reason: "invalid" });
 const configuration = () => new Failure({ reason: "configuration" });
 const decodeBytes = (value: string) =>
-  Effect.fromResult(Encoding.decodeBase64Url(value)).pipe(Effect.mapError(invalid));
+  Effect.fromResult(Base64Url.decode(value)).pipe(Effect.mapError(invalid));
 
 export const disabled = Layer.succeed(
   Service,
@@ -107,13 +107,13 @@ export const layerNoDeps = Layer.effect(
         const payload = yield* Schema.encodeEffect(codec)(capability).pipe(
           Effect.mapError(invalid),
         );
-        const message = `nr1.${settings.activeKeyId}.${Encoding.encodeBase64Url(payload)}`;
+        const message = `nr1.${settings.activeKeyId}.${Base64Url.encode(payload)}`;
         if (message.length > 6000) return yield* invalid();
         const signature = yield* Effect.tryPromise({
           try: () => globalThis.crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)),
           catch: invalid,
         });
-        return Redacted.make(`${message}.${Encoding.encodeBase64Url(new Uint8Array(signature))}`);
+        return Redacted.make(`${message}.${Base64Url.encode(new Uint8Array(signature))}`);
       }),
       verify: Effect.fn("Runtime.Authentication.verify")(function* (credential, now) {
         if (!Redacted.isRedacted(credential)) return yield* invalid();
@@ -130,8 +130,8 @@ export const layerNoDeps = Layer.effect(
         const payload = yield* decodeBytes(encoded);
         if (
           bytes.byteLength !== 32 ||
-          Encoding.encodeBase64Url(bytes) !== signature ||
-          Encoding.encodeBase64Url(payload) !== encoded
+          Base64Url.encode(bytes) !== signature ||
+          Base64Url.encode(payload) !== encoded
         )
           return yield* invalid();
         const matches = yield* Effect.tryPromise({

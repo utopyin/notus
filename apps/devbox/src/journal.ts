@@ -46,7 +46,7 @@ export const open = Effect.fn("Devbox.Journal.open")(
         stat.type !== "File" ||
         !Option.contains(stat.uid, 1001) ||
         (stat.mode & 0o7777) !== 0o600 ||
-        !Option.contains(stat.nlink, 1) ||
+        !Option.contains(stat.nlink, 1n) ||
         stat.size > 32 * 1024 ||
         (yield* fs.realPath(file)) !== file
       )
@@ -85,7 +85,7 @@ export const open = Effect.fn("Devbox.Journal.open")(
         const text = yield* Schema.encodeEffect(codec)(value);
         const bytes = new TextEncoder().encode(text);
         if (bytes.byteLength > 32 * 1024) return yield* new Failure({ reason: "state" });
-        const temporary = `${directory}/journal.${yield* crypto.randomUUIDv4}.tmp`;
+        const temporary = `${directory}/journal.${yield* crypto.randomUUIDv4()}.tmp`;
         yield* Effect.scoped(
           Effect.gen(function* () {
             const file = yield* fs.open(temporary, { flag: "wx", mode: 0o600 });

@@ -21,7 +21,7 @@ export const getSessions = createServerFn({ method: "GET" }).handler(async () =>
 
 /** Revokes one of the user's own sessions by ID; its token never reaches the browser. */
 export const revokeSession = createServerFn({ method: "POST" })
-  .inputValidator((input: { sessionId: string }) => input)
+  .validator((input: { sessionId: string }) => input)
   .handler(async ({ data }) => {
     const cookie = getRequestHeader("cookie") ?? "";
     const api = Cloudflare.toRpcAsync<Api>(env.API);

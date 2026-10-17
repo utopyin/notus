@@ -36,5 +36,7 @@ export default defineConfig({
   ],
   rules: {
     "import/extensions": ["error", "never"],
+    // Effect 4 keeps http, ai and process `@stability unstable`; using them is a settled choice.
+    "effecttsgo/unstable-api-usage": "off",
   },
 });

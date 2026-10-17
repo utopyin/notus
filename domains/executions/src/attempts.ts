@@ -27,7 +27,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       return active;
     }
     const attempt: Attempt = {
-      id: yield* crypto.randomUUIDv4,
+      id: yield* crypto.randomUUIDv4(),
       taskId,
       generation: 1,
       mode,
@@ -63,14 +63,14 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       return yield* Schema.decodeEffect(Invocation)(existing);
     }
     const invocation: Invocation = {
-      id: yield* crypto.randomUUIDv4,
+      id: yield* crypto.randomUUIDv4(),
       attemptId: attempt.id,
       generation: attempt.generation,
       inputId,
-      operationId: yield* crypto.randomUUIDv4,
+      operationId: yield* crypto.randomUUIDv4(),
       dueAt,
       version: 1,
-      resultId: yield* crypto.randomUUIDv4,
+      resultId: yield* crypto.randomUUIDv4(),
       content,
       digest: digest(content),
       status: "pending",

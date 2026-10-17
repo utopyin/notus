@@ -134,13 +134,13 @@ export const layerNoDeps = Layer.effect(
       const request = yield* Schema.decodeEffect(Protocol.EnrollmentRequest)({
         resourceId: assignment.resourceId,
         instanceId: assignment.instanceId,
-        requestId: yield* crypto.randomUUIDv4,
-        runId: yield* crypto.randomUUIDv4,
+        requestId: yield* crypto.randomUUIDv4(),
+        runId: yield* crypto.randomUUIDv4(),
         kernelBootId: settings.kernelBootId,
       });
       const observationId = yield* Schema.decodeEffect(
         Protocol.ReadinessRequest.fields.observationId,
-      )(yield* crypto.randomUUIDv4);
+      )(yield* crypto.randomUUIDv4());
       const pending = { request, observationId, reply: null, acknowledgment: null };
       journal = { ...journal, pending };
       yield* store.write(journal);
@@ -296,8 +296,8 @@ export const layerNoDeps = Layer.effect(
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
-    const url = yield* Config.option(Config.string("NOTUS_CONTROL_URL"));
-    const token = yield* Config.option(Config.redacted("NOTUS_BOOTSTRAP_TOKEN"));
+    const url = yield* Config.option(Config.String("NOTUS_CONTROL_URL"));
+    const token = yield* Config.option(Config.Redacted("NOTUS_BOOTSTRAP_TOKEN"));
     if (Option.isNone(url) && Option.isNone(token))
       return Layer.succeed(Service, {
         bound: false,

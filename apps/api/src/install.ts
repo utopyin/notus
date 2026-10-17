@@ -5,8 +5,8 @@ import { Workspaces } from "@notus/workspaces/workspaces";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 /** Where a platform sends the administrator back: this Worker's own route for that platform. */
 export const redirectUriOf = (dashboardOrigin: string, platform: Platform) =>

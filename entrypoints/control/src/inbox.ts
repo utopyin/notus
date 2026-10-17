@@ -251,7 +251,7 @@ export const layerNoDeps = Layer.effect(
         deferred: 0,
       };
       for (const candidate of due) {
-        const token = yield* crypto.randomUUIDv4;
+        const token = yield* crypto.randomUUIDv4();
         const claimedAt = yield* Clock.currentTimeMillis;
         const claims = yield* store.query(
           MessageRow,
@@ -270,7 +270,7 @@ export const layerNoDeps = Layer.effect(
           const input: Input = { ...original, startIntent: claim.startIntent === 1 };
           let route = yield* findRoute(claim.conversationKey);
           if (!route && claim.initiatorId !== null) {
-            const taskId = yield* crypto.randomUUIDv4;
+            const taskId = yield* crypto.randomUUIDv4();
             const source = yield* Schema.encodeEffect(sourceJson)(input.target.source);
             yield* store.batch([
               sql`

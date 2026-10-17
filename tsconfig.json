@@ -12,6 +12,10 @@
     "module": "esnext",
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    // Drizzle rc.5 declarations still name Effect's pre-4.0 path; without this its SqlError is `any`.
+    "paths": {
+      "effect/unstable/sql/SqlError": ["./node_modules/effect/dist/sql/SqlError.d.ts"]
+    },
     "plugins": [
       {
         "name": "@effect/language-service",

@@ -8,7 +8,7 @@ import { createSelectSchema } from "drizzle-orm/effect-schema";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
@@ -224,11 +224,11 @@ export const layerNoDeps = Layer.effect(
         .where(eq(workspaces.slug, slug))
         .pipe(Effect.map((rows) => rows.length > 0));
     // Web Crypto's UUID cannot fail on a Worker; a failure here would be a defect, not a result.
-    const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+    const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
     const tokenHash = (token: string) =>
       crypto
         .digest("SHA-256", new TextEncoder().encode(token))
-        .pipe(Effect.map(Encoding.encodeHex), Effect.orDie);
+        .pipe(Effect.map(Hex.encode), Effect.orDie);
 
     const create = Effect.fn("Workspaces.create")(function* (
       actorId: string,
@@ -520,7 +520,7 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       yield* requireAdmin("beginInstall", workspaceId, actorId).pipe(storage("beginInstall"));
-      const nonce = yield* crypto.randomUUIDv4.pipe(storage("beginInstall"));
+      const nonce = yield* crypto.randomUUIDv4().pipe(storage("beginInstall"));
       yield* store
         .batch([
           sql`INSERT INTO workspace_install_intents (nonce, workspaceId, userId, platform, createdAt, expiresAt)

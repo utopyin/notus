@@ -1,12 +1,13 @@
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Base64 from "effect/encoding/Base64";
+import * as Base64Url from "effect/encoding/Base64Url";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { AppError } from "./errors";
 import { InstallationToken, PullRequest, Repository, RepositoryName, TaskBranch } from "./types";
 
@@ -125,7 +126,7 @@ const ValidationBody = Schema.Struct({
 });
 const fail = (operation: AppError["operation"], reason: AppError["reason"], status?: number) =>
   new AppError({ operation, reason, ...(status === undefined ? {} : { status }) });
-const base64url = (bytes: Uint8Array) => Encoding.encodeBase64Url(bytes);
+const base64url = (bytes: Uint8Array) => Base64Url.encode(bytes);
 const Header = Schema.fromJsonString(
   Schema.Struct({ alg: Schema.Literal("RS256"), typ: Schema.Literal("JWT") }),
 );
@@ -140,7 +141,7 @@ const pem = (text: string) =>
       .replace(/\s+/g, "");
     if (body.length === 0 || /RSA PRIVATE KEY/.test(text))
       return yield* fail("jwt", "configuration");
-    return yield* Effect.fromResult(Encoding.decodeBase64(body)).pipe(
+    return yield* Effect.fromResult(Base64.decode(body)).pipe(
       Effect.mapError(() => fail("jwt", "configuration")),
     );
   });

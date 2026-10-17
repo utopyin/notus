@@ -422,7 +422,7 @@ export const layerNoDeps = Layer.effect(
                 .where(eq(deliveries.id, delivery.id));
               continue;
             }
-            const claimId = yield* crypto.randomUUIDv4;
+            const claimId = yield* crypto.randomUUIDv4();
             const generation = delivery.generation + 1;
             const recoverAt = now + settings.claimTtlMs;
             const claim = yield* Schema.decodeEffect(DeliveryClaim)({

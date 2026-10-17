@@ -39,7 +39,7 @@ export const layerNoDeps = (options: Options) =>
       const request = Effect.fn("Herdr.Client.request")(function* (
         method: "ping" | "session.snapshot",
       ) {
-        const id = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+        const id = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
         const encoded = yield* Schema.encodeEffect(Request)({ id, method, params: {} }).pipe(
           Effect.mapError(() => new Failure({ reason: "response" })),
         );

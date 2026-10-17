@@ -271,8 +271,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       }
       if (existing.mode !== "operator") return yield* fail("conflict");
       // The operator asked for a box: bind provisioning to its already active attempt.
-      const operationId = yield* crypto.randomUUIDv4;
-      const capabilityId = yield* crypto.randomUUIDv4;
+      const operationId = yield* crypto.randomUUIDv4();
+      const capabilityId = yield* crypto.randomUUIDv4();
       const s = fresh(
         params,
         {
@@ -296,9 +296,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     }
     // No replacement API: historical attempts require explicit external intervention.
     if (history.length > 0) return yield* fail("conflict");
-    const id = yield* crypto.randomUUIDv4;
-    const operationId = yield* crypto.randomUUIDv4;
-    const capabilityId = yield* crypto.randomUUIDv4;
+    const id = yield* crypto.randomUUIDv4();
+    const operationId = yield* crypto.randomUUIDv4();
+    const capabilityId = yield* crypto.randomUUIDv4();
     const s = fresh(
       params,
       {
@@ -650,7 +650,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     }
     const grant: EpochGrant = {
       epoch: s.runtimeEpoch + 1,
-      challenge: yield* crypto.randomUUIDv4,
+      challenge: yield* crypto.randomUUIDv4(),
       nextRecoveryRevision: s.recoveryRevision + 1,
     };
     yield* db.insert(enrollments).values({

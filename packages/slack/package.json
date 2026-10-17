@@ -9,7 +9,7 @@
     "check:types": "tsc --noEmit"
   },
   "dependencies": {
-    "@distilled.cloud/slack": "1.0.0-rc.9",
+    "@distilled.cloud/slack": "1.0.0-rc.15",
     "effect": "catalog:"
   }
 }

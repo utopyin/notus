@@ -5,8 +5,8 @@ import { Platforms } from "@notus/platforms/registry";
 import { conversationKeyOf, type Input, type Source } from "@notus/platform/source";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
-import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
+import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 /** A dependency failed; the delivery could not be recorded and the platform is told so with 503. */
 export class IngressFailure extends Schema.TaggedError<IngressFailure>()("Ingress.Failure", {}) {}
