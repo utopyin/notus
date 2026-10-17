@@ -1,0 +1,56 @@
+diff --git a/effect-schema/column.cjs b/effect-schema/column.cjs
+index 1e2f5cfd07b003e08398ea0e3a941c4413b432dd..4759802656b4385560c6795ec4180f10961bd149 100644
+--- a/effect-schema/column.cjs
++++ b/effect-schema/column.cjs
+@@ -196,12 +196,12 @@ function arrayColumnToSchema(column, constraint) {
+ 		case "halfvector": {
+ 			const length = column.length;
+ 			const schema = effect.Schema.Array(effect.Schema.Number);
+-			return length ? schema.check(effect.Schema.isLengthBetween(length, length)) : schema;
++			return length ? schema.check(effect.Schema.isBetweenLength(length, length)) : schema;
+ 		}
+ 		case "int64vector": {
+ 			const length = column.length;
+ 			const schema = effect.Schema.Array(effect.Schema.BigInt.check(effect.Schema.isGreaterThanOrEqualToBigInt(require_utils.CONSTANTS.INT64_MIN), effect.Schema.isLessThanOrEqualToBigInt(require_utils.CONSTANTS.INT64_MAX)));
+-			return length ? schema.check(effect.Schema.isLengthBetween(length, length)) : schema;
++			return length ? schema.check(effect.Schema.isBetweenLength(length, length)) : schema;
+ 		}
+ 		default: return effect.Schema.Array(effect.Schema.Any);
+ 	}
+@@ -238,7 +238,7 @@ function stringColumnToSchema(column, constraint) {
+ 	if (constraint === "uint64") return unsignedBigintStringModeSchema;
+ 	let schema = effect.Schema.String;
+ 	schema = regex ? schema.check(effect.Schema.isPattern(regex)) : schema;
+-	return length && isLengthExact ? schema.check(effect.Schema.isLengthBetween(length, length)) : length ? schema.check(effect.Schema.isMaxLength(length)) : schema;
++	return length && isLengthExact ? schema.check(effect.Schema.isBetweenLength(length, length)) : length ? schema.check(effect.Schema.isMaxLength(length)) : schema;
+ }
+ //#endregion
+ exports.bigintStringModeSchema = bigintStringModeSchema;
+diff --git a/effect-schema/column.js b/effect-schema/column.js
+index 01f77122a1c60dfd70622c4bf03d22e2e047f9c0..f4259b4f5be419853038fd7c683f4769a568d012 100644
+--- a/effect-schema/column.js
++++ b/effect-schema/column.js
+@@ -195,12 +195,12 @@ function arrayColumnToSchema(column, constraint) {
+ 		case "halfvector": {
+ 			const length = column.length;
+ 			const schema = Schema.Array(Schema.Number);
+-			return length ? schema.check(Schema.isLengthBetween(length, length)) : schema;
++			return length ? schema.check(Schema.isBetweenLength(length, length)) : schema;
+ 		}
+ 		case "int64vector": {
+ 			const length = column.length;
+ 			const schema = Schema.Array(Schema.BigInt.check(Schema.isGreaterThanOrEqualToBigInt(CONSTANTS.INT64_MIN), Schema.isLessThanOrEqualToBigInt(CONSTANTS.INT64_MAX)));
+-			return length ? schema.check(Schema.isLengthBetween(length, length)) : schema;
++			return length ? schema.check(Schema.isBetweenLength(length, length)) : schema;
+ 		}
+ 		default: return Schema.Array(Schema.Any);
+ 	}
+@@ -237,7 +237,7 @@ function stringColumnToSchema(column, constraint) {
+ 	if (constraint === "uint64") return unsignedBigintStringModeSchema;
+ 	let schema = Schema.String;
+ 	schema = regex ? schema.check(Schema.isPattern(regex)) : schema;
+-	return length && isLengthExact ? schema.check(Schema.isLengthBetween(length, length)) : length ? schema.check(Schema.isMaxLength(length)) : schema;
++	return length && isLengthExact ? schema.check(Schema.isBetweenLength(length, length)) : length ? schema.check(Schema.isMaxLength(length)) : schema;
+ }
+ //#endregion
+ export { bigintStringModeSchema, bufferSchema, columnToSchema, jsonSchema, literalSchema, unsignedBigintStringModeSchema };

@@ -306,6 +306,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "drizzle-orm@1.0.0-rc.5-5935859": "patches/drizzle-orm@1.0.0-rc.5-5935859.patch",
+  },
   "overrides": {
     "@effect/platform-node-shared": "4.0.5",
     "@effect/sql-d1": "4.0.5",
