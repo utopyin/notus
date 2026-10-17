@@ -3,14 +3,11 @@ import { Devbox } from "@notus/executions/devbox";
 import { DevboxFailure } from "@notus/executions/errors";
 import { Templates } from "@notus/compute/templates";
 import { Providers } from "@notus/executions/providers";
-import { Config as NamespaceConfig } from "@notus/namespace/config";
-import { Instances } from "@notus/namespace/instances";
-import { Namespace } from "@notus/namespace/service";
-import { Images } from "@notus/workspaces/images";
+import { Templates as WorkspaceTemplates } from "@notus/workspaces/templates";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { adapters } from "./compute";
-import type { RuntimeConfig, namespaceConfig } from "./config";
+import type { RuntimeConfig } from "./config";
 
 export const authentication = (settings: RuntimeConfig | null) =>
   settings
@@ -25,16 +22,13 @@ export const authentication = (settings: RuntimeConfig | null) =>
       )
     : Auth.disabled;
 
-export const execution = (
-  settings: RuntimeConfig | null,
-  namespace: Effect.Success<typeof namespaceConfig> | null,
-) => {
-  if (!settings && !namespace) return Layer.merge(Auth.disabled, Devbox.disabled);
-  if (!settings || !namespace)
-    return Layer.merge(
-      Auth.disabled,
-      Layer.effect(Devbox.Service, Effect.die("Incomplete runtime configuration")),
-    );
+/**
+ * The task host's dev boxes. Provider accounts and templates are workspace data, so the only
+ * deployment configuration is Notus's own authority; the caller provides the shared database's
+ * template reads and sealed credentials.
+ */
+export const execution = (settings: RuntimeConfig | null) => {
+  if (!settings) return Layer.merge(Auth.disabled, Devbox.disabled);
   const auth = authentication(settings);
   const authority = Layer.effect(
     Devbox.Authority,
@@ -60,28 +54,20 @@ export const execution = (
   const templates = Layer.effect(
     Templates,
     Effect.gen(function* () {
-      const images = yield* Images.Service;
+      const stored = yield* WorkspaceTemplates.Service;
       return Templates.of({
         approved: (workspaceId, provider) =>
-          images.approved(workspaceId, provider).pipe(
+          stored.approved(workspaceId, provider).pipe(
             Effect.tapError((error) =>
               Effect.logWarning(`devbox.workspace_templates_failed ${error.reason}`),
             ),
-            Effect.orElseSucceed((): ReadonlyArray<string> => []),
+            Effect.orElseSucceed(() => ({ refs: [], default: null })),
           ),
       });
     }),
   );
-  const clients = Layer.merge(Namespace.layer, Instances.layer).pipe(
-    Layer.provide(
-      Layer.succeed(NamespaceConfig.Service, {
-        credential: namespace.credential,
-        timeoutMs: namespace.timeoutMs,
-      }),
-    ),
-  );
   // Which providers this deployment runs; a workspace naming another is refused.
-  const providers = Providers.layer(adapters).pipe(Layer.provide([clients, templates]));
+  const providers = Providers.layer(adapters).pipe(Layer.provide(templates));
   const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, providers]));
   return Layer.merge(auth, devbox);
 };

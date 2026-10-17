@@ -26,6 +26,7 @@ import {
   problemOf,
   type Fields,
 } from "../devbox/namespace/fields";
+import { NamespaceConnection } from "../devbox/namespace/connection";
 import { NamespaceForm } from "../devbox/namespace/form";
 import { WorkspaceImages } from "../devbox/namespace/images";
 import { NamespaceMark } from "../devbox/namespace/mark";
@@ -33,10 +34,13 @@ import { NAMESPACE_DESCRIPTOR } from "@notus/compute/descriptors/index";
 import { canonical } from "../lib/json";
 import {
   addImage,
+  connectCompute,
+  disconnectCompute,
   environmentHistory,
   getEnvironment,
   removeImage,
   saveEnvironment,
+  setDefaultImage,
   type EnvironmentRevision,
 } from "../server/devbox";
 import { useWorkspace } from "./$slug";
@@ -54,7 +58,14 @@ export const Route = createFileRoute("/$slug/devbox")({
   },
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
-    if (!parent.loaderData) return { environment: null, approvedImages: [], workspaceImages: [] };
+    if (!parent.loaderData)
+      return {
+        environment: null,
+        approvedImages: [],
+        workspaceImages: [],
+        defaultImage: null,
+        connection: null,
+      };
     const result = await getEnvironment({
       data: { workspaceId: parent.loaderData.workspace.id, provider },
     });
@@ -73,7 +84,8 @@ const when = (millis: number) =>
  */
 function Devbox() {
   const { view } = useWorkspace();
-  const { environment, approvedImages, workspaceImages } = Route.useLoaderData();
+  const { environment, approvedImages, workspaceImages, defaultImage, connection } =
+    Route.useLoaderData();
   const router = useRouter();
   const isAdmin = view.role === "admin";
   // The unsaved fields, and a revision opened from the history to be put back.
@@ -94,13 +106,13 @@ function Devbox() {
     setOpened(null);
     setSaving(false);
   }
-  // A workspace that was never configured starts from its first image, if it has one.
+  // A workspace that was never configured starts from its default image, if it has one.
   const current = fieldsOf(stored);
   const fields =
     draft ??
     opened?.fields ??
-    (current.imageRef === "" && approvedImages[0] !== undefined
-      ? { ...current, imageRef: approvedImages[0] }
+    (current.imageRef === "" && defaultImage !== null
+      ? { ...current, imageRef: defaultImage }
       : current);
   const config = configOf(fields);
   const problem = problemOf(fields);
@@ -125,8 +137,8 @@ function Devbox() {
     setMessage(null);
     await router.invalidate();
   };
-  // The list the select offers comes back with the page, so a change reloads it.
-  const changeImages = async (result: { ok: true } | { ok: false; reason: string }) => {
+  // The list the select offers and the connection come back with the page, so a change reloads it.
+  const reload = async (result: { ok: true } | { ok: false; reason: string }) => {
     if (!result.ok) return result.reason;
     await router.invalidate();
     return null;
@@ -146,6 +158,46 @@ function Devbox() {
   };
   return (
     <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Account</CardTitle>
+          <CardDescription className="text-pretty">
+            The Namespace tenant this workspace's devboxes run in, and are billed to. Each workspace
+            connects its own.
+          </CardDescription>
+          <CardAction className="text-muted-foreground flex items-center gap-1.5 text-xs">
+            <span
+              aria-hidden
+              className={
+                connection
+                  ? "size-1.5 rounded-full bg-emerald-500"
+                  : "size-1.5 rounded-full bg-muted-foreground/40"
+              }
+            />
+            {connection ? "Connected" : "Not connected"}
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          <NamespaceConnection
+            connected={connection}
+            disabled={!isAdmin}
+            nameOf={nameOf}
+            when={when}
+            onConnect={async (credential, label) =>
+              reload(
+                await connectCompute({
+                  data: { workspaceId: view.workspace.id, provider, credential, label },
+                }),
+              )
+            }
+            onDisconnect={async () =>
+              reload(
+                await disconnectCompute({ data: { workspaceId: view.workspace.id, provider } }),
+              )
+            }
+          />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -215,18 +267,22 @@ function Devbox() {
         </CardHeader>
         <CardContent>
           <WorkspaceImages
-            images={workspaceImages}
+            images={workspaceImages.filter((image) => image.provider === provider)}
             selected={fieldsOf(stored).imageRef}
+            defaultRef={defaultImage}
             disabled={!isAdmin}
             nameOf={nameOf}
             onAdd={async (ref, label) =>
-              changeImages(
+              reload(
                 await addImage({ data: { workspaceId: view.workspace.id, provider, ref, label } }),
               )
             }
             onRemove={async (ref) =>
-              changeImages(
-                await removeImage({ data: { workspaceId: view.workspace.id, provider, ref } }),
+              reload(await removeImage({ data: { workspaceId: view.workspace.id, provider, ref } }))
+            }
+            onDefault={async (ref) =>
+              reload(
+                await setDefaultImage({ data: { workspaceId: view.workspace.id, provider, ref } }),
               )
             }
           />

@@ -10,10 +10,19 @@ export class EnvironmentError extends Schema.TaggedError<EnvironmentError>()(
 ) {}
 
 /** Excludes rows and underlying causes, like the environment's error. */
-export class ImageError extends Schema.TaggedError<ImageError>()("Workspaces.ImageError", {
-  operation: Schema.Literals(["approved", "list", "add", "remove"]),
-  reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden"]),
+export class TemplateError extends Schema.TaggedError<TemplateError>()("Workspaces.TemplateError", {
+  operation: Schema.Literals(["approved", "list", "add", "remove", "default"]),
+  reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden", "not-found"]),
 }) {}
+
+/** Excludes rows, causes and above all the credential. */
+export class ComputeConnectionError extends Schema.TaggedError<ComputeConnectionError>()(
+  "Workspaces.ComputeConnectionError",
+  {
+    operation: Schema.Literals(["list", "connect", "disconnect"]),
+    reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden"]),
+  },
+) {}
 
 export class AccessError extends Schema.TaggedError<AccessError>()("Workspaces.AccessError", {
   operation: Schema.String,

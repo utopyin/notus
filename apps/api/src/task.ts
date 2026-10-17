@@ -4,7 +4,8 @@ import { Sealed } from "@notus/cloudflare/sealed";
 import { Inbox } from "@notus/control/inbox";
 import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
-import { Images } from "@notus/workspaces/images";
+import { Compute } from "@notus/workspaces/compute";
+import { Templates } from "@notus/workspaces/templates";
 import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import type { Admission } from "@notus/platform/source";
@@ -43,7 +44,6 @@ import {
   deploymentConfig,
   githubConfig,
   operatorConfig,
-  namespaceConfig,
   runtimeConfig,
 } from "./config";
 import { Connection } from "./connection";
@@ -58,7 +58,6 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const host = yield* Cloudflare.DurableObjectState;
     const config = yield* deploymentConfig.pipe(Effect.orDie);
     const runtime = yield* runtimeConfig.pipe(Effect.orDie);
-    const namespace = runtime ? yield* namespaceConfig.pipe(Effect.orDie) : null;
     if (config.mode === "readiness" && !runtime)
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
     const operator = yield* operatorConfig.pipe(Effect.orDie);
@@ -74,7 +73,6 @@ export class Task extends Cloudflare.DurableObject<Task>()(
       host,
       config,
       runtime,
-      namespace,
       operator,
       github,
       connections,
@@ -86,18 +84,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
     // Alchemy runs this inner initialization with its RuntimeContext.
     Effect.map(
-      ({
-        host,
-        config,
-        runtime,
-        namespace,
-        operator,
-        github,
-        connections,
-        shared,
-        credentialKey,
-        context,
-      }) =>
+      ({ host, config, runtime, operator, github, connections, shared, credentialKey, context }) =>
         Effect.gen(function* () {
           const db = yield* Drizzle.DurableObject({ migrations });
           const database = Sqlite.layer(db);
@@ -133,9 +120,16 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Layer.merge(stepsLayer, commandsLayer),
               ),
             ).pipe(
-              Layer.provideMerge(RuntimeLayers.execution(runtime, namespace)),
-              // A workspace's own templates live in the shared database.
-              Layer.provide(Images.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw)))),
+              Layer.provideMerge(RuntimeLayers.execution(runtime)),
+              // A workspace's provider account and templates live in the shared database.
+              Layer.provide(
+                Layer.merge(Templates.layer, Compute.credentials).pipe(
+                  Layer.provide([
+                    Layer.effect(D1.Binding, shared.raw),
+                    Sealed.layer(credentialKey),
+                  ]),
+                ),
+              ),
               Layer.provide(cryptoLayer),
             ),
           ).pipe(Effect.orDie);

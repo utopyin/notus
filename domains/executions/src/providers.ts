@@ -1,6 +1,7 @@
 import type { Configuration, DevboxPort, ProviderAdapter } from "@notus/compute/adapter";
 import type { ProviderDescriptor } from "@notus/compute/descriptor";
 import {
+  type ConnectionError,
   DuplicateProviderRegistrationError,
   ProviderNotRegisteredError,
 } from "@notus/compute/errors";
@@ -23,10 +24,10 @@ export interface Interface {
   readonly forProvider: (
     provider: string,
   ) => Effect.Effect<ProviderScope, ProviderNotRegisteredError>;
-  /** The port of the provider the workspace's environment names. */
+  /** The port of the provider the workspace's environment names, over the account it connected. */
   readonly forWorkspace: (
     environment: Pick<Environment, "workspaceId" | "provider">,
-  ) => Effect.Effect<WorkspacePort, ProviderNotRegisteredError>;
+  ) => Effect.Effect<WorkspacePort, ProviderNotRegisteredError | ConnectionError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/executions/Providers") {}
 

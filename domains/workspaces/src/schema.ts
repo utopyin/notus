@@ -45,11 +45,12 @@ export const environmentRevisions = sqliteTable(
 );
 
 /**
- * A devbox image the workspace's admins approved, beside the ones the deployment approves. The
- * reference is the provider's own string; this table never interprets it.
+ * What a workspace's boxes may start from on one provider: an image, a snapshot. The reference is
+ * the provider's own string; this table never interprets it. At most one per provider is the
+ * workspace's default.
  */
-export const images = sqliteTable(
-  "workspace_images",
+export const templates = sqliteTable(
+  "workspace_templates",
   {
     /** key(workspaceId, provider, ref) */
     key: text().primaryKey(),
@@ -57,13 +58,39 @@ export const images = sqliteTable(
     provider: text().notNull(),
     ref: text().notNull(),
     label: text().notNull().default(""),
+    isDefault: integer({ mode: "boolean" }).notNull().default(false),
     addedBy: text().notNull(),
     addedAt: integer().notNull(),
   },
   (table) => [
-    index("workspace_images_workspace").on(table.workspaceId),
-    check("workspace_images_provider", sql`length(${table.provider}) > 0`),
-    check("workspace_images_ref", sql`length(${table.ref}) BETWEEN 1 AND 1024`),
+    index("workspace_templates_workspace").on(table.workspaceId),
+    uniqueIndex("workspace_templates_default")
+      .on(table.workspaceId, table.provider)
+      .where(sql`${table.isDefault} = 1`),
+    check("workspace_templates_provider", sql`length(${table.provider}) > 0`),
+    check("workspace_templates_ref", sql`length(${table.ref}) BETWEEN 1 AND 1024`),
+  ],
+);
+
+/**
+ * The provider account a workspace connected for its boxes. The credential is the adapter's own
+ * JSON, sealed; it is written by admins and read by the task host only, never projected.
+ */
+export const computeConnections = sqliteTable(
+  "workspace_compute_connections",
+  {
+    /** key(workspaceId, provider) */
+    key: text().primaryKey(),
+    workspaceId: text().notNull(),
+    provider: text().notNull(),
+    label: text().notNull().default(""),
+    connectedBy: text().notNull(),
+    connectedAt: integer().notNull(),
+    credential: text().notNull(),
+  },
+  (table) => [
+    index("workspace_compute_connections_workspace").on(table.workspaceId),
+    check("workspace_compute_connections_provider", sql`length(${table.provider}) > 0`),
   ],
 );
 

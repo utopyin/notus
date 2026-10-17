@@ -17,4 +17,9 @@ export const NAMESPACE_DESCRIPTOR: ProviderDescriptor<"namespace"> = {
     noun: { one: "image", many: "images" },
     placeholder: "nscr.io/tenant/name@sha256:…",
   },
+  connection: {
+    label: "Token",
+    placeholder: "Paste a Namespace token",
+    help: "A bearer token for the workspace's own Namespace tenant. Notus seals it and never shows it again.",
+  },
 };

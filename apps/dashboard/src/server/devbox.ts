@@ -57,3 +57,34 @@ export const removeImage = createServerFn({ method: "POST" })
     async ({ data }) =>
       await api().dashboardRemoveImage(cookie(), data.workspaceId, data.provider, data.ref),
   );
+
+/** Null clears the workspace's default for the provider. */
+export const setDefaultImage = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; provider: string; ref: string | null }) => input)
+  .handler(
+    async ({ data }) =>
+      await api().dashboardSetDefaultImage(cookie(), data.workspaceId, data.provider, data.ref),
+  );
+
+/** An admin connects the workspace's own provider account; the response never carries the credential. */
+export const connectCompute = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { workspaceId: string; provider: string; credential: Json; label: string }) => input,
+  )
+  .handler(
+    async ({ data }) =>
+      await api().dashboardConnectCompute(
+        cookie(),
+        data.workspaceId,
+        data.provider,
+        data.credential,
+        data.label,
+      ),
+  );
+
+export const disconnectCompute = createServerFn({ method: "POST" })
+  .inputValidator((input: { workspaceId: string; provider: string }) => input)
+  .handler(
+    async ({ data }) =>
+      await api().dashboardDisconnectCompute(cookie(), data.workspaceId, data.provider),
+  );

@@ -21,17 +21,28 @@ export const EnvironmentRevision = Schema.Struct({
 });
 export interface EnvironmentRevision extends Schema.Schema.Type<typeof EnvironmentRevision> {}
 
-/** An image reference a workspace admin approved. Only the provider package reads `ref`. */
-export const ImageLabel = Schema.String.check(Schema.isMaxLength(80));
-export const WorkspaceImage = Schema.Struct({
+/** A template reference a workspace admin added. Only the provider's adapter reads `ref`. */
+export const TemplateLabel = Schema.String.check(Schema.isMaxLength(80));
+export const WorkspaceTemplate = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   provider: Schema.NonEmptyString,
   ref: Schema.NonEmptyString.check(Schema.isMaxLength(1024)),
-  label: ImageLabel,
+  label: TemplateLabel,
+  isDefault: Schema.Boolean,
   addedBy: Schema.NonEmptyString,
   addedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
-export interface WorkspaceImage extends Schema.Schema.Type<typeof WorkspaceImage> {}
+export interface WorkspaceTemplate extends Schema.Schema.Type<typeof WorkspaceTemplate> {}
+
+/** A provider account a workspace connected, as anyone in it may see it: never the credential. */
+export const ComputeConnection = Schema.Struct({
+  workspaceId: Schema.NonEmptyString,
+  provider: Schema.NonEmptyString,
+  label: TemplateLabel,
+  connectedBy: Schema.NonEmptyString,
+  connectedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export interface ComputeConnection extends Schema.Schema.Type<typeof ComputeConnection> {}
 
 export const StartGrant = Schema.Struct({
   workspaceId: Schema.NonEmptyString,

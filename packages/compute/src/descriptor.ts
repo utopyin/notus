@@ -22,4 +22,11 @@ export interface ProviderDescriptor<P extends Provider = Provider> {
     /** How a reference is written, for an input's placeholder. */
     readonly placeholder: string;
   };
+  /** What an admin pastes to connect the workspace's own account. */
+  readonly connection: {
+    readonly label: string;
+    readonly placeholder: string;
+    /** Where the admin finds it, in one sentence. */
+    readonly help: string;
+  };
 }

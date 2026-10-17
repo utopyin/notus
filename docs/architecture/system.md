@@ -181,7 +181,7 @@ flowchart TB
     t2["Operator loop, tool dispatch, settlement"]
     t3["Provisioning, runtime enrollment, commands"]
     t4["Pull request actions, delivery outbox"]
-    tsn["Holds: Namespace token, GitHub App key, runtime HMAC keys.<br/>Reads installation credentials from D1 per delivery.<br/>Never a model token."]
+    tsn["Holds: GitHub App key, runtime HMAC keys.<br/>Reads installation and devbox provider credentials from D1 per use.<br/>Never a model token."]
   end
   subgraph conndo["Connection Durable Objects"]
     c1["userId: operator login, idempotent forward"]

@@ -2,6 +2,7 @@ import {
   CapabilityNotSupportedError,
   ComputeError,
   ConfigurationError,
+  ConnectionError,
   ProviderNotRegisteredError,
 } from "@notus/compute/errors";
 import type { Environment } from "@notus/workspaces/types";
@@ -42,6 +43,7 @@ const failure = (reason: DevboxFailure["reason"]) => new DevboxFailure({ reason 
 const refused = (error: unknown) =>
   Schema.isSchemaError(error) ||
   Schema.is(ConfigurationError)(error) ||
+  Schema.is(ConnectionError)(error) ||
   Schema.is(CapabilityNotSupportedError)(error) ||
   Schema.is(ProviderNotRegisteredError)(error) ||
   Schema.is(DevboxFailure)(error);

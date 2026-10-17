@@ -7,7 +7,8 @@ import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
 import type { Provider } from "@notus/openai/types";
 import { Environments } from "@notus/workspaces/environments";
-import { Images } from "@notus/workspaces/images";
+import { Compute } from "@notus/workspaces/compute";
+import { Templates } from "@notus/workspaces/templates";
 import type { Role, WorkspaceView } from "@notus/workspaces/types";
 import type { ScopeInput } from "@notus/workspaces/workspaces";
 import { Sealed } from "@notus/cloudflare/sealed";
@@ -183,7 +184,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Workspaces.layer,
       Roles.layer,
       Environments.layer,
-      Images.layer,
+      Templates.layer,
+      Compute.layer,
       Identities.layer,
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
@@ -205,7 +207,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
       | Workspaces.Service
       | Roles.Service
       | Environments.Service
-      | Images.Service
+      | Templates.Service
+      | Compute.Service
       | Identities.Service
       | Platforms.Service;
     /**
@@ -641,20 +644,33 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Roles.Service.pipe(Effect.flatMap((roles) => roles.remove(workspaceId, me.userId, name))),
         ),
-      /** The workspace's devbox configuration and the templates its admins added for this provider. */
+      /**
+       * The workspace's devbox configuration, the templates its admins added and the provider
+       * accounts it connected. Connections are status only: who connected which provider, when.
+       */
       dashboardEnvironment: (cookie: string, workspaceId: string, provider: string) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
+            const configuration = yield* compute(provider);
             const environments = yield* Environments.Service;
-            const images = yield* Images.Service;
+            const templates = yield* Templates.Service;
+            const connections = yield* Compute.Service;
             const environment = yield* environments.view(workspaceId, me.userId);
-            const own = yield* images.list(workspaceId, me.userId);
+            const own = yield* templates.list(workspaceId, me.userId);
+            const mine = own.filter((template) => template.provider === provider);
             return {
               environment: Option.getOrNull(environment),
-              approvedImages: own
-                .filter((image) => image.provider === provider)
-                .map((image) => image.ref),
+              approvedImages: mine.map((template) => template.ref),
               workspaceImages: own,
+              /** The template a configuration that selects none starts from, saved or inferred. */
+              defaultImage: configuration.defaultOf({
+                refs: mine.map((template) => template.ref),
+                default: mine.find((template) => template.isDefault)?.ref ?? null,
+              }),
+              connection:
+                (yield* connections.list(workspaceId, me.userId)).find(
+                  (connection) => connection.provider === provider,
+                ) ?? null,
             };
           }),
         ),
@@ -674,8 +690,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Effect.gen(function* () {
             const configuration = yield* compute(provider);
-            const images = yield* Images.Service;
-            const own = yield* images.approved(workspaceId, provider);
+            const templates = yield* Templates.Service;
+            const own = yield* templates.approved(workspaceId, provider);
             yield* configuration.validate(config, own).pipe(
               Effect.mapError((error): DashboardFailure => ({
                 _tag: error._tag,
@@ -702,19 +718,82 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const configuration = yield* compute(provider);
             const value = yield* configuration.validateTemplate(ref).pipe(
               Effect.mapError((error): DashboardFailure => ({
-                _tag: "Image",
+                _tag: "Template",
                 reason: error.message,
               })),
             );
-            const images = yield* Images.Service;
-            return yield* images.add(workspaceId, me.userId, provider, value, label.trim(), me.now);
+            const templates = yield* Templates.Service;
+            return yield* templates.add(
+              workspaceId,
+              me.userId,
+              provider,
+              value,
+              label.trim(),
+              me.now,
+            );
           }),
         ),
       /** A stored configuration that selected it keeps it, shown as no longer approved. */
       dashboardRemoveImage: (cookie: string, workspaceId: string, provider: string, ref: string) =>
         authorized(cookie, (me) =>
-          Images.Service.pipe(
-            Effect.flatMap((images) => images.remove(workspaceId, me.userId, provider, ref)),
+          Templates.Service.pipe(
+            Effect.flatMap((templates) => templates.remove(workspaceId, me.userId, provider, ref)),
+          ),
+        ),
+      /** Null clears the default; a launch then needs a configuration that selects a template. */
+      dashboardSetDefaultImage: (
+        cookie: string,
+        workspaceId: string,
+        provider: string,
+        ref: string | null,
+      ) =>
+        authorized(cookie, (me) =>
+          Templates.Service.pipe(
+            Effect.flatMap((templates) =>
+              templates.setDefault(workspaceId, me.userId, provider, ref),
+            ),
+          ),
+        ),
+      /**
+       * An admin connects the workspace's own provider account. The adapter checks its shape; the
+       * credential is sealed on write and no response ever carries it back.
+       */
+      dashboardConnectCompute: (
+        cookie: string,
+        workspaceId: string,
+        provider: string,
+        credential: Schema.Json,
+        label: string,
+      ) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            const configuration = yield* compute(provider);
+            const normalized = yield* configuration.validateConnection(credential).pipe(
+              Effect.mapError((error): DashboardFailure => ({
+                _tag: "Connection",
+                reason: error.message,
+              })),
+            );
+            const connections = yield* Compute.Service;
+            const connected = yield* connections.connect(
+              workspaceId,
+              me.userId,
+              provider,
+              label.trim(),
+              normalized,
+              me.now,
+            );
+            return connected.find((connection) => connection.provider === provider) ?? null;
+          }),
+        ),
+      /** Boxes already running are not ended, but Notus reaches none of them until it is connected again. */
+      dashboardDisconnectCompute: (cookie: string, workspaceId: string, provider: string) =>
+        authorized(cookie, (me) =>
+          Compute.Service.pipe(
+            Effect.flatMap((connections) =>
+              connections.disconnect(workspaceId, me.userId, provider),
+            ),
+            Effect.as(null),
           ),
         ),
       dashboardConnections: (cookie: string) =>

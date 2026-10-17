@@ -2,7 +2,7 @@
 
 Agreed direction: provider capabilities, per-workspace connections and templates, no deployment audit, no built-in template. Each increment still needs its own go-ahead before live provider resources are touched.
 
-A devbox provider is whatever creates, wakes and ends the machine a task works on. Today that is Namespace, and nothing else could be. `Devbox.Service` imports `@notus/namespace` directly, rejects any other provider key, and needs a `Devbox.NamespacePolicy` to run at all. The API builds one Namespace client from `NAMESPACE_CONTROL_TOKEN`, so a deployment serves one Namespace account for every workspace. Approved images are an OCI list in `NOTUS_APPROVED_IMAGE_REF` plus a workspace table keyed by the literal `"namespace"`. The dashboard always renders the Namespace form.
+A devbox provider is whatever creates, wakes and ends the machine a task works on. Before this plan that was Namespace, and nothing else could be. `Devbox.Service` imported `@notus/namespace` directly, rejected any other provider key, and needed a `Devbox.NamespacePolicy` to run at all. The API built one Namespace client from `NAMESPACE_CONTROL_TOKEN`, so a deployment served one Namespace account for every workspace. Approved images were an OCI list in `NOTUS_APPROVED_IMAGE_REF` plus a workspace table keyed by the literal `"namespace"`. The dashboard always rendered the Namespace form.
 
 This plan gives devbox providers the shape the [platforms plan](platforms.md) gave sources: a vocabulary package that says what providers exist, what each can do and how it is presented; one adapter per provider; and a registry that hosts yield without ever branching on a provider's name. The first increment changes no behavior. Namespace keeps running through the same native calls, but only behind the port, and its credential and templates move from Worker environment into the workspace. Boat is then a second adapter, not a refactor.
 
@@ -12,14 +12,15 @@ This plan gives devbox providers the shape the [platforms plan](platforms.md) ga
 
 Depends on `effect` only, so the dashboard imports descriptors without pulling a provider client.
 
-| Module            | Owns                                                                                                                                                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `provider.ts`     | `Provider = Schema.Literals(["namespace"])`. Append-only. Every column, key and form derives from it.                                                                                                                                 |
-| `capabilities.ts` | `Capability` literals, `Capabilities.ensure`, `CapabilityNotSupportedError`, with the same rules as `@notus/platform/capabilities`.                                                                                                   |
-| `descriptor.ts`   | `ProviderDescriptor`, pure data: name, icon key, baseline `Capabilities`, `template` (what a launch template is called and how its reference is written). `PROVIDER_DESCRIPTORS` is total over `Provider`.                            |
-| `adapter.ts`      | `ProviderAdapter { provider, descriptor, configuration, forWorkspace(ref) → DevboxPort }`. `configuration` validates native JSON and template references without a credential, so the API checks a save before anything is connected. |
-| `credentials.ts`  | `ComputeCredentials { get, put, remove }` over opaque JSON. Only the adapter decodes it, as with `InstallationCredentials`.                                                                                                           |
-| `errors.ts`       | `ProviderNotRegisteredError`, `DuplicateProviderRegistrationError`, `ConnectionNotFound`, and a neutral `ComputeError` that keeps the existing outcome classification: `notSent \| rejected \| ambiguous`, plus `notFound`.           |
+| Module            | Owns                                                                                                                                                                                                                                                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider.ts`     | `Provider = Schema.Literals(["namespace"])`. Append-only. Every column, key and form derives from it.                                                                                                                                                                                                                         |
+| `capabilities.ts` | `Capability` literals, `Capabilities.ensure`, `CapabilityNotSupportedError`, with the same rules as `@notus/platform/capabilities`.                                                                                                                                                                                           |
+| `descriptor.ts`   | `ProviderDescriptor`, pure data: name, icon key, baseline `Capabilities`, `template` (what a launch template is called and how its reference is written). `PROVIDER_DESCRIPTORS` is total over `Provider`.                                                                                                                    |
+| `adapter.ts`      | `ProviderAdapter { provider, descriptor, configuration, forWorkspace(workspaceId) → DevboxPort }`. `configuration` validates native JSON, template references and a submitted account without a credential or a provider call, so the API checks a save before anything is connected, and says which template is the default. |
+| `credentials.ts`  | `ComputeCredentials { get }` over opaque JSON, host-trusted. Only the adapter decodes it, as with `InstallationCredentials`. Writes are the workspace domain's, gated on admin.                                                                                                                                               |
+| `templates.ts`    | `Templates { approved(workspaceId, provider) → { refs, default } }`, host-trusted. A failed read yields none.                                                                                                                                                                                                                 |
+| `errors.ts`       | `ProviderNotRegisteredError`, `DuplicateProviderRegistrationError`, `ConnectionError` (`missing \| invalid \| storage`, nothing sent), `ConfigurationError`, and a neutral `ComputeError` that keeps the existing outcome classification: `notSent \| rejected \| unknown`, plus `notFound`.                                  |
 
 ### Capabilities
 
@@ -78,19 +79,19 @@ interface DevboxPort {
 
 Nothing about a provider account stays in Worker configuration. Removed: `NAMESPACE_CONTROL_TOKEN`, `NOTUS_APPROVED_IMAGE_REF`, `NOTUS_IMAGE_AUDIT`, `providerConfig`, `approvedImageConfig`. The control URL and the bootstrap signing key stay deployment configuration, because they are Notus's own authority, not the provider's.
 
-- `workspace_compute_connections (key, workspaceId, provider, label, connectedBy, connectedAt, credential)`, keyed on `(workspaceId, provider)`. The credential is sealed with `Sealed.Service`, as on `workspace_installations`: it is written by admins, never read back or projected, and only the adapter decodes it. A Namespace connection holds the token and, optionally, the trusted endpoints `Config` takes today.
-- `workspace_images` becomes `workspace_templates`, with the same columns plus a nullable `default` flag, at most one per `(workspaceId, provider)`. `ref` stays opaque. The adapter's `configuration.validateTemplate` checks it: a Namespace image digest, a Boat named snapshot. The migration copies the existing rows.
+- `workspace_compute_connections (key, workspaceId, provider, label, connectedBy, connectedAt, credential)`, keyed on `(workspaceId, provider)`. The credential is sealed with `Sealed.Service`, as on `workspace_installations`: it is written by admins, never read back or projected, and only the adapter decodes it. A Namespace connection holds the token alone; the endpoints stay the client's defaults, so an admin cannot point the deployment at another host. A tenant outside the default region needs those endpoints as a later, validated field.
+- `workspace_images` becomes `workspace_templates`, with the same columns plus `isDefault`, at most one per `(workspaceId, provider)` by a partial unique index. `ref` stays opaque. The adapter's `configuration.validateTemplate` checks it: a Namespace image digest, a Boat named snapshot. The migration renames the table and keeps the rows.
 - `workspace_environments` is unchanged: provider key plus opaque JSON. Switching provider means saving a new revision with another key.
 
 The deployment's audited list goes away. A template runs because a workspace admin added it, which is already true for workspace images. Notus ships no built-in template. A workspace may mark one template as its default, and the setting is optional:
 
-- The adapter may infer a default from the connected account (`configuration.inferDefault`, for example a Namespace image the native config already selects). The dashboard shows that inference; it is never saved for the admin.
+- The adapter may infer a default (`configuration.defaultOf`). Namespace infers the workspace's only image when there is exactly one. The dashboard shows that inference; it is never saved for the admin.
 - Otherwise an admin picks one, or none. Without a default, a launch uses whatever the native configuration selects, and the adapter refuses it if that is not one of the workspace's templates.
 
 ## API and dashboard
 
 - Environment, template and connection endpoints take the provider from the request and validate through `Providers.forProvider(provider).configuration`. The `"namespace"` literals in `apps/api/src/api.ts` and `runtime.ts` go away.
-- New admin-only connection endpoints: put and remove. They never return the credential.
+- Admin-only connection endpoints: `dashboardConnectCompute` and `dashboardDisconnectCompute`. The environment view carries the connection's status (provider, label, who, when) and never the credential. `dashboardSetDefaultImage` marks or clears the default.
 - The Devbox page lists `PROVIDER_DESCRIPTORS` entries the deployment registered, shows the connection state for each, and selects the native form by provider key. `apps/dashboard/src/devbox/namespace/` stays as the Namespace form. The template list takes its noun and placeholder from the descriptor.
 
 ## Box side
@@ -100,13 +101,13 @@ The Namespace idle marker in `apps/devbox/src/commands.ts:230-237` becomes a cal
 ## Increments
 
 1. **Vocabulary and adapter.** Implemented. `@notus/compute`, `@notus/compute-namespace`, `Providers` in executions, and `Devbox` over the port. `requestWake` checks `wake:request`. Lifecycle copy is provider-neutral. The deployment image list and its audit went away with it: a workspace launches only the images its admins added. API saves take the provider and validate through `apps/api/src/compute.ts`. The Namespace credential is still `NAMESPACE_CONTROL_TOKEN` until increment 2. Nothing asks a box to sleep yet, because the only provider sleeps by itself.
-2. **Workspace connection and templates.** Migrations, the sealed credential and endpoints. The environment variables go away. The fixture workspace is reconnected through the dashboard: no seed from environment.
+2. **Workspace connection and templates.** Implemented. `workspace_compute_connections` and `workspace_templates` (migration `compute_connections`), `Compute` and `Templates` in `@notus/workspaces`, and the Namespace adapter building its clients per workspace from the sealed token. `NAMESPACE_CONTROL_TOKEN` is gone; the task host needs only `NOTUS_CONTROL_URL` and its runtime keys. A workspace without a connection gets `ConnectionError`, which `Devbox` reports as `Rejected`. The Devbox page has an Account card (connect, replace, disconnect) and a default toggle on each image. The fixture workspace must be reconnected through the dashboard after deploying: no seed from environment.
 3. **Dashboard.** Provider list, connection card, per-provider form and template list.
 4. **Box hook** and the move of the image's Namespace files.
 5. **Boat.** `docs/research/boat.md` first: bootstrap delivery, systemd restart after resume, stop and resume readiness, replacement semantics, idempotent create, and the 14-day snapshot expiry. Then `@notus/boat` (client) and `@notus/compute-boat` (adapter), with `Provider` widened to `["namespace", "boat"]`.
 
-The product context needs wording changes that are requirements, not implementation: "Namespace dev boxes" under selected technology, "Rely on Namespace auto-sleep during human waits", and Namespace's retention policy under retention. Each becomes provider-neutral and points at the capability. This is listed here for approval and not edited yet.
+The product context's provider-specific requirements were made provider-neutral with increment 1.
 
 ## Validation
 
-Frozen install, root typecheck, focused lint. Increment 1 replays the existing Namespace startup check against the port, with no new live resources unless separately authorized. Increment 2 checks that a sealed credential round-trips, that it is never present in any API response, and that the image rows migrate.
+Frozen install, root typecheck, focused lint. Increment 1 replays the existing Namespace startup check against the port, with no new live resources unless separately authorized. Increment 2 was checked against SQLite with every D1 migration applied: an existing image row becomes a template; one default at most, moved and cleared; members cannot connect; the stored credential is sealed and opens for the task host; connect replaces and disconnect removes; the connection view never carries the credential; and the registry gives a port only to a connected workspace. No live Namespace call was made.

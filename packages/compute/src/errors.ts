@@ -11,6 +11,15 @@ export class DuplicateProviderRegistrationError extends Schema.TaggedError<Dupli
 ) {}
 export { CapabilityNotSupportedError } from "./capabilities";
 
+/**
+ * The workspace has no usable account for the provider: never connected, unreadable, or refused by
+ * the adapter's own shape. Nothing reached the provider.
+ */
+export class ConnectionError extends Schema.TaggedError<ConnectionError>()(
+  "Compute.ConnectionError",
+  { provider: Provider, reason: Schema.Literals(["missing", "invalid", "storage"]) },
+) {}
+
 /** Native configuration or a template reference the provider refuses; the message is user-facing. */
 export class ConfigurationError extends Schema.TaggedError<ConfigurationError>()(
   "Compute.ConfigurationError",

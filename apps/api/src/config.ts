@@ -107,14 +107,3 @@ export type DashboardConfig = Effect.Success<typeof dashboardConfig>;
 export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
 });
-
-/**
- * Read only by the execution host. The one deployment-level provider credential left until
- * workspaces connect their own (docs/plans/compute.md, increment 2).
- */
-export const namespaceConfig = Effect.gen(function* () {
-  return {
-    credential: yield* Config.redacted("NAMESPACE_CONTROL_TOKEN"),
-    timeoutMs: 20_000,
-  };
-});

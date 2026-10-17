@@ -3,8 +3,9 @@ import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import type { CapabilityNotSupportedError } from "./capabilities";
 import type { ProviderDescriptor } from "./descriptor";
-import type { ComputeError, ConfigurationError } from "./errors";
+import type { ComputeError, ConfigurationError, ConnectionError } from "./errors";
 import type { Provider } from "./provider";
+import type { TemplateSet } from "./templates";
 
 /** A provider's box as Notus stores it. The image observation stays opaque and is never a status payload. */
 export const Resource = Schema.Struct({
@@ -67,18 +68,31 @@ export interface DevboxPort {
 
 /** Checks that need no credential, so the API refuses a save before anything is connected. */
 export interface Configuration {
-  /** The configuration must select one of `templates`, the workspace's own. */
+  /**
+   * The configuration must select one of the workspace's templates, or select none and leave it
+   * to the default.
+   */
   readonly validate: (
     config: Schema.Json,
-    templates: ReadonlyArray<string>,
+    templates: TemplateSet,
   ) => Effect.Effect<void, ConfigurationError>;
   /** The normalized reference, or why the provider cannot start from it. */
   readonly validateTemplate: (ref: string) => Effect.Effect<string, ConfigurationError>;
+  /**
+   * The normalized account JSON an admin submitted, checked for shape only: nothing is sent to
+   * the provider. The result is what the workspace stores, sealed.
+   */
+  readonly validateConnection: (
+    input: Schema.Json,
+  ) => Effect.Effect<Schema.Json, ConfigurationError>;
+  /** The template a launch uses when the configuration selects none: the admins' pick, or an inferred one. */
+  readonly defaultOf: (templates: TemplateSet) => string | null;
 }
 
 export interface ProviderAdapter {
   readonly provider: Provider;
   readonly descriptor: ProviderDescriptor;
   readonly configuration: Configuration;
-  readonly forWorkspace: (workspaceId: string) => Effect.Effect<DevboxPort>;
+  /** Reads the workspace's connection first; without one, nothing reaches the provider. */
+  readonly forWorkspace: (workspaceId: string) => Effect.Effect<DevboxPort, ConnectionError>;
 }

@@ -11,16 +11,20 @@ type Image = EnvironmentView["workspaceImages"][number];
 
 /**
  * The workspace's images: the references its admins approved, the only ones it may launch. An admin
- * builds from the Notus base, publishes the image, and adds its digest here.
+ * builds from the Notus base, publishes the image, and adds its digest here. One may be the
+ * default, which a new configuration starts from; with a single image, that one is inferred.
  */
 export const WorkspaceImages: FC<{
   images: ReadonlyArray<Image>;
   selected: string;
+  /** The saved default or the inferred one; only a saved one can be cleared. */
+  defaultRef: string | null;
   disabled: boolean;
   nameOf: (userId: string) => string;
   onAdd: (ref: string, label: string) => Promise<string | null>;
   onRemove: (ref: string) => Promise<string | null>;
-}> = ({ images, selected, disabled, nameOf, onAdd, onRemove }) => {
+  onDefault: (ref: string | null) => Promise<string | null>;
+}> = ({ images, selected, defaultRef, disabled, nameOf, onAdd, onRemove, onDefault }) => {
   const [ref, setRef] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,11 +53,26 @@ export const WorkspaceImages: FC<{
                   {image.ref === selected ? (
                     <span className="text-muted-foreground font-normal"> (selected)</span>
                   ) : null}
+                  {image.ref === defaultRef ? (
+                    <span className="text-muted-foreground font-normal">
+                      {image.isDefault ? " (default)" : " (default, as the only image)"}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="text-muted-foreground block truncate text-xs" title={image.ref}>
                   {shortValue(image.ref)}, added by {nameOf(image.addedBy)}
                 </span>
               </span>
+              {disabled ? null : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => run(() => onDefault(image.isDefault ? null : image.ref))}
+                >
+                  {image.isDefault ? "Clear default" : "Make default"}
+                </Button>
+              )}
               {disabled ? null : (
                 <Button
                   variant="ghost"
