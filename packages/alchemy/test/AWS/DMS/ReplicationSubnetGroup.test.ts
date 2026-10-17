@@ -1,13 +1,13 @@
-import * as AWS from "@/AWS";
-import { ReplicationSubnetGroup } from "@/AWS/DMS";
-import { Subnet, Vpc } from "@/AWS/EC2";
-import * as Test from "@/Test/Alchemy";
 import * as dms from "@distilled.cloud/aws/database-migration-service";
 import * as ec2 from "@distilled.cloud/aws/ec2";
 import { expect } from "alchemy-test";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
-import { reapDmsOrphans } from "./reap.ts";
+import * as AWS from "@/AWS";
+import { ReplicationSubnetGroup } from "@/AWS/DMS";
+import { Subnet, Vpc } from "@/AWS/EC2";
+import * as Test from "@/Test/Alchemy";
+import { DMS_SUBNET_GROUP_VPC, reapDmsOrphans } from "./reap.ts";
 
 const { test } = Test.make({ providers: AWS.providers() });
 
@@ -29,10 +29,7 @@ const assertGone = (identifier: string) =>
         : Effect.fail(new Error(`subnet group '${identifier}' still exists`)),
     ),
     Effect.retry({
-      schedule: Schedule.max([
-        Schedule.fixed("2 seconds"),
-        Schedule.recurs(15),
-      ]),
+      schedule: Schedule.max([Schedule.fixed("2 seconds"), Schedule.recurs(15)]),
     }),
   );
 
@@ -43,7 +40,7 @@ test.provider(
       yield* stack.destroy();
       // A previous hard-killed run (in-memory scratch state) may have
       // orphaned the VPC fixture — reap it out-of-band before deploying.
-      yield* reapDmsOrphans;
+      yield* reapDmsOrphans(DMS_SUBNET_GROUP_VPC);
 
       // Resolve three AZs so the update can swap the subnet set.
       const azResult = yield* ec2.describeAvailabilityZones({});
@@ -54,7 +51,9 @@ test.provider(
 
       const { group, subnetCId } = yield* stack.deploy(
         Effect.gen(function* () {
-          const vpc = yield* Vpc("DmsVpc", { cidrBlock: "10.91.0.0/16" });
+          const vpc = yield* Vpc(DMS_SUBNET_GROUP_VPC.logicalId, {
+            cidrBlock: DMS_SUBNET_GROUP_VPC.cidr,
+          });
           const subnetA = yield* Subnet("DmsSubnetA", {
             vpcId: vpc.vpcId,
             cidrBlock: "10.91.1.0/24",
@@ -94,7 +93,9 @@ test.provider(
       // Update: swap one subnet + change the description.
       const { group: updated } = yield* stack.deploy(
         Effect.gen(function* () {
-          const vpc = yield* Vpc("DmsVpc", { cidrBlock: "10.91.0.0/16" });
+          const vpc = yield* Vpc(DMS_SUBNET_GROUP_VPC.logicalId, {
+            cidrBlock: DMS_SUBNET_GROUP_VPC.cidr,
+          });
           const subnetA = yield* Subnet("DmsSubnetA", {
             vpcId: vpc.vpcId,
             cidrBlock: "10.91.1.0/24",
@@ -120,12 +121,8 @@ test.provider(
       );
 
       // Same subnet group (in-place modify).
-      expect(updated.replicationSubnetGroupIdentifier).toBe(
-        group.replicationSubnetGroupIdentifier,
-      );
-      const observed2 = yield* findGroup(
-        group.replicationSubnetGroupIdentifier,
-      );
+      expect(updated.replicationSubnetGroupIdentifier).toBe(group.replicationSubnetGroupIdentifier);
+      const observed2 = yield* findGroup(group.replicationSubnetGroupIdentifier);
       const observedSubnetIds = (observed2?.Subnets ?? [])
         .map((s) => s.SubnetIdentifier)
         .filter((s): s is string => typeof s === "string");
@@ -141,7 +138,10 @@ test.provider(
       // scratch destroy) fails: the reaper deletes the VPC fixture out-of-band
       // with idempotent typed calls. `orDie` — a finalizer must not swallow
       // its own failure silently.
-      Effect.ensuring(reapDmsOrphans.pipe(Effect.orDie)),
+      Effect.ensuring(reapDmsOrphans(DMS_SUBNET_GROUP_VPC).pipe(Effect.orDie)),
     ),
-  { timeout: 300_000 },
+  {
+    tags: ["provider:aws", "provider:aws:dms", "provider:aws:ec2", "live"],
+    timeout: 300_000,
+  },
 );

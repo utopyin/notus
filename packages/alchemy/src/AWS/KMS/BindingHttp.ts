@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { keyLabel, keyPolicyStatement, type KeyLike } from "./KeyBinding.ts";
 
 /**
@@ -19,12 +18,7 @@ import { keyLabel, keyPolicyStatement, type KeyLike } from "./KeyBinding.ts";
  * (exact key ARN, or `Resource: "*"` + `kms:RequestAlias` for an alias), and
  * the runtime half injects the key identifier into every request.
  */
-export const makeKmsKeyHttpBinding = <
-  I extends { KeyId?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeKmsKeyHttpBinding = <I extends { KeyId?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.KMS.Sign`. */
   tag: string;
   /** The distilled operation. */
@@ -33,22 +27,16 @@ export const makeKmsKeyHttpBinding = <
   actions: readonly `kms:${string}`[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (key: KeyLike) {
-      const KeyId =
-        typeof key === "string" ? Effect.succeed(key) : yield* key.keyId;
+      const KeyId = typeof key === "string" ? Effect.succeed(key) : yield* key.keyId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${key}))`({
-            policyStatements: [keyPolicyStatement(options.actions, key)],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${key})`({
+          policyStatements: [keyPolicyStatement(options.actions, key)],
+        });
       }
-      return Effect.fn(`${options.tag}(${keyLabel(key)})`)(function* (
-        request?: Omit<I, "KeyId">,
-      ) {
+      return Effect.fn(`${options.tag}(${keyLabel(key)})`)(function* (request?: Omit<I, "KeyId">) {
         const keyId = yield* KeyId;
         return yield* op({ ...request, KeyId: keyId } as I);
       });
@@ -69,22 +57,19 @@ export const makeKmsAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly `kms:${string}`[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

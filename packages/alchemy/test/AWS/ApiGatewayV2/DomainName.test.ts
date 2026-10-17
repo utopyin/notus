@@ -1,10 +1,10 @@
+import * as agw2 from "@distilled.cloud/aws/apigatewayv2";
+import { expect } from "alchemy-test";
+import * as Effect from "effect/Effect";
 import * as AWS from "@/AWS";
 import { DomainName } from "@/AWS/ApiGatewayV2";
 import * as Provider from "@/Provider";
 import * as Test from "@/Test/Alchemy";
-import * as agw2 from "@distilled.cloud/aws/apigatewayv2";
-import { expect } from "alchemy-test";
-import * as Effect from "effect/Effect";
 
 const { test } = Test.make({ providers: AWS.providers() });
 
@@ -26,16 +26,20 @@ test.provider.skipIf(!!process.env.FAST)(
         expect(domain.tags).toBeDefined();
       }
     }),
+  { tags: ["provider:aws", "provider:aws:apigatewayv2", "live"] },
 );
 
 // Full lifecycle. SKIPPED by default: an API Gateway v2 custom domain
 // requires a validated REGIONAL ACM certificate for a domain you own (ACM
 // issuance needs DNS/email validation, which CI cannot complete). Set
-// AWS_TEST_APIGATEWAY_DOMAIN_NAME (a domain you own) and
+// AWS_TEST_APIGATEWAYV2_DOMAIN_NAME (a domain you own) and
 // AWS_TEST_APIGATEWAY_CERT_ARN (a validated regional ACM cert in this
-// region) to run it on an entitled account unchanged — the same env vars
-// the v1 DomainName test uses.
-const domainName = process.env.AWS_TEST_APIGATEWAY_DOMAIN_NAME;
+// region) to run it on an entitled account unchanged. The domain must differ
+// from the v1 test's AWS_TEST_APIGATEWAY_DOMAIN_NAME: API Gateway v1 and v2
+// share one custom-domain namespace and the two files run concurrently, so a
+// shared name would make both tests adopt and delete the same domain. A
+// wildcard cert covering both names can be shared via the cert var.
+const domainName = process.env.AWS_TEST_APIGATEWAYV2_DOMAIN_NAME;
 const certificateArn = process.env.AWS_TEST_APIGATEWAY_CERT_ARN;
 
 test.provider.skipIf(!!process.env.FAST || !domainName || !certificateArn)(
@@ -58,10 +62,7 @@ test.provider.skipIf(!!process.env.FAST || !domainName || !certificateArn)(
           });
 
           const api = yield* AWS.ApiGatewayV2.Api("V2DomainApi", {});
-          const stage = yield* AWS.ApiGatewayV2.Stage("V2DomainStage", {
-            api,
-            autoDeploy: true,
-          });
+          const stage = yield* AWS.ApiGatewayV2.Stage("V2DomainStage", { api, autoDeploy: true });
 
           const mapping = yield* AWS.ApiGatewayV2.ApiMapping("V2Mapping", {
             api,
@@ -78,9 +79,7 @@ test.provider.skipIf(!!process.env.FAST || !domainName || !certificateArn)(
         }),
       );
 
-      const remoteDomain = yield* agw2.getDomainName({
-        DomainName: out.domainName,
-      });
+      const remoteDomain = yield* agw2.getDomainName({ DomainName: out.domainName });
       expect(remoteDomain.DomainName).toBe(domainName);
 
       const remoteMapping = yield* agw2.getApiMapping({
@@ -93,17 +92,12 @@ test.provider.skipIf(!!process.env.FAST || !domainName || !certificateArn)(
       yield* stack.destroy();
 
       const gone = yield* agw2
-        .getApiMapping({
-          DomainName: out.domainName,
-          ApiMappingId: out.apiMappingId,
-        })
+        .getApiMapping({ DomainName: out.domainName, ApiMappingId: out.apiMappingId })
         .pipe(
           Effect.map(() => "still-exists" as const),
-          Effect.catchTag("NotFoundException", () =>
-            Effect.succeed("deleted" as const),
-          ),
+          Effect.catchTag("NotFoundException", () => Effect.succeed("deleted" as const)),
         );
       expect(gone).toBe("deleted");
     }),
-  { timeout: 240_000 },
+  { tags: ["provider:aws", "provider:aws:apigatewayv2", "live"], timeout: 240_000 },
 );

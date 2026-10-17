@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Activity } from "./Activity.ts";
 import type { StateMachine } from "./StateMachine.ts";
 
@@ -47,18 +46,15 @@ const grant = (
 ) =>
   Effect.gen(function* () {
     if (!globalThis.__ALCHEMY_RUNTIME__) {
-      const host = yield* Binding.Host;
-      if (isBindingHost(host)) {
-        yield* host.bind`Allow(${host}, ${tag}(${scope}))`({
-          policyStatements: [
-            {
-              Effect: "Allow",
-              Action: [...actions],
-              Resource: [...resources],
-            },
-          ],
-        });
-      }
+      yield* AWSBindings.bind`${tag}(${scope})`({
+        policyStatements: [
+          {
+            Effect: "Allow",
+            Action: [...actions],
+            Resource: [...resources],
+          },
+        ],
+      });
     }
   });
 
@@ -83,13 +79,11 @@ export const makeStateMachineArnHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (stateMachine: StateMachine) {
       const StateMachineArn = yield* stateMachine.stateMachineArn;
-      yield* grant(options.tag, stateMachine, options.actions, [
-        stateMachine.stateMachineArn,
-      ]);
+      yield* grant(options.tag, stateMachine, options.actions, [stateMachine.stateMachineArn]);
       return Effect.fn(`${options.tag}(${stateMachine.LogicalId})`)(function* (
         request?: Omit<I, "stateMachineArn">,
       ) {
@@ -123,7 +117,7 @@ export const makeExecutionScopedHttpBinding = <I, A, E, R>(options: {
   scope?: "execution" | "mapRun";
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (stateMachine: StateMachine) {
       yield* grant(options.tag, stateMachine, options.actions, [
@@ -131,9 +125,7 @@ export const makeExecutionScopedHttpBinding = <I, A, E, R>(options: {
           ? mapRunArnPattern(stateMachine)
           : executionArnPattern(stateMachine),
       ]);
-      return Effect.fn(`${options.tag}(${stateMachine.LogicalId})`)(function* (
-        request: I,
-      ) {
+      return Effect.fn(`${options.tag}(${stateMachine.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });
@@ -145,12 +137,7 @@ export const makeExecutionScopedHttpBinding = <I, A, E, R>(options: {
  * runtime callable injects the bound {@link Activity}'s ARN and the
  * deploy-time half grants `actions` on it.
  */
-export const makeActivityArnHttpBinding = <
-  I extends { activityArn?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeActivityArnHttpBinding = <I extends { activityArn?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.StepFunctions.GetActivityTask`. */
   tag: string;
   /** The distilled operation; the activity ARN is injected as `activityArn`. */
@@ -159,13 +146,11 @@ export const makeActivityArnHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (activity: Activity) {
       const ActivityArn = yield* activity.activityArn;
-      yield* grant(options.tag, activity, options.actions, [
-        activity.activityArn,
-      ]);
+      yield* grant(options.tag, activity, options.actions, [activity.activityArn]);
       return Effect.fn(`${options.tag}(${activity.LogicalId})`)(function* (
         request?: Omit<I, "activityArn">,
       ) {
@@ -193,15 +178,13 @@ export const makeTaskCallbackHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (activity?: Activity) {
       yield* grant(options.tag, activity ?? "*", options.actions, [
         activity ? Output.interpolate`${activity.activityArn}` : "*",
       ]);
-      return Effect.fn(`${options.tag}(${activity?.LogicalId})`)(function* (
-        request: I,
-      ) {
+      return Effect.fn(`${options.tag}(${activity?.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });
@@ -222,22 +205,19 @@ export const makeSfnServiceHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request: I) {
         return yield* op(request);

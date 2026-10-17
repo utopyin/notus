@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Task } from "./Task.ts";
 
 /**
@@ -32,12 +31,7 @@ const taskPolicyStatement = (task: Task, actions: readonly string[]) => ({
  * deploy-time half grants `actions` on the task ARN (and its execution
  * pattern).
  */
-export const makeDataSyncTaskHttpBinding = <
-  I extends { TaskArn?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeDataSyncTaskHttpBinding = <I extends { TaskArn?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.DataSync.StartTaskExecution`. */
   tag: string;
   /** The distilled operation; `TaskArn` is injected from the task. */
@@ -46,18 +40,15 @@ export const makeDataSyncTaskHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (task: Task) {
       // Outputs yield a DEFERRED effect — resolve again per invocation below.
       const TaskArn = yield* task.taskArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${task}))`({
-            policyStatements: [taskPolicyStatement(task, options.actions)],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${task})`({
+          policyStatements: [taskPolicyStatement(task, options.actions)],
+        });
       }
       return Effect.fn(`${options.tag}(${task.LogicalId})`)(function* (
         request?: Omit<I, "TaskArn">,
@@ -82,20 +73,15 @@ export const makeDataSyncTaskExecutionHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (task: Task) {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${task}))`({
-            policyStatements: [taskPolicyStatement(task, options.actions)],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${task})`({
+          policyStatements: [taskPolicyStatement(task, options.actions)],
+        });
       }
-      return Effect.fn(`${options.tag}(${task.LogicalId})`)(function* (
-        request: I,
-      ) {
+      return Effect.fn(`${options.tag}(${task.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });

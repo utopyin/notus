@@ -52,7 +52,7 @@ export const LambdaCodeHookEventSource = Layer.effect(
   CodeHookEventSource,
   Effect.gen(function* () {
     // this layer can only be used in a Lambda Function
-    const host = yield* Lambda.Function;
+    const host = yield* Lambda.eventSourceHost("AWS.LexV2.LambdaCodeHookEventSource");
 
     return Effect.fn(function* <Req = never>(
       alias: BotAlias,
@@ -72,21 +72,16 @@ export const LambdaCodeHookEventSource = Layer.effect(
         yield* Namespace.push(
           host.LogicalId,
           Effect.gen(function* () {
-            yield* alias.bind`AWS.LexV2.CodeHook(${host}, ${alias}, ${props.localeId})`(
-              {
-                codeHooks: { [props.localeId]: host.functionArn },
-              },
-            );
+            yield* alias.bind`AWS.LexV2.CodeHook(${host}, ${alias}, ${props.localeId})`({
+              codeHooks: { [props.localeId]: host.functionArn },
+            });
 
-            yield* LambdaPermission(
-              `${alias.LogicalId}-${props.localeId}-CodeHookPermission`,
-              {
-                action: "lambda:InvokeFunction",
-                functionName: host.functionName,
-                principal: "lexv2.amazonaws.com",
-                sourceArn: alias.botAliasArn,
-              },
-            );
+            yield* LambdaPermission(`${alias.LogicalId}-${props.localeId}-CodeHookPermission`, {
+              action: "lambda:InvokeFunction",
+              functionName: host.functionName,
+              principal: "lexv2.amazonaws.com",
+              sourceArn: alias.botAliasArn,
+            });
           }),
         );
       }

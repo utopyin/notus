@@ -1,14 +1,14 @@
-import * as AWS from "@/AWS";
-import { ReplicationInstance, ReplicationSubnetGroup } from "@/AWS/DMS";
-import { Subnet, Vpc } from "@/AWS/EC2";
-import { AWSEnvironment } from "@/AWS/Environment";
-import * as Test from "@/Test/Alchemy";
 import * as dms from "@distilled.cloud/aws/database-migration-service";
 import * as ec2 from "@distilled.cloud/aws/ec2";
 import { expect } from "alchemy-test";
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
-import { reapDmsOrphans } from "./reap.ts";
+import * as AWS from "@/AWS";
+import { ReplicationInstance, ReplicationSubnetGroup } from "@/AWS/DMS";
+import { Subnet, Vpc } from "@/AWS/EC2";
+import { AWSEnvironment } from "@/AWS/Environment";
+import * as Test from "@/Test/Alchemy";
+import { DMS_REPLICATION_INSTANCE_VPC, reapDmsOrphans } from "./reap.ts";
 
 const { test } = Test.make({ providers: AWS.providers() });
 
@@ -26,6 +26,7 @@ test.provider(
       );
       expect(error._tag).toBe("ResourceNotFoundFault");
     }),
+  { tags: ["provider:aws", "provider:aws:dms", "live"] },
 );
 
 const findInstance = (identifier: string) =>
@@ -39,16 +40,16 @@ const findInstance = (identifier: string) =>
     );
 
 // A replication instance takes ~6-10 minutes to provision, a similar time to
-// delete, and is billed hourly while it exists. The full lifecycle is gated
-// behind AWS_TEST_SLOW=1 and always destroys what it created.
-test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
+// delete, and is billed hourly while it exists. The full lifecycle is skipped
+// under `--fast` and always destroys what it created.
+test.provider.skipIf(!!process.env.FAST)(
   "create replication instance in a subnet group, destroy, verify gone",
   (stack) =>
     Effect.gen(function* () {
       yield* stack.destroy();
       // A previous hard-killed run (in-memory scratch state) may have
       // orphaned the VPC fixture — reap it out-of-band before deploying.
-      yield* reapDmsOrphans;
+      yield* reapDmsOrphans(DMS_REPLICATION_INSTANCE_VPC);
 
       const azResult = yield* ec2.describeAvailabilityZones({});
       const azs = (azResult.AvailabilityZones ?? [])
@@ -58,7 +59,9 @@ test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
 
       const { instance } = yield* stack.deploy(
         Effect.gen(function* () {
-          const vpc = yield* Vpc("DmsInstVpc", { cidrBlock: "10.92.0.0/16" });
+          const vpc = yield* Vpc(DMS_REPLICATION_INSTANCE_VPC.logicalId, {
+            cidrBlock: DMS_REPLICATION_INSTANCE_VPC.cidr,
+          });
           const subnetA = yield* Subnet("DmsInstSubnetA", {
             vpcId: vpc.vpcId,
             cidrBlock: "10.92.1.0/24",
@@ -74,10 +77,9 @@ test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
             subnetIds: [subnetA.subnetId, subnetB.subnetId],
           });
           const instance = yield* ReplicationInstance("Instance", {
-            replicationInstanceClass: "dms.t3.micro",
+            replicationInstanceClass: "dms.t3.small",
             allocatedStorage: 20,
-            replicationSubnetGroupIdentifier:
-              subnetGroup.replicationSubnetGroupIdentifier,
+            replicationSubnetGroupIdentifier: subnetGroup.replicationSubnetGroupIdentifier,
             publiclyAccessible: false,
             multiAZ: false,
           });
@@ -86,28 +88,19 @@ test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
       );
 
       expect(instance.replicationInstanceArn).toContain(":rep:");
-      expect(instance.replicationInstanceClass).toBe("dms.t3.micro");
+      expect(instance.replicationInstanceClass).toBe("dms.t3.small");
       expect(instance.status).toBe("available");
 
-      const observed = yield* findInstance(
-        instance.replicationInstanceIdentifier,
-      );
-      expect(observed?.ReplicationInstanceArn).toBe(
-        instance.replicationInstanceArn,
-      );
+      const observed = yield* findInstance(instance.replicationInstanceIdentifier);
+      expect(observed?.ReplicationInstanceArn).toBe(instance.replicationInstanceArn);
 
       // Destroy immediately — the instance bills hourly — and verify deletion
       // has at least initiated (full disappearance takes several more minutes).
       yield* stack.destroy();
-      const status = yield* findInstance(
-        instance.replicationInstanceIdentifier,
-      ).pipe(
+      const status = yield* findInstance(instance.replicationInstanceIdentifier).pipe(
         Effect.map((i) => i?.ReplicationInstanceStatus ?? "gone"),
         Effect.retry({
-          schedule: Schedule.max([
-            Schedule.fixed("10 seconds"),
-            Schedule.recurs(12),
-          ]),
+          schedule: Schedule.max([Schedule.fixed("10 seconds"), Schedule.recurs(12)]),
         }),
       );
       expect(["gone", "deleting"]).toContain(status);
@@ -116,7 +109,10 @@ test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
       // scratch destroy) fails: the reaper waits out the instance deletion
       // and tears the VPC fixture down out-of-band with idempotent typed
       // calls. `orDie` — a finalizer must not swallow its own failure.
-      Effect.ensuring(reapDmsOrphans.pipe(Effect.orDie)),
+      Effect.ensuring(reapDmsOrphans(DMS_REPLICATION_INSTANCE_VPC).pipe(Effect.orDie)),
     ),
-  { timeout: 1_500_000 },
+  {
+    tags: ["provider:aws", "provider:aws:dms", "provider:aws:ec2", "live"],
+    timeout: 1_500_000,
+  },
 );

@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { ServerlessCache } from "./ServerlessCache.ts";
 
 /**
@@ -19,8 +18,7 @@ import type { ServerlessCache } from "./ServerlessCache.ts";
  * data for every snapshot-addressed operation, so snapshot-scoped grants use
  * this wildcard.
  */
-export const SERVERLESS_SNAPSHOT_ARN_WILDCARD =
-  "arn:aws:elasticache:*:*:serverlesscachesnapshot:*";
+export const SERVERLESS_SNAPSHOT_ARN_WILDCARD = "arn:aws:elasticache:*:*:serverlesscachesnapshot:*";
 
 /**
  * Build the impl Effect for an account-level operation (snapshot management,
@@ -42,22 +40,19 @@ export const makeElastiCacheAccountHttpBinding = <I, A, E, R>(options: {
   resources?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [...(options.resources ?? ["*"])],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [...(options.resources ?? ["*"])],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
@@ -87,26 +82,23 @@ export const makeElastiCacheCacheHttpBinding = <
   extraResources?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (cache: ServerlessCache) {
       const ServerlessCacheName = yield* cache.serverlessCacheName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${cache}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [
-                  Output.interpolate`${cache.serverlessCacheArn}`,
-                  ...(options.extraResources ?? []),
-                ],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${cache})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [
+                Output.interpolate`${cache.serverlessCacheArn}`,
+                ...(options.extraResources ?? []),
+              ],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${cache.LogicalId})`)(function* (
         request?: Omit<I, "ServerlessCacheName">,

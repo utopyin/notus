@@ -1,12 +1,13 @@
 import * as Effect from "effect/Effect";
+import type * as HttpClient from "effect/http/HttpClient";
 import type * as Redacted from "effect/Redacted";
-import type * as HttpClient from "effect/unstable/http/HttpClient";
-import type { RuntimeContext } from "../../RuntimeContext.ts";
 import * as Output from "../../Output.ts";
+import type { RuntimeContext } from "../../RuntimeContext.ts";
 import { Self } from "../../Self.ts";
 import { AccountApiToken } from "../ApiToken/AccountApiToken.ts";
 import type { PermissionGroupRef } from "../ApiToken/Common.ts";
 import type { Credentials } from "../Credentials.ts";
+import { requireLiveResource } from "../HttpBindingDev.ts";
 import { authorizeWith } from "../HttpClientUtils.ts";
 import type { Zone } from "../Zone/Zone.ts";
 
@@ -32,6 +33,7 @@ export const makeHttpDnsBinding = <Client>(options: {
     const self = yield* Self;
 
     return Effect.fn(function* (zone: Zone) {
+      if (!globalThis.__ALCHEMY_RUNTIME__) yield* requireLiveResource(zone);
       const token = yield* Token(`${self.LogicalId}Token`);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
         yield* token.bind`${self.LogicalId}(${zone})`({
@@ -41,8 +43,7 @@ export const makeHttpDnsBinding = <Client>(options: {
               permissionGroups: options.permissionGroups,
               resources: zone.zoneId.pipe(
                 Output.flatMap(
-                  (zoneId) =>
-                    Output.interpolate`com.cloudflare.api.account.zone.${zoneId}`,
+                  (zoneId) => Output.interpolate`com.cloudflare.api.account.zone.${zoneId}`,
                 ),
                 Output.map((zoneId) => ({
                   [zoneId]: "*",

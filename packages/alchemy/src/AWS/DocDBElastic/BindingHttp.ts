@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Cluster } from "./Cluster.ts";
 
 /**
@@ -17,8 +16,7 @@ import type { Cluster } from "./Cluster.ts";
  * Elastic-cluster snapshot ARNs embed a server-generated UUID that is only
  * known at runtime, so snapshot-scoped grants use this wildcard.
  */
-export const SNAPSHOT_ARN_WILDCARD =
-  "arn:aws:docdb-elastic:*:*:cluster-snapshot/*";
+export const SNAPSHOT_ARN_WILDCARD = "arn:aws:docdb-elastic:*:*:cluster-snapshot/*";
 
 /**
  * Build the impl Effect for an account-level operation (snapshot management,
@@ -40,22 +38,19 @@ export const makeDocDBElasticAccountHttpBinding = <I, A, E, R>(options: {
   resources?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [...(options.resources ?? ["*"])],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [...(options.resources ?? ["*"])],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
@@ -84,26 +79,23 @@ export const makeDocDBElasticClusterHttpBinding = <
   extraResources?: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (cluster: Cluster) {
       const clusterArn = yield* cluster.clusterArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${cluster}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [
-                  Output.interpolate`${cluster.clusterArn}`,
-                  ...(options.extraResources ?? []),
-                ],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${cluster})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [
+                Output.interpolate`${cluster.clusterArn}`,
+                ...(options.extraResources ?? []),
+              ],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${cluster.LogicalId})`)(function* (
         request?: Omit<I, "clusterArn">,

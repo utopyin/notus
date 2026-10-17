@@ -1,8 +1,7 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
-import type { IPSet } from "./IPSet.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { type WafScope, withWafScope } from "./internal.ts";
+import type { IPSet } from "./IPSet.ts";
 import type { RuleGroup } from "./RuleGroup.ts";
 import type { WebACL } from "./WebACL.ts";
 
@@ -53,7 +52,7 @@ export const makeWafv2WebAclHttpBinding = <I, A, E, R>(options: {
   inject: (webAcl: ResolvedWebAcl) => Partial<I>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (webAcl: WebACL) {
       const Arn = yield* webAcl.webAclArn;
@@ -61,22 +60,17 @@ export const makeWafv2WebAclHttpBinding = <I, A, E, R>(options: {
       const Id = yield* webAcl.webAclId;
       const Scope = yield* webAcl.scope;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${webAcl}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [webAcl.webAclArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${webAcl})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [webAcl.webAclArn],
+            },
+          ],
+        });
       }
-      return Effect.fn(`${options.tag}(${webAcl.LogicalId})`)(function* (
-        request?: Partial<I>,
-      ) {
+      return Effect.fn(`${options.tag}(${webAcl.LogicalId})`)(function* (request?: Partial<I>) {
         const resolved: ResolvedWebAcl = {
           arn: yield* Arn,
           name: yield* Name,
@@ -111,25 +105,22 @@ export const makeWafv2IPSetHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (ipSet: IPSet) {
       const Name = yield* ipSet.ipSetName;
       const Id = yield* ipSet.ipSetId;
       const Scope = yield* ipSet.scope;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${ipSet}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [ipSet.ipSetArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${ipSet})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [ipSet.ipSetArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${ipSet.LogicalId})`)(function* (
         request?: Omit<I, "Name" | "Scope" | "Id">,
@@ -169,32 +160,26 @@ export const makeWafv2RuleGroupHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (ruleGroup: RuleGroup) {
       const Arn = yield* ruleGroup.ruleGroupArn;
       const Scope = yield* ruleGroup.scope;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${ruleGroup}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [ruleGroup.ruleGroupArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${ruleGroup})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [ruleGroup.ruleGroupArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${ruleGroup.LogicalId})`)(function* (
         request?: Omit<I, "ResourceArn">,
       ) {
-        return yield* withWafScope(
-          yield* Scope,
-          op({ ...request, ResourceArn: yield* Arn } as I),
-        );
+        return yield* withWafScope(yield* Scope, op({ ...request, ResourceArn: yield* Arn } as I));
       });
     });
   });
@@ -215,29 +200,24 @@ export const makeWafv2AccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         const input = (request ?? {}) as I;
         const scope: WafScope =
-          (input as { Scope?: string }).Scope === "CLOUDFRONT"
-            ? "CLOUDFRONT"
-            : "REGIONAL";
+          (input as { Scope?: string }).Scope === "CLOUDFRONT" ? "CLOUDFRONT" : "REGIONAL";
         return yield* withWafScope(scope, op(input));
       });
     });

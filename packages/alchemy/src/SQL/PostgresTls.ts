@@ -11,26 +11,21 @@ type PgSsl = PgClient.PgPoolConfig["ssl"];
  * places — Hyperdrive's local `dev` origin passthrough hands the worker
  * `?sslmode=prefer`, and `prefer` is libpq's own default.
  */
-const OPPORTUNISTIC_SSL_MODES: ReadonlySet<string> = new Set([
-  "prefer",
-  "allow",
-]);
+const OPPORTUNISTIC_SSL_MODES: ReadonlySet<string> = new Set(["prefer", "allow"]);
 
 /**
  * Resolve the `ssl` option to hand `@effect/sql-pg` for a connection URL.
  *
  * When the caller left `ssl` implicit and the URL's `sslmode` is `prefer` or
  * `allow`, returns `ssl: true` so the connection is TLS-on exactly as it was
- * under node-postgres. Every other input is returned untouched so the URL's
- * `sslmode` keeps driving the decision inside `@effect/sql-pg`.
+ * under node-postgres. Railway's `no-verify` mode defaults to TLS without
+ * certificate verification. Explicit caller settings take precedence, and
+ * other URL modes keep driving the decision inside `@effect/sql-pg`.
  *
  * (`@effect/sql-pg` < rc.115 also sent no TLS SNI; that was fixed upstream in
  * Effect-TS/effect#8174, so this helper no longer sets `servername`.)
  */
-export const resolveSsl = (
-  url: Redacted.Redacted<string>,
-  ssl: PgSsl,
-): PgSsl => {
+export const resolveSsl = (url: Redacted.Redacted<string>, ssl: PgSsl): PgSsl => {
   if (ssl !== undefined) return ssl;
   let parsed: URL;
   try {
@@ -40,5 +35,43 @@ export const resolveSsl = (
     return ssl;
   }
   const sslmode = parsed.searchParams.get("sslmode");
+  if (sslmode === "no-verify") return { rejectUnauthorized: false };
   return sslmode !== null && OPPORTUNISTIC_SSL_MODES.has(sslmode) ? true : ssl;
 };
+
+/**
+ * Normalize the URL and TLS settings together for Effect's Postgres driver.
+ * Translate node-postgres's `sslmode=no-verify` to `require` with explicit
+ * TLS options so it also works with stricter URL parsers. Retain its verification
+ * choice in the TLS options. Other URL parameters and explicit TLS settings
+ * remain intact; credentials stay redacted.
+ */
+export const resolveConnectionOptions = (
+  url: Redacted.Redacted<string>,
+  ssl?: PgSsl,
+): { url: Redacted.Redacted<string>; ssl: PgSsl } => {
+  const resolvedSsl = resolveSsl(url, ssl);
+  try {
+    const parsed = new URL(Redacted.value(url));
+    if (parsed.searchParams.get("sslmode") === "no-verify") {
+      parsed.searchParams.set("sslmode", "require");
+      return { url: Redacted.make(parsed.toString()), ssl: resolvedSsl };
+    }
+  } catch {
+    // The driver owns malformed URL diagnostics.
+  }
+  return { url, ssl: resolvedSsl };
+};
+
+/**
+ * The `@effect/sql-pg` pool config for a connection URL plus caller options.
+ * Options such as `prepare` or pool limits pass through; the URL and TLS come
+ * from {@link resolveConnectionOptions}, honoring an explicit `ssl` option.
+ */
+export const resolvePoolConfig = (
+  url: Redacted.Redacted<string>,
+  options?: Omit<PgClient.PgPoolConfig, "url">,
+): PgClient.PgPoolConfig => ({
+  ...options,
+  ...resolveConnectionOptions(url, options?.ssl),
+});

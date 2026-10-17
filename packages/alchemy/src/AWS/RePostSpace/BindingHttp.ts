@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Space } from "./Space.ts";
 
 /**
@@ -15,12 +14,7 @@ import type { Space } from "./Space.ts";
  * Private has a single `space` IAM resource type — channel- and
  * admin-scoped actions are all authorized against the space ARN).
  */
-export const makeRePostSpaceHttpBinding = <
-  I extends { spaceId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeRePostSpaceHttpBinding = <I extends { spaceId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.RePostSpace.SendInvites`. */
   tag: string;
   /** The distilled operation; `spaceId` is injected from the bound space. */
@@ -29,23 +23,20 @@ export const makeRePostSpaceHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (space: Space) {
       const spaceId = yield* space.spaceId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${space}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [space.spaceArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${space})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [space.spaceArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${space.LogicalId})`)(function* (
         request?: Omit<I, "spaceId">,

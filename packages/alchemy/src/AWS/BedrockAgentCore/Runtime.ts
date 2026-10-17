@@ -74,6 +74,12 @@ export interface RuntimeProps {
    */
   environmentVariables?: Record<string, string>;
   /**
+   * Runtime platform version, e.g. `"V2"` for snapshot-restored microVMs.
+   * When omitted, AgentCore's default (`"V1"`) applies on create and an
+   * existing runtime keeps its current platform version.
+   */
+  platformVersion?: string;
+  /**
    * Tags to apply to the runtime. Merged with internal Alchemy tags.
    */
   tags?: Record<string, string>;
@@ -166,22 +172,14 @@ export const RuntimeProvider = () =>
         return props.agentRuntimeName ?? (yield* createAgentCoreName(id));
       });
 
-      const getRuntimeOrUndefined = Effect.fn(function* (
-        agentRuntimeId: string,
-      ) {
+      const getRuntimeOrUndefined = Effect.fn(function* (agentRuntimeId: string) {
         return yield* control
           .getAgentRuntime({ agentRuntimeId })
-          .pipe(
-            Effect.catchTag("ResourceNotFoundException", () =>
-              Effect.succeed(undefined),
-            ),
-          );
+          .pipe(Effect.catchTag("ResourceNotFoundException", () => Effect.succeed(undefined)));
       });
 
       const findByName = Effect.fn(function* (name: string) {
-        const pages = yield* control.listAgentRuntimes
-          .pages({})
-          .pipe(Stream.runCollect);
+        const pages = yield* control.listAgentRuntimes.pages({}).pipe(Stream.runCollect);
         const summary = Array.from(pages)
           .flatMap((page) => page.agentRuntimes ?? [])
           .find((s) => s.agentRuntimeName === name);
@@ -213,12 +211,8 @@ export const RuntimeProvider = () =>
 
         list: () =>
           Effect.gen(function* () {
-            const pages = yield* control.listAgentRuntimes
-              .pages({})
-              .pipe(Stream.runCollect);
-            const summaries = Array.from(pages).flatMap(
-              (page) => page.agentRuntimes ?? [],
-            );
+            const pages = yield* control.listAgentRuntimes.pages({}).pipe(Stream.runCollect);
+            const summaries = Array.from(pages).flatMap((page) => page.agentRuntimes ?? []);
             const hydrated = yield* Effect.forEach(
               summaries,
               (s) => getRuntimeOrUndefined(s.agentRuntimeId),
@@ -230,9 +224,7 @@ export const RuntimeProvider = () =>
         read: Effect.fn(function* ({ id, olds, output }) {
           const runtime = output?.agentRuntimeId
             ? yield* getRuntimeOrUndefined(output.agentRuntimeId)
-            : yield* findByName(
-                yield* createName(id, olds ?? ({} as RuntimeProps)),
-              );
+            : yield* findByName(yield* createName(id, olds ?? ({} as RuntimeProps)));
           if (runtime === undefined || runtime.status === "DELETING") {
             return undefined;
           }
@@ -254,8 +246,7 @@ export const RuntimeProvider = () =>
 
         reconcile: Effect.fn(function* ({ id, news, output, session }) {
           const props = news ?? ({} as RuntimeProps);
-          const name =
-            output?.agentRuntimeName ?? (yield* createName(id, props));
+          const name = output?.agentRuntimeName ?? (yield* createName(id, props));
           const internalTags = yield* createInternalTags(id);
           const desiredTags = { ...props.tags, ...internalTags };
           const networkConfiguration = props.networkConfiguration ?? {
@@ -286,13 +277,12 @@ export const RuntimeProvider = () =>
                 requestHeaderConfiguration: props.requestHeaderConfiguration,
                 lifecycleConfiguration: props.lifecycleConfiguration,
                 environmentVariables: props.environmentVariables,
+                platformVersion: props.platformVersion,
                 tags: desiredTags,
               })
               .pipe(
                 retryWhileValidation,
-                Effect.catchTag("ConflictException", () =>
-                  Effect.succeed(undefined),
-                ),
+                Effect.catchTag("ConflictException", () => Effect.succeed(undefined)),
               );
             runtime =
               created === undefined
@@ -306,10 +296,7 @@ export const RuntimeProvider = () =>
           }
 
           runtime = (yield* waitForSettled(runtime.agentRuntimeId)) ?? runtime;
-          if (
-            runtime.status === "CREATE_FAILED" ||
-            runtime.status === "UPDATE_FAILED"
-          ) {
+          if (runtime.status === "CREATE_FAILED" || runtime.status === "UPDATE_FAILED") {
             return yield* new AgentCoreProvisioningFailed({
               message: `agent runtime '${name}' failed: ${runtime.failureReason ?? "unknown"}`,
             });
@@ -323,8 +310,7 @@ export const RuntimeProvider = () =>
             runtime.roleArn !== props.roleArn ||
             JSON.stringify(runtime.agentRuntimeArtifact ?? null) !==
               JSON.stringify(props.agentRuntimeArtifact) ||
-            JSON.stringify(runtime.networkConfiguration) !==
-              JSON.stringify(networkConfiguration) ||
+            JSON.stringify(runtime.networkConfiguration) !== JSON.stringify(networkConfiguration) ||
             JSON.stringify(runtime.environmentVariables ?? {}) !==
               JSON.stringify(props.environmentVariables ?? {}) ||
             (props.protocolConfiguration !== undefined &&
@@ -332,7 +318,9 @@ export const RuntimeProvider = () =>
                 JSON.stringify(props.protocolConfiguration)) ||
             (props.lifecycleConfiguration !== undefined &&
               JSON.stringify(runtime.lifecycleConfiguration ?? null) !==
-                JSON.stringify(props.lifecycleConfiguration));
+                JSON.stringify(props.lifecycleConfiguration)) ||
+            (props.platformVersion !== undefined &&
+              runtime.platformVersion !== props.platformVersion);
           if (drifted) {
             yield* control
               .updateAgentRuntime({
@@ -346,10 +334,11 @@ export const RuntimeProvider = () =>
                 requestHeaderConfiguration: props.requestHeaderConfiguration,
                 lifecycleConfiguration: props.lifecycleConfiguration,
                 environmentVariables: props.environmentVariables,
+                // Unset keeps the observed version, so unrelated updates never move the platform.
+                platformVersion: props.platformVersion ?? runtime.platformVersion,
               })
               .pipe(retryWhileConflict);
-            runtime =
-              (yield* waitForSettled(runtime.agentRuntimeId)) ?? runtime;
+            runtime = (yield* waitForSettled(runtime.agentRuntimeId)) ?? runtime;
           }
 
           // 3b. SYNC TAGS against observed cloud tags.
@@ -363,27 +352,19 @@ export const RuntimeProvider = () =>
         // A runtime with live endpoints rejects deletion with a
         // ConflictException until they are gone.
         delete: Effect.fn(function* ({ output }) {
-          yield* control
-            .deleteAgentRuntime({ agentRuntimeId: output.agentRuntimeId })
-            .pipe(
-              retryWhileConflict,
-              Effect.catchTag("ResourceNotFoundException", () =>
-                Effect.succeed(undefined),
-              ),
-            );
-          yield* control
-            .getAgentRuntime({ agentRuntimeId: output.agentRuntimeId })
-            .pipe(
-              Effect.map((r) => r.status as string),
-              Effect.catchTag("ResourceNotFoundException", () =>
-                Effect.succeed("GONE" as string),
-              ),
-              Effect.repeat({
-                schedule: Schedule.fixed("5 seconds"),
-                until: (status) => status === "GONE",
-                times: 36,
-              }),
-            );
+          yield* control.deleteAgentRuntime({ agentRuntimeId: output.agentRuntimeId }).pipe(
+            retryWhileConflict,
+            Effect.catchTag("ResourceNotFoundException", () => Effect.succeed(undefined)),
+          );
+          yield* control.getAgentRuntime({ agentRuntimeId: output.agentRuntimeId }).pipe(
+            Effect.map((r) => r.status as string),
+            Effect.catchTag("ResourceNotFoundException", () => Effect.succeed("GONE" as string)),
+            Effect.repeat({
+              schedule: Schedule.fixed("5 seconds"),
+              until: (status) => status === "GONE",
+              times: 36,
+            }),
+          );
         }),
       });
     }),

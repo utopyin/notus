@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Workflow } from "./Workflow.ts";
 
 /**
@@ -16,12 +15,7 @@ import type { Workflow } from "./Workflow.ts";
  * NOT exported from `index.ts` — every thin `{Op}Http.ts` in this service is
  * a `Layer.effect(Cap, makeMwaaServerlessHttpBinding({ … }))`.
  */
-export const makeMwaaServerlessHttpBinding = <
-  I extends { WorkflowArn: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeMwaaServerlessHttpBinding = <I extends { WorkflowArn: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.MWAAServerless.StartWorkflowRun`. */
   tag: string;
   /** The distilled operation. */
@@ -30,29 +24,26 @@ export const makeMwaaServerlessHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (workflow: Workflow) {
       // Outputs yield a DEFERRED effect — resolve again per invocation below.
       const WorkflowArn = yield* workflow.workflowArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${workflow}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [
-                  workflow.workflowArn,
-                  // run/task-scoped operations authorize against
-                  // sub-resources below the workflow ARN
-                  Output.interpolate`${workflow.workflowArn}/*`,
-                ],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${workflow})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [
+                workflow.workflowArn,
+                // run/task-scoped operations authorize against
+                // sub-resources below the workflow ARN
+                Output.interpolate`${workflow.workflowArn}/*`,
+              ],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${workflow.LogicalId})`)(function* (
         request?: Omit<I, "WorkflowArn">,

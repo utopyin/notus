@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-
 import * as Namespace from "../../Namespace.ts";
 import { sanitizeRuleName } from "../IoT/internal.ts";
 import { TopicRule } from "../IoT/TopicRule.ts";
@@ -33,16 +32,14 @@ export const TopicRuleEventSource = Layer.effect(
   IoTTopicRuleEventSource,
   // @effect-diagnostics-next-line missingEffectContext:off
   Effect.gen(function* () {
-    const host = yield* Lambda.Function;
+    const host = yield* Lambda.eventSourceHost("AWS.Lambda.TopicRuleEventSource");
     const Rule = yield* TopicRule;
     const Permission = yield* LambdaPermission;
 
     return Effect.fn(function* <Req = never>(
       topicFilter: string,
       props: TopicRuleEventSourceProps,
-      process: (
-        stream: Stream.Stream<IoTMessage>,
-      ) => Effect.Effect<void, never, Req>,
+      process: (stream: Stream.Stream<IoTMessage>) => Effect.Effect<void, never, Req>,
     ) {
       // Deploy-time: create the IoT topic rule with a Lambda action targeting
       // this function, and grant iot.amazonaws.com permission to invoke it
@@ -52,9 +49,7 @@ export const TopicRuleEventSource = Layer.effect(
         yield* Namespace.push(
           host.LogicalId,
           Effect.gen(function* () {
-            const ruleName =
-              props.ruleName ??
-              sanitizeRuleName(`${host.LogicalId}_${topicFilter}`);
+            const ruleName = props.ruleName ?? sanitizeRuleName(`${host.LogicalId}_${topicFilter}`);
             const rule = yield* Rule(`${host.LogicalId}-TopicRule`, {
               ruleName,
               sql: props.sql ?? `SELECT * FROM '${topicFilter}'`,

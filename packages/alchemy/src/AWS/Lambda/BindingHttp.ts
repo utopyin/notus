@@ -1,8 +1,7 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type { Output as OutputType } from "../../Output.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Function } from "./Function.ts";
-import { isBindingHost } from "./Function.ts";
 
 /**
  * Shared scaffolding for AWS Lambda control/data-plane HTTP bindings.
@@ -10,10 +9,13 @@ import { isBindingHost } from "./Function.ts";
  * NOT exported from `index.ts` — every near-identical `{Op}Http.ts` in this
  * service is a thin `Layer.effect(Cap, make…HttpBinding({ … }))` over one of
  * the builders below. Everything except the operation, the IAM action list,
- * and the granted ARNs is boilerplate. Genuinely-different bindings (the
- * MicroVM family with its cross-cloud credential scaffolding in
- * `MicrovmBinding.ts`) stay bespoke.
+ * and the granted ARNs is boilerplate. How the host reaches AWS (native vs
+ * external, see `AWSBindings.ts`) is handled by `AWSBindings.withCredentials`
+ * and `AWSBindings.bind`.
  */
+
+/** Region segment of an AWS ARN (`arn:partition:service:<region>:...`). */
+export const regionFromArn = (arn: string): string => arn.split(":")[3] ?? "us-east-1";
 
 /**
  * Build the impl Effect for a function-scoped operation (`Invoke`,
@@ -21,15 +23,14 @@ import { isBindingHost } from "./Function.ts";
  * the bound {@link Function}'s ARN as `FunctionName` and the deploy-time
  * half grants `actions` on `resources` (default: the function ARN).
  */
-export const makeFunctionHttpBinding = <
-  I extends { FunctionName?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeFunctionHttpBinding = <I extends { FunctionName?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.Lambda.GetFunction`. */
   tag: string;
-  /** The distilled operation; `FunctionName` is injected from the function. */
+  /**
+   * The distilled operation; `FunctionName` is injected from the function.
+   * Resolved with the host's credentials (see `AWSBindings.withCredentials`),
+   * signing in the function's region on an external host.
+   */
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
   /** IAM actions granted on `resources`. */
   actions: readonly string[];
@@ -37,31 +38,28 @@ export const makeFunctionHttpBinding = <
   resources?: (func: Function) => (string | OutputType<string>)[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
-
     return Effect.fn(function* (func: Function) {
       const FunctionArn = yield* func.functionArn;
+      // resolved per bind because an external host signs in the function's own region
+      const op = yield* AWSBindings.withCredentials(
+        options.operation,
+        Effect.succeed(Effect.map(FunctionArn, regionFromArn)),
+      );
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${func}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: options.resources?.(func) ?? [func.functionArn],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${func})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: options.resources?.(func) ?? [func.functionArn],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${func.LogicalId})`)(function* (
         request?: Omit<I, "FunctionName">,
       ) {
-        return yield* op({
-          ...request,
-          FunctionName: yield* FunctionArn,
-        } as I);
+        return yield* op({ ...request, FunctionName: yield* FunctionArn } as I);
       });
     });
   });
@@ -82,22 +80,19 @@ export const makeLambdaAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

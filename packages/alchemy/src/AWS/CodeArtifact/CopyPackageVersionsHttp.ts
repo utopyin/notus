@@ -1,13 +1,9 @@
 import * as codeartifact from "@distilled.cloud/aws/codeartifact";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { domainWideArns } from "./BindingHttp.ts";
-import {
-  CopyPackageVersions,
-  type CopyPackageVersionsRequest,
-} from "./CopyPackageVersions.ts";
+import { CopyPackageVersions, type CopyPackageVersionsRequest } from "./CopyPackageVersions.ts";
 import type { Repository } from "./Repository.ts";
 
 /**
@@ -20,37 +16,32 @@ import type { Repository } from "./Repository.ts";
 export const CopyPackageVersionsHttp = Layer.effect(
   CopyPackageVersions,
   Effect.gen(function* () {
-    const op = yield* codeartifact.copyPackageVersions;
+    const op = yield* AWSBindings.withCredentials(codeartifact.copyPackageVersions);
 
     return Effect.fn(function* (repository: Repository) {
       const DomainName = yield* repository.domainName;
       const DomainOwner = yield* repository.domainOwner;
       const RepositoryName = yield* repository.repositoryName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.CodeArtifact.CopyPackageVersions(${repository}))`(
+        yield* AWSBindings.bind`AWS.CodeArtifact.CopyPackageVersions(${repository})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [
-                    "codeartifact:CopyPackageVersions",
-                    // The copy reads version metadata and assets from the
-                    // source repository on the caller's behalf.
-                    "codeartifact:ReadFromRepository",
-                    "codeartifact:DescribePackageVersion",
-                  ],
-                  Resource: domainWideArns(repository),
-                },
+              Effect: "Allow",
+              Action: [
+                "codeartifact:CopyPackageVersions",
+                // The copy reads version metadata and assets from the
+                // source repository on the caller's behalf.
+                "codeartifact:ReadFromRepository",
+                "codeartifact:DescribePackageVersion",
               ],
+              Resource: domainWideArns(repository),
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.CodeArtifact.CopyPackageVersions(${repository.LogicalId})`,
-      )(function* (request: CopyPackageVersionsRequest) {
+      return Effect.fn(`AWS.CodeArtifact.CopyPackageVersions(${repository.LogicalId})`)(function* (
+        request: CopyPackageVersionsRequest,
+      ) {
         const owner = yield* DomainOwner;
         return yield* op({
           ...request,

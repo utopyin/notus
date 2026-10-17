@@ -1,31 +1,28 @@
-import * as AWS from "@/AWS";
-import { PolicyStore, PolicyStoreAlias } from "@/AWS/VerifiedPermissions";
-import * as Test from "@/Test/Alchemy";
 import * as avp from "@distilled.cloud/aws/verifiedpermissions";
 import { expect } from "alchemy-test";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
+import * as AWS from "@/AWS";
+import { PolicyStore, PolicyStoreAlias } from "@/AWS/VerifiedPermissions";
+import * as Test from "@/Test/Alchemy";
 
 const { test } = Test.make({ providers: AWS.providers() });
 
 const findAlias = (aliasName: string) =>
   avp
     .getPolicyStoreAlias({ aliasName })
-    .pipe(
-      Effect.catchTag("ResourceNotFoundException", () =>
-        Effect.succeed(undefined),
-      ),
-    );
+    .pipe(Effect.catchTag("ResourceNotFoundException", () => Effect.succeed(undefined)));
 
-// CreatePolicyStoreAlias currently rejects every alias name shape with a
-// typed ValidationException in this account/region (probed 2026-07-15 with
-// hyphenated, plain, underscore, slash, and mixed-case names — all fail with
-// "Invalid input"). The API appears not yet generally available. This
-// ungated probe pins the typed error; the full lifecycle below is gated
-// behind AWS_TEST_POLICY_STORE_ALIAS=1 so an enabled account can run it
-// unchanged.
+// AWS requires every alias name to be prefixed with `policy-store-alias/`.
+// The 2026-07-15 probes that concluded the API was "not yet available" all
+// used bare names (hyphenated, plain, underscore, slash, mixed-case), which
+// fail with "Invalid input" — the provider now always applies the prefix.
+// This ungated probe pins that a bare name surfaces a typed
+// ValidationException. The full lifecycle below is still gated behind
+// AWS_TEST_POLICY_STORE_ALIAS=1 until it has been confirmed green against a
+// live account.
 test.provider(
-  "createPolicyStoreAlias surfaces a typed ValidationException (API not yet available)",
+  "createPolicyStoreAlias rejects an alias name without the policy-store-alias/ prefix",
   (stack) =>
     Effect.gen(function* () {
       yield* stack.destroy();
@@ -49,7 +46,10 @@ test.provider(
       }
       yield* stack.destroy();
     }),
-  { timeout: 120_000 },
+  {
+    tags: ["provider:aws", "provider:aws:verifiedpermissions", "live"],
+    timeout: 120_000,
+  },
 );
 
 test.provider.skipIf(!process.env.AWS_TEST_POLICY_STORE_ALIAS)(
@@ -71,7 +71,7 @@ test.provider.skipIf(!process.env.AWS_TEST_POLICY_STORE_ALIAS)(
 
       // create
       const { store, alias } = yield* stack.deploy(makeStack);
-      expect(alias.aliasName).toBeDefined();
+      expect(alias.aliasName.startsWith("policy-store-alias/")).toBe(true);
       expect(alias.aliasArn).toContain(":policy-store-alias/");
       expect(alias.policyStoreId).toBe(store.policyStoreId);
 
@@ -90,5 +90,8 @@ test.provider.skipIf(!process.env.AWS_TEST_POLICY_STORE_ALIAS)(
       const gone = yield* findAlias(alias.aliasName);
       expect(gone).toBeUndefined();
     }),
-  { timeout: 180_000 },
+  {
+    tags: ["provider:aws", "provider:aws:verifiedpermissions", "live"],
+    timeout: 180_000,
+  },
 );

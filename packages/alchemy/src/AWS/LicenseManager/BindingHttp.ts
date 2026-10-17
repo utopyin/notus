@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { LicenseConfiguration } from "./LicenseConfiguration.ts";
 
 /**
@@ -23,12 +22,7 @@ import type { LicenseConfiguration } from "./LicenseConfiguration.ts";
  * license-specification operations — none of which are resource-scoped in
  * IAM).
  */
-export const makeLicenseManagerHttpBinding = <
-  I extends object,
-  A,
-  E,
-  R,
->(options: {
+export const makeLicenseManagerHttpBinding = <I extends object, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"CheckoutLicense"`.
@@ -40,28 +34,21 @@ export const makeLicenseManagerHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.LicenseManager.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.LicenseManager.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.LicenseManager.${options.capability}`)(function* (
-        request?: I,
-      ) {
+      return Effect.fn(`AWS.LicenseManager.${options.capability}`)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
       });
     });
@@ -91,34 +78,29 @@ export const makeLicenseConfigurationHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (configuration: LicenseConfiguration) {
       // Output yields a DEFERRED effect — resolve again per invocation below.
       const ConfigurationArn = yield* configuration.licenseConfigurationArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.LicenseManager.${options.capability}(${configuration}))`(
+        yield* AWSBindings.bind`AWS.LicenseManager.${options.capability}(${configuration})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [configuration.licenseConfigurationArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [configuration.licenseConfigurationArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.LicenseManager.${options.capability}(${configuration.LogicalId})`,
-      )(function* (request?: Omit<I, "LicenseConfigurationArn">) {
-        return yield* op({
-          ...request,
-          LicenseConfigurationArn: yield* ConfigurationArn,
-        } as I);
-      });
+      return Effect.fn(`AWS.LicenseManager.${options.capability}(${configuration.LogicalId})`)(
+        function* (request?: Omit<I, "LicenseConfigurationArn">) {
+          return yield* op({
+            ...request,
+            LicenseConfigurationArn: yield* ConfigurationArn,
+          } as I);
+        },
+      );
     });
   });

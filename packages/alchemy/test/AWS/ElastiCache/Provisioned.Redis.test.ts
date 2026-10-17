@@ -1,8 +1,8 @@
-import * as AWS from "@/AWS";
-import * as Test from "@/Test/Alchemy";
 import * as ElastiCache from "@distilled.cloud/aws/elasticache";
 import { expect } from "alchemy-test";
 import * as Effect from "effect/Effect";
+import * as AWS from "@/AWS";
+import * as Test from "@/Test/Alchemy";
 import {
   assertReplicationGroupGone,
   getProvisionedNetwork,
@@ -13,7 +13,7 @@ const { test, beforeAll, afterAll } = Test.make({
   providers: AWS.providers(),
 });
 shareProvisionedNetwork({ beforeAll, afterAll });
-test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
+test.provider.skipIf(!!process.env.FAST)(
   "create, update, verify, and destroy a provisioned Redis OSS replication group",
   (stack) =>
     Effect.gen(function* () {
@@ -49,5 +49,8 @@ test.provider.skipIf(!process.env.AWS_TEST_SLOW)(
       yield* stack.destroy();
       yield* assertReplicationGroupGone(cache.replicationGroupId);
     }),
-  { timeout: 2_700_000 },
+  {
+    tags: ["provider:aws", "provider:aws:ec2", "provider:aws:elasticache", "live"],
+    timeout: 2_700_000,
+  },
 );

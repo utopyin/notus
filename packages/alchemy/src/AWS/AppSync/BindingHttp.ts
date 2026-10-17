@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { GraphqlApi } from "./GraphqlApi.ts";
 
 /**
@@ -30,12 +29,7 @@ import type { GraphqlApi } from "./GraphqlApi.ts";
  * the request; the deploy-time half grants `actions` on `*` (these actions
  * define no IAM resource types).
  */
-export const makeAppSyncApiHttpBinding = <
-  I extends { apiId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeAppSyncApiHttpBinding = <I extends { apiId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.AppSync.FlushApiCache`. */
   tag: string;
   /** The distilled operation; `apiId` is injected from the bound API. */
@@ -44,7 +38,7 @@ export const makeAppSyncApiHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (api: GraphqlApi) {
       // Outputs yield DEFERRED effects — resolving them here registers the
@@ -52,26 +46,21 @@ export const makeAppSyncApiHttpBinding = <
       const ApiId = yield* api.apiId;
 
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${api}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                // These AppSync control-plane actions define no IAM resource
-                // types — IAM only authorizes them against "*" (a scoped API
-                // ARN is AccessDenied).
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${api})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              // These AppSync control-plane actions define no IAM resource
+              // types — IAM only authorizes them against "*" (a scoped API
+              // ARN is AccessDenied).
+              Resource: ["*"],
+            },
+          ],
+        });
       }
 
-      return Effect.fn(`${options.tag}(${api.LogicalId})`)(function* (
-        request?: Omit<I, "apiId">,
-      ) {
+      return Effect.fn(`${options.tag}(${api.LogicalId})`)(function* (request?: Omit<I, "apiId">) {
         return yield* op({ ...request, apiId: yield* ApiId } as I);
       });
     });
@@ -92,23 +81,20 @@ export const makeAppSyncAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                // No IAM resource types defined for these actions.
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              // No IAM resource types defined for these actions.
+              Resource: ["*"],
+            },
+          ],
+        });
       }
 
       return Effect.fn(options.tag)(function* (request: I) {

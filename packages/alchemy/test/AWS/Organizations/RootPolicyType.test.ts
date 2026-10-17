@@ -1,37 +1,41 @@
+import * as organizations from "@distilled.cloud/aws/organizations";
+import { expect } from "alchemy-test";
+import * as Effect from "effect/Effect";
 import * as AWS from "@/AWS";
 import { Root, RootPolicyType } from "@/AWS/Organizations";
 import * as Provider from "@/Provider";
 import { isResourceState, State, type ResourceState } from "@/State";
-import * as Test from "@/Test/Alchemy";
-import { expect } from "alchemy-test";
-import * as Effect from "effect/Effect";
+import * as OrganizationLease from "./OrganizationLease.ts";
 
-const { test } = Test.make({ providers: AWS.providers() });
+const { test } = OrganizationLease.make({ providers: AWS.providers() }, "shared");
 
 // A RootPolicyType is the enable/disable state of a policy type on an org root.
 // `list()` enumerates roots via `listRoots` and emits one Attributes per
 // (rootId, policyType). It runs read-only: outside an org management account
 // `listRoots` rejects with a typed error that degrades to [], so the assertion
 // holds without deploying anything.
-test.provider("list enumerates root policy types", () =>
-  Effect.gen(function* () {
-    const provider = yield* Provider.findProvider(RootPolicyType);
-    const all = yield* provider.list();
+test.provider(
+  "list enumerates root policy types",
+  () =>
+    Effect.gen(function* () {
+      const provider = yield* Provider.findProvider(RootPolicyType);
+      const all = yield* provider.list();
 
-    expect(Array.isArray(all)).toBe(true);
+      expect(Array.isArray(all)).toBe(true);
 
-    for (const item of all) {
-      expect(typeof item.rootId).toBe("string");
-      expect(item.rootId.length).toBeGreaterThan(0);
-      expect(typeof item.policyType).toBe("string");
-      if (item.rootArn !== undefined) {
-        expect(typeof item.rootArn).toBe("string");
+      for (const item of all) {
+        expect(typeof item.rootId).toBe("string");
+        expect(item.rootId.length).toBeGreaterThan(0);
+        expect(typeof item.policyType).toBe("string");
+        if (item.rootArn !== undefined) {
+          expect(typeof item.rootArn).toBe("string");
+        }
+        if (item.status !== undefined) {
+          expect(typeof item.status).toBe("string");
+        }
       }
-      if (item.status !== undefined) {
-        expect(typeof item.status).toBe("string");
-      }
-    }
-  }),
+    }),
+  { tags: ["provider:aws", "provider:aws:organizations", "live"] },
 );
 
 // Regression test for https://github.com/alchemy-run/alchemy/issues/736.
@@ -56,6 +60,29 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
   (stack) =>
     Effect.gen(function* () {
       yield* stack.destroy();
+
+      // Destroy disables the type (detaching every policy of it), so refuse
+      // to take over an enablement that existed before the test.
+      const preEnabled = yield* organizations
+        .listRoots({})
+        .pipe(
+          Effect.map((page) =>
+            (page.Roots ?? []).some((root) =>
+              (root.PolicyTypes ?? []).some(
+                (summary) =>
+                  summary.Type === "BACKUP_POLICY" &&
+                  (summary.Status === "ENABLED" || summary.Status === "PENDING_ENABLE"),
+              ),
+            ),
+          ),
+        );
+      if (preEnabled) {
+        return yield* Effect.fail(
+          new Error(
+            "BACKUP_POLICY is already enabled on the organization root; this test would disable it on destroy",
+          ),
+        );
+      }
 
       const deployPolicyType = () =>
         stack.deploy(
@@ -82,20 +109,15 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
       const stage = stack.stage;
       const fqns = yield* state.list({ stack: stack.name, stage });
       const rows = yield* Effect.forEach(fqns, (fqn) =>
-        state
-          .get({ stack: stack.name, stage, fqn })
-          .pipe(Effect.map((row) => ({ fqn, row }))),
+        state.get({ stack: stack.name, stage, fqn }).pipe(Effect.map((row) => ({ fqn, row }))),
       );
       const wedged = rows.find(
         (r): r is { fqn: string; row: ResourceState } =>
-          isResourceState(r.row) &&
-          r.row.resourceType === "AWS.Organizations.RootPolicyType",
+          isResourceState(r.row) && r.row.resourceType === "AWS.Organizations.RootPolicyType",
       );
       if (!wedged) {
         return yield* Effect.die(
-          new Error(
-            "no AWS.Organizations.RootPolicyType state row found after deploy",
-          ),
+          new Error("no AWS.Organizations.RootPolicyType state row found after deploy"),
         );
       }
       yield* state.set({
@@ -120,5 +142,8 @@ test.provider.skipIf(!process.env.AWS_ORG_MANAGEMENT_ACCOUNT)(
 
       yield* stack.destroy();
     }),
-  { timeout: 240_000 },
+  {
+    tags: ["provider:aws", "provider:aws:organizations", "live"],
+    timeout: 240_000,
+  },
 );

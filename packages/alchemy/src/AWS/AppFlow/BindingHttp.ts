@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 
 /**
  * Options for {@link makeAppFlowHttpBinding}. Everything except these five
@@ -57,38 +56,33 @@ export const makeAppFlowHttpBinding = <
   options: AppFlowHttpBindingOptions<R, K, I, A, E, OpR>,
 ) =>
   Effect.gen(function* () {
-    const operation = yield* options.operation;
+    const operation = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (resource: R) {
       const Identifier = yield* options.identifier(resource);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.AppFlow.${options.action}(${resource}))`(
+        yield* AWSBindings.bind`AWS.AppFlow.${options.action}(${resource})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [`appflow:${options.action}`],
-                  Resource: options.resources(resource),
-                },
-              ],
+              Effect: "Allow",
+              Action: [`appflow:${options.action}`],
+              Resource: options.resources(resource),
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.AppFlow.${options.action}(${resource.LogicalId})`)(
-        function* (request?: Omit<I, K>) {
-          // The compiler cannot relate `Omit<I, K>` plus a computed generic
-          // key back to `I`, so the identifier injection carries one
-          // contained cast. Concrete request/response types are still fully
-          // checked where each `Layer.effect(Cap, ...)` matches this factory's
-          // inferred shape against the capability contract.
-          return yield* operation({
-            ...request,
-            [options.requestKey]: yield* Identifier,
-          } as unknown as I);
-        },
-      );
+      return Effect.fn(`AWS.AppFlow.${options.action}(${resource.LogicalId})`)(function* (
+        request?: Omit<I, K>,
+      ) {
+        // The compiler cannot relate `Omit<I, K>` plus a computed generic
+        // key back to `I`, so the identifier injection carries one
+        // contained cast. Concrete request/response types are still fully
+        // checked where each `Layer.effect(Cap, ...)` matches this factory's
+        // inferred shape against the capability contract.
+        return yield* operation({
+          ...request,
+          [options.requestKey]: yield* Identifier,
+        } as unknown as I);
+      });
     });
   });

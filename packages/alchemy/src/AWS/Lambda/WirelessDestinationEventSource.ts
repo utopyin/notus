@@ -18,9 +18,7 @@ import { Permission as LambdaPermission } from "./Permission.ts";
  * delivers to a destination's rule: the base64 `PayloadData` plus the
  * sending device's id.
  */
-export const isWirelessUplinkMessage = (
-  event: any,
-): event is WirelessUplinkMessage =>
+export const isWirelessUplinkMessage = (event: any): event is WirelessUplinkMessage =>
   event != null &&
   typeof event === "object" &&
   typeof event.WirelessDeviceId === "string" &&
@@ -53,7 +51,7 @@ export const WirelessDestinationEventSource = Layer.effect(
   // @effect-diagnostics-next-line missingEffectContext:off
   Effect.gen(function* () {
     // this layer can only be used in a Lambda Function
-    const host = yield* Lambda.Function;
+    const host = yield* Lambda.eventSourceHost("AWS.Lambda.WirelessDestinationEventSource");
     const Rule = yield* TopicRule;
     const Permission = yield* LambdaPermission;
 
@@ -78,15 +76,12 @@ export const WirelessDestinationEventSource = Layer.effect(
               actions: [{ lambda: { functionArn: host.functionArn } }],
             });
 
-            yield* Permission(
-              `AWS.IoTWireless.UplinkInvoke(${destination.LogicalId})`,
-              {
-                action: "lambda:InvokeFunction",
-                functionName: host.functionName,
-                principal: "iot.amazonaws.com",
-                sourceArn: rule.ruleArn,
-              },
-            );
+            yield* Permission(`AWS.IoTWireless.UplinkInvoke(${destination.LogicalId})`, {
+              action: "lambda:InvokeFunction",
+              functionName: host.functionName,
+              principal: "iot.amazonaws.com",
+              sourceArn: rule.ruleArn,
+            });
           }),
         );
       }

@@ -4,18 +4,21 @@
  * handler this returns — see {@link ./Process.ts} for why the entry is a
  * shim.
  */
+/* oxlint-disable alchemy/package-boundaries -- package split phase 3: per-cloud runtime bootstrap; moves into its provider */
 import * as Credentials from "@distilled.cloud/aws/Credentials";
 import * as Endpoint from "@distilled.cloud/aws/Endpoint";
 import * as Region from "@distilled.cloud/aws/Region";
+/* oxlint-enable alchemy/package-boundaries */
 import { layer as nodeServicesLayer } from "@effect/platform-node/NodeServices";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import { layer as fetchHttpClientLayer } from "effect/http/FetchHttpClient";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import { MinimumLogLevel } from "effect/References";
 import * as Scope from "effect/Scope";
-import { layer as fetchHttpClientLayer } from "effect/unstable/http/FetchHttpClient";
+// oxlint-disable-next-line alchemy/package-boundaries -- package split phase 3: per-cloud runtime bootstrap; moves into its provider
 import { registerLambdaExtension } from "../../AWS/Lambda/RuntimeExtension.ts";
 import { reifyBoundConfigProvider } from "../../Runtime.ts";
 import { entrypointLayer, entrypointTag, stackFromEnv } from "./Process.ts";
@@ -63,9 +66,7 @@ export const bootstrap = async (entrypoint: unknown): Promise<unknown> => {
         reifyBoundConfigProvider(ConfigProvider.fromEnv(), process.env),
       ),
     ),
-    Layer.provideMerge(
-      Layer.succeed(MinimumLogLevel, process.env.DEBUG ? "Debug" : "Info"),
-    ),
+    Layer.provideMerge(Layer.succeed(MinimumLogLevel, process.env.DEBUG ? "Debug" : "Info")),
   );
 
   const handlerEffect: Effect.Effect<unknown, unknown> = Layer.buildWithScope(
@@ -90,9 +91,7 @@ export const bootstrap = async (entrypoint: unknown): Promise<unknown> => {
   process.on("SIGTERM", () => {
     console.log("[alchemy] SIGTERM — closing instance scope");
     Effect.runPromise(Scope.close(instanceScope, Exit.void))
-      .catch((error) =>
-        console.error("[alchemy] shutdown finalizers failed", error),
-      )
+      .catch((error) => console.error("[alchemy] shutdown finalizers failed", error))
       .finally(() => process.exit(0));
   });
 

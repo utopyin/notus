@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 
 /**
  * Shared HTTP scaffolding for the Lake Formation runtime bindings.
@@ -16,12 +15,7 @@ import { isBindingHost } from "../Lambda/Function.ts";
  * `AWS.LakeFormation.Permissions`), so every binding grants its actions on
  * `Resource: ["*"]`.
  */
-export const makeLakeFormationHttpBinding = <
-  I extends object,
-  A,
-  E,
-  R,
->(options: {
+export const makeLakeFormationHttpBinding = <I extends object, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"GetDataLakePrincipal"`.
@@ -33,28 +27,21 @@ export const makeLakeFormationHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.LakeFormation.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.LakeFormation.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.LakeFormation.${options.capability}`)(function* (
-        request?: I,
-      ) {
+      return Effect.fn(`AWS.LakeFormation.${options.capability}`)(function* (request?: I) {
         return yield* op((request ?? {}) as I);
       });
     });

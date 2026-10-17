@@ -3,14 +3,15 @@ import * as Namespace from "../../Namespace.ts";
 import { makeFrameworkSite, type FrameworkSiteProps } from "./FrameworkSite.ts";
 
 /** The framework-integration package that drives the Astro build. */
-export const ASTRO_FRAMEWORK_SPECIFIER =
-  "@alchemy.run/frontend-frameworks/astro";
+export const ASTRO_FRAMEWORK_SPECIFIER = "@alchemy.run/frontend-frameworks/astro";
 
 /** The AWS Lambda deploy target for the Astro build. */
-export const ASTRO_AWS_TARGET_SPECIFIER =
-  "@alchemy.run/frontend-frameworks/astro/aws";
+export const ASTRO_AWS_TARGET_SPECIFIER = "@alchemy.run/frontend-frameworks/astro/aws";
 
-export interface AstroProps extends FrameworkSiteProps {
+/** The Node deploy target for the Lambda Web Function server (the default). */
+export const ASTRO_WEB_TARGET_SPECIFIER = "@alchemy.run/frontend-frameworks/astro/node";
+
+export type AstroProps = FrameworkSiteProps<{
   // Astro is configured in YOUR `astro.config.*`, which loads natively —
   // this resource only deploys it. The `astro` bag is a deploy-time
   // overlay merged OVER the file for values a config file cannot hold
@@ -61,13 +62,20 @@ export interface AstroProps extends FrameworkSiteProps {
    * to `astro: { output: "static" }` sites.
    */
   spa?: boolean;
-}
+}>;
 
 /**
  * Deploy an [Astro](https://astro.build) application to AWS: the server
- * bundle on a streaming Lambda Function URL, static assets (prerendered
- * pages included) in S3, and a CloudFront distribution whose edge router
- * serves uploaded files from S3 and forwards everything else to the server.
+ * bundle on a Lambda Web Function, static assets (prerendered pages
+ * included) in S3, and a CloudFront distribution whose edge router serves
+ * uploaded files from S3 and forwards everything else to the server.
+ *
+ * The server runs on a Lambda Web Function: the framework's Node server
+ * (built with the `@alchemy.run/frontend-frameworks/astro/node` deploy
+ * target) serves many requests per environment and streams responses. Set
+ * `server: "function"` to use a Lambda Function behind a streaming Function
+ * URL instead, built with the `/aws` target below, for Regions without Web
+ * Functions.
  *
  * The build runs through `@alchemy.run/frontend-frameworks/astro` with the
  * `@alchemy.run/frontend-frameworks/astro/aws` deploy target (a wrangler-free
@@ -136,7 +144,7 @@ export interface AstroProps extends FrameworkSiteProps {
  *
  * @resource
  */
-export const Astro = (id: string, props: InputProps<AstroProps> = {}) => {
+export const Astro = (id: string, props: InputProps<AstroProps, "server"> = {}) => {
   const p = props as AstroProps;
   // Server output is the documented default: astro's own zero-config
   // default is `"static"`. The inline config merges OVER the project's
@@ -147,8 +155,8 @@ export const Astro = (id: string, props: InputProps<AstroProps> = {}) => {
     name: "Astro",
     framework: ASTRO_FRAMEWORK_SPECIFIER,
     target: ASTRO_AWS_TARGET_SPECIFIER,
+    webTarget: ASTRO_WEB_TARGET_SPECIFIER,
     options: { astro: { ...p.astro, output }, config: p.config },
-    static:
-      output === "static" ? { spa: p.spa, errorPage: p.errorPage } : undefined,
+    static: output === "static" ? { spa: p.spa, errorPage: p.errorPage } : undefined,
   }).pipe(Namespace.push(id));
 };

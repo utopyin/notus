@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
+import { inChatbotRegion } from "./internal.ts";
 
 /**
  * Shared scaffolding for AWS Chatbot HTTP bindings.
@@ -9,6 +9,9 @@ import { isBindingHost } from "../Lambda/Function.ts";
  * thin `Layer.effect(Cap, makeChatbotAccountHttpBinding({ … }))` over the
  * builder below. Everything except the operation and the IAM action list is
  * boilerplate.
+ *
+ * Chatbot is offered in only four regions, so every operation runs through
+ * {@link inChatbotRegion} (ambient region when supported, else `us-east-2`).
  *
  * All Chatbot management operations bound here are account-scoped: the
  * chat-identity and account-preference IAM actions do not support
@@ -23,25 +26,22 @@ export const makeChatbotAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
-        return yield* op((request ?? {}) as I);
+        return yield* op((request ?? {}) as I).pipe(inChatbotRegion);
       });
     });
   });

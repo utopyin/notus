@@ -2,7 +2,7 @@ import type * as cloudwatch from "@distilled.cloud/aws/cloudwatch";
 import type * as Effect from "effect/Effect";
 import type * as Sink from "effect/Sink";
 import * as Binding from "../../Binding.ts";
-import type { BatchRetryExhaustedError } from "../internal/BatchedSink.ts";
+import type { BatchRetryExhaustedError } from "../../Util/BatchedSink.ts";
 
 /**
  * A raw `MetricDatum` as accepted by `PutMetricData`. Callers stay in control
@@ -62,16 +62,7 @@ export interface MetricSink extends Binding.Service<
   "AWS.CloudWatch.MetricSink",
   (
     props: MetricSinkProps,
-  ) => Effect.Effect<
-    Sink.Sink<
-      void,
-      MetricSinkDatum,
-      readonly MetricSinkDatum[],
-      MetricSinkError
-    >
-  >
+  ) => Effect.Effect<Sink.Sink<void, MetricSinkDatum, readonly MetricSinkDatum[], MetricSinkError>>
 > {}
 
-export const MetricSink = Binding.Service<MetricSink>(
-  "AWS.CloudWatch.MetricSink",
-);
+export const MetricSink = Binding.Service<MetricSink>("AWS.CloudWatch.MetricSink");

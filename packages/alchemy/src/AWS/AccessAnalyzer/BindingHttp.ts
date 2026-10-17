@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Analyzer } from "./Analyzer.ts";
 
 /**
@@ -18,12 +17,7 @@ import type { Analyzer } from "./Analyzer.ts";
  * callable injects the bound {@link Analyzer}'s ARN as `analyzerArn` and the
  * deploy-time half grants `actions` on the analyzer ARN.
  */
-export const makeAnalyzerScopedHttpBinding = <
-  I extends { analyzerArn: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeAnalyzerScopedHttpBinding = <I extends { analyzerArn: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.AccessAnalyzer.ListFindingsV2`. */
   tag: string;
   /** The distilled operation; `analyzerArn` is injected from the analyzer. */
@@ -32,23 +26,20 @@ export const makeAnalyzerScopedHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (analyzer: Analyzer) {
       const AnalyzerArn = yield* analyzer.analyzerArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${analyzer}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [Output.interpolate`${analyzer.analyzerArn}`],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${analyzer})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [Output.interpolate`${analyzer.analyzerArn}`],
+            },
+          ],
+        });
       }
       return Effect.fn(`${options.tag}(${analyzer.LogicalId})`)(function* (
         request?: Omit<I, "analyzerArn">,
@@ -76,22 +67,19 @@ export const makeAccessAnalyzerAccountHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: ["*"],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: ["*"],
+            },
+          ],
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

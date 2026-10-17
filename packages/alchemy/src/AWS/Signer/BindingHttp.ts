@@ -1,8 +1,7 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { PolicyStatement } from "../IAM/Policy.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
 import type { SigningProfile } from "./SigningProfile.ts";
 
 /**
@@ -20,10 +19,7 @@ import type { SigningProfile } from "./SigningProfile.ts";
  * target job ids chosen per request at runtime, so those bindings are
  * account-level and grant on `Resource: ["*"]`.
  */
-const profilePolicyStatement = (
-  profile: SigningProfile,
-  actions: readonly string[],
-) => ({
+const profilePolicyStatement = (profile: SigningProfile, actions: readonly string[]) => ({
   Effect: "Allow" as const,
   Action: [...actions],
   Resource: [
@@ -39,12 +35,7 @@ const profilePolicyStatement = (
  * and the deploy-time half grants `actions` on the profile ARN (and its
  * version-qualified pattern).
  */
-export const makeSignerProfileHttpBinding = <
-  I extends { profileName?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeSignerProfileHttpBinding = <I extends { profileName?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.Signer.StartSigningJob`. */
   tag: string;
   /** The distilled operation; `profileName` is injected from the profile. */
@@ -53,20 +44,15 @@ export const makeSignerProfileHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (profile: SigningProfile) {
       // Outputs yield a DEFERRED effect — resolve again per invocation below.
       const ProfileName = yield* profile.profileName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${profile}))`({
-            policyStatements: [
-              profilePolicyStatement(profile, options.actions),
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${profile})`({
+          policyStatements: [profilePolicyStatement(profile, options.actions)],
+        });
       }
       return Effect.fn(`${options.tag}(${profile.LogicalId})`)(function* (
         request: Omit<I, "profileName">,
@@ -97,23 +83,20 @@ export const makeSignerHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          const policyStatements: PolicyStatement[] = [
-            {
-              Effect: "Allow",
-              Action: [...options.actions],
-              Resource: ["*"],
-            },
-          ];
-          yield* host.bind`Allow(${host}, ${options.tag}())`({
-            policyStatements,
-          });
-        }
+        const policyStatements: PolicyStatement[] = [
+          {
+            Effect: "Allow",
+            Action: [...options.actions],
+            Resource: ["*"],
+          },
+        ];
+        yield* AWSBindings.bind`${options.tag}()`({
+          policyStatements,
+        });
       }
       return Effect.fn(options.tag)(function* (request?: I) {
         return yield* op((request ?? {}) as I);

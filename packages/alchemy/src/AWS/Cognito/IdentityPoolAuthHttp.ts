@@ -1,8 +1,7 @@
 import * as ci from "@distilled.cloud/aws/cognito-identity";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import { cognitoMethods } from "./BindingHttp.ts";
 import type { IdentityPool } from "./IdentityPool.ts";
 import {
@@ -20,33 +19,29 @@ import {
 export const IdentityPoolAuthHttp = Layer.effect(
   IdentityPoolAuth,
   Effect.gen(function* () {
-    const getId = yield* ci.getId;
-    const getCredentialsForIdentity = yield* ci.getCredentialsForIdentity;
-    const getOpenIdToken = yield* ci.getOpenIdToken;
-    const unlinkIdentity = yield* ci.unlinkIdentity;
+    const getId = yield* AWSBindings.withCredentials(ci.getId);
+    const getCredentialsForIdentity = yield* AWSBindings.withCredentials(
+      ci.getCredentialsForIdentity,
+    );
+    const getOpenIdToken = yield* AWSBindings.withCredentials(ci.getOpenIdToken);
+    const unlinkIdentity = yield* AWSBindings.withCredentials(ci.unlinkIdentity);
 
     return Effect.fn(function* <P extends IdentityPool>(pool: P) {
       const IdentityPoolId = yield* pool.identityPoolId;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          // No IAM is required for the public identity flows; the binding is
-          // recorded so the identity pool deploys before the function.
-          yield* host.bind`Allow(${host}, AWS.Cognito.IdentityPoolAuth(${pool}))`(
-            { policyStatements: [] },
-          );
-        }
+        // No IAM is required for the public identity flows; the binding is
+        // recorded so the identity pool deploys before the function.
+        yield* AWSBindings.bind`AWS.Cognito.IdentityPoolAuth(${pool})`({
+          policyStatements: [],
+        });
       }
-      const methods = cognitoMethods(
-        "AWS.Cognito.IdentityPoolAuth",
-        pool.LogicalId,
-      );
+      const methods = cognitoMethods("AWS.Cognito.IdentityPoolAuth", pool.LogicalId);
       const authClient: IdentityPoolAuthClient = {
         // optional-request operation stays bespoke (the helper's wrapped
         // methods take a required request object)
-        getId: Effect.fn(
-          `AWS.Cognito.IdentityPoolAuth.getId(${pool.LogicalId})`,
-        )(function* (request: GetIdRequest = {}) {
+        getId: Effect.fn(`AWS.Cognito.IdentityPoolAuth.getId(${pool.LogicalId})`)(function* (
+          request: GetIdRequest = {},
+        ) {
           return yield* getId({
             ...request,
             IdentityPoolId: yield* IdentityPoolId,

@@ -1,9 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Output from "../../Output.ts";
-import { isInstance } from "../EC2/Instance.ts";
-import { isTask } from "../ECS/Task.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { LoadBalancer } from "./LoadBalancer.ts";
 import type { TargetGroup } from "./TargetGroup.ts";
 import type { TrustStore } from "./TrustStore.ts";
@@ -31,18 +28,15 @@ const bindHost = (
 ) =>
   Effect.gen(function* () {
     if (!globalThis.__ALCHEMY_RUNTIME__) {
-      const host = yield* Binding.Host;
-      if (isBindingHost(host) || isTask(host) || isInstance(host)) {
-        yield* host.bind`Allow(${host}, ${tag}(${resource}))`({
-          policyStatements: [
-            {
-              Effect: "Allow",
-              Action: [...actions],
-              Resource: [iamResource === "*" ? "*" : iamResource],
-            },
-          ],
-        });
-      }
+      yield* AWSBindings.bind`${tag}(${resource})`({
+        policyStatements: [
+          {
+            Effect: "Allow",
+            Action: [...actions],
+            Resource: [iamResource === "*" ? "*" : iamResource],
+          },
+        ],
+      });
     }
   });
 
@@ -73,7 +67,7 @@ export const makeTargetGroupHttpBinding = <
   resource?: "target-group" | "*";
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (targetGroup: TargetGroup) {
       const TargetGroupArn = yield* targetGroup.targetGroupArn;
@@ -81,9 +75,7 @@ export const makeTargetGroupHttpBinding = <
         options.tag,
         options.actions,
         targetGroup,
-        options.resource === "*"
-          ? "*"
-          : Output.interpolate`${targetGroup.targetGroupArn}`,
+        options.resource === "*" ? "*" : Output.interpolate`${targetGroup.targetGroupArn}`,
       );
       return Effect.fn(`${options.tag}(${targetGroup.LogicalId})`)(function* (
         request: Omit<I, "TargetGroupArn">,
@@ -123,7 +115,7 @@ export const makeLoadBalancerHttpBinding = <
   resource?: "load-balancer" | "*";
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (loadBalancer: LoadBalancer) {
       const LoadBalancerArn = yield* loadBalancer.loadBalancerArn;
@@ -131,9 +123,7 @@ export const makeLoadBalancerHttpBinding = <
         options.tag,
         options.actions,
         loadBalancer,
-        options.resource === "*"
-          ? "*"
-          : Output.interpolate`${loadBalancer.loadBalancerArn}`,
+        options.resource === "*" ? "*" : Output.interpolate`${loadBalancer.loadBalancerArn}`,
       );
       return Effect.fn(`${options.tag}(${loadBalancer.LogicalId})`)(function* (
         request?: Omit<I, "LoadBalancerArn">,
@@ -152,12 +142,7 @@ export const makeLoadBalancerHttpBinding = <
  * the deploy-time half grants `actions` on the trust-store ARN (mTLS
  * `GetTrustStore*` reads support resource-level permissions).
  */
-export const makeTrustStoreHttpBinding = <
-  I extends { TrustStoreArn?: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeTrustStoreHttpBinding = <I extends { TrustStoreArn?: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.ELBv2.GetTrustStoreCaCertificatesBundle`. */
   tag: string;
   /** The distilled operation; `TrustStoreArn` is injected from the store. */
@@ -166,7 +151,7 @@ export const makeTrustStoreHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (trustStore: TrustStore) {
       const TrustStoreArn = yield* trustStore.trustStoreArn;

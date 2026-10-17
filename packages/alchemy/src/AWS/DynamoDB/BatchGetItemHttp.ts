@@ -1,19 +1,13 @@
 import * as DynamoDB from "@distilled.cloud/aws/dynamodb";
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import * as Layer from "effect/Layer";
-import { isBindingHost } from "../Lambda/Function.ts";
-import {
-  BatchGetItem,
-  type BatchGetItemRequest,
-  type BatchGetItemTables,
-} from "./BatchGetItem.ts";
+import * as AWSBindings from "../AWSBindings.ts";
+import { BatchGetItem, type BatchGetItemRequest, type BatchGetItemTables } from "./BatchGetItem.ts";
+import { grantTables, tablesRegion } from "./BindingHttp.ts";
 
 export const BatchGetItemHttp = Layer.effect(
   BatchGetItem,
   Effect.gen(function* () {
-    const batchGetItem = yield* DynamoDB.batchGetItem;
-
     return Effect.fn(function* (...tables: BatchGetItemTables) {
       const sortedTables = sortTables(tables);
       const tableNames = new Map(
@@ -28,30 +22,26 @@ export const BatchGetItemHttp = Layer.effect(
         const TableName = tableNames.get(tableId);
         if (!TableName) {
           return yield* Effect.die(
-            new Error(
-              `BatchGetItem request references unbound table '${tableId}'`,
-            ),
+            new Error(`BatchGetItem request references unbound table '${tableId}'`),
           );
         }
         return yield* TableName;
       });
 
-      if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.DynamoDB.BatchGetItem(${sortedTables}))`(
-            {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: ["dynamodb:BatchGetItem"],
-                  Resource: sortedTables.map((table) => table.tableArn),
-                },
-              ],
-            },
-          );
-        }
-      }
+      yield* grantTables(
+        `AWS.DynamoDB.BatchGetItem(${sortedTables.map((table) => table.LogicalId).join(", ")})`,
+        () => [
+          {
+            Effect: "Allow",
+            Action: ["dynamodb:BatchGetItem"],
+            Resource: sortedTables.map((table) => table.tableArn),
+          },
+        ],
+      );
+      const batchGetItem = yield* AWSBindings.withCredentials(
+        DynamoDB.batchGetItem,
+        tablesRegion(sortedTables),
+      );
 
       return Effect.fn(`AWS.DynamoDB.BatchGetItem(${sortedTables})`)(function* (
         request: BatchGetItemRequest,
@@ -74,10 +64,6 @@ export const BatchGetItemHttp = Layer.effect(
 );
 
 const sortTables = (tables: BatchGetItemTables) =>
-  [
-    ...new Map(
-      tables.map((table) => [table.LogicalId, table] as const),
-    ).values(),
-  ].sort((a, b) =>
+  [...new Map(tables.map((table) => [table.LogicalId, table] as const)).values()].sort((a, b) =>
     a.LogicalId.localeCompare(b.LogicalId),
   ) as BatchGetItemTables;

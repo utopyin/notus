@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { AnomalyMonitor } from "./AnomalyMonitor.ts";
 import { pinCe } from "./common.ts";
 import type { CostCategory } from "./CostCategory.ts";
@@ -48,28 +47,21 @@ export const makeCostExplorerHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* pinCe(options.operation);
+    const op = yield* options.operation.pipe(pinCe, AWSBindings.withCredentials);
 
     return Effect.fn(function* () {
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.CostExplorer.${options.capability}())`(
+        yield* AWSBindings.bind`AWS.CostExplorer.${options.capability}()`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(`AWS.CostExplorer.${options.capability}`)(function* (
-        request?: I,
-      ) {
+      return Effect.fn(`AWS.CostExplorer.${options.capability}`)(function* (request?: I) {
         // The region must also be pinned at the call site: the yield-time
         // snapshot is only a fallback — the calling fiber's ambient Region
         // (the host Function's own region) wins over it.
@@ -102,29 +94,24 @@ export const makeAnomalyMonitorHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* pinCe(options.operation);
+    const op = yield* options.operation.pipe(pinCe, AWSBindings.withCredentials);
 
     return Effect.fn(function* (monitor: AnomalyMonitor) {
       const MonitorArn = yield* monitor.monitorArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.CostExplorer.${options.capability}(${monitor}))`(
+        yield* AWSBindings.bind`AWS.CostExplorer.${options.capability}(${monitor})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [monitor.monitorArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [monitor.monitorArn],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.CostExplorer.${options.capability}(${monitor.LogicalId})`,
-      )(function* (request: Omit<I, "MonitorArn">) {
+      return Effect.fn(`AWS.CostExplorer.${options.capability}(${monitor.LogicalId})`)(function* (
+        request: Omit<I, "MonitorArn">,
+      ) {
         // Call-site region pin — see makeCostExplorerHttpBinding above.
         return yield* pinCe(
           op({
@@ -162,29 +149,24 @@ export const makeCostCategoryHttpBinding = <
   operation: Effect.Effect<(input: I) => Effect.Effect<A, E>, never, R>;
 }) =>
   Effect.gen(function* () {
-    const op = yield* pinCe(options.operation);
+    const op = yield* options.operation.pipe(pinCe, AWSBindings.withCredentials);
 
     return Effect.fn(function* (category: CostCategory) {
       const CostCategoryArn = yield* category.costCategoryArn;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.CostExplorer.${options.capability}(${category}))`(
+        yield* AWSBindings.bind`AWS.CostExplorer.${options.capability}(${category})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: ["*"],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: ["*"],
             },
-          );
-        }
+          ],
+        });
       }
-      return Effect.fn(
-        `AWS.CostExplorer.${options.capability}(${category.LogicalId})`,
-      )(function* (request?: Omit<I, "CostCategoryArn">) {
+      return Effect.fn(`AWS.CostExplorer.${options.capability}(${category.LogicalId})`)(function* (
+        request?: Omit<I, "CostCategoryArn">,
+      ) {
         // Call-site region pin — see makeCostExplorerHttpBinding above.
         return yield* pinCe(
           op({

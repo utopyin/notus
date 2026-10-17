@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type { Input } from "../../Input.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { AddressList } from "./AddressList.ts";
 import type { Archive } from "./Archive.ts";
 
@@ -21,18 +20,15 @@ const registerHostPolicy = Effect.fn(function* (
   actions: readonly string[],
 ) {
   if (!globalThis.__ALCHEMY_RUNTIME__) {
-    const host = yield* Binding.Host;
-    if (isBindingHost(host)) {
-      yield* host.bind`Allow(${host}, ${tag}(${resource}))`({
-        policyStatements: [
-          {
-            Effect: "Allow",
-            Action: [...actions],
-            Resource: [arn],
-          },
-        ],
-      });
-    }
+    yield* AWSBindings.bind`${tag}(${resource})`({
+      policyStatements: [
+        {
+          Effect: "Allow",
+          Action: [...actions],
+          Resource: [arn],
+        },
+      ],
+    });
   }
 });
 
@@ -42,12 +38,7 @@ const registerHostPolicy = Effect.fn(function* (
  * half grants `actions` on the bound list's ARN, and the runtime half
  * injects the list's id into every request.
  */
-export const makeAddressListHttpBinding = <
-  I extends { AddressListId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeAddressListHttpBinding = <I extends { AddressListId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.MailManager.GetMemberOfAddressList`. */
   tag: string;
   /** The distilled operation. */
@@ -56,16 +47,11 @@ export const makeAddressListHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (list: AddressList) {
       const AddressListId = yield* list.addressListId;
-      yield* registerHostPolicy(
-        options.tag,
-        list,
-        list.addressListArn,
-        options.actions,
-      );
+      yield* registerHostPolicy(options.tag, list, list.addressListArn, options.actions);
       return Effect.fn(`${options.tag}(${list.LogicalId})`)(function* (
         request: Omit<I, "AddressListId">,
       ) {
@@ -90,18 +76,11 @@ export const makeAddressListJobHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (list: AddressList) {
-      yield* registerHostPolicy(
-        options.tag,
-        list,
-        list.addressListArn,
-        options.actions,
-      );
-      return Effect.fn(`${options.tag}(${list.LogicalId})`)(function* (
-        request: I,
-      ) {
+      yield* registerHostPolicy(options.tag, list, list.addressListArn, options.actions);
+      return Effect.fn(`${options.tag}(${list.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });
@@ -113,12 +92,7 @@ export const makeAddressListJobHttpBinding = <I, A, E, R>(options: {
  * grants `actions` on the bound archive's ARN, and the runtime half injects
  * the archive's id into every request.
  */
-export const makeArchiveHttpBinding = <
-  I extends { ArchiveId: string },
-  A,
-  E,
-  R,
->(options: {
+export const makeArchiveHttpBinding = <I extends { ArchiveId: string }, A, E, R>(options: {
   /** Fully-qualified binding tag, e.g. `AWS.MailManager.StartArchiveSearch`. */
   tag: string;
   /** The distilled operation. */
@@ -127,16 +101,11 @@ export const makeArchiveHttpBinding = <
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (archive: Archive) {
       const ArchiveId = yield* archive.archiveId;
-      yield* registerHostPolicy(
-        options.tag,
-        archive,
-        archive.archiveArn,
-        options.actions,
-      );
+      yield* registerHostPolicy(options.tag, archive, archive.archiveArn, options.actions);
       return Effect.fn(`${options.tag}(${archive.LogicalId})`)(function* (
         request: Omit<I, "ArchiveId">,
       ) {
@@ -162,18 +131,11 @@ export const makeArchiveTaskHttpBinding = <I, A, E, R>(options: {
   actions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (archive: Archive) {
-      yield* registerHostPolicy(
-        options.tag,
-        archive,
-        archive.archiveArn,
-        options.actions,
-      );
-      return Effect.fn(`${options.tag}(${archive.LogicalId})`)(function* (
-        request: I,
-      ) {
+      yield* registerHostPolicy(options.tag, archive, archive.archiveArn, options.actions);
+      return Effect.fn(`${options.tag}(${archive.LogicalId})`)(function* (request: I) {
         return yield* op(request);
       });
     });

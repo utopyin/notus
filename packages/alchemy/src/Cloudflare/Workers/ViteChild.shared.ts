@@ -6,8 +6,8 @@ import type {
   Workflow,
 } from "@alchemy.run/cloudflare-runtime/core";
 import type { BundleOutput } from "../../Bundle/Bundle.ts";
-import type { WorkerBinding } from "./WorkerBinding.ts";
 import type { WorkerAssetsConfig, WorkerSourceDescriptor } from "./Worker.ts";
+import type { WorkerBinding } from "./WorkerBinding.ts";
 
 /**
  * Default first port of the local dev-server range. Vite and
@@ -20,11 +20,6 @@ export const DEFAULT_DEV_PORT = 1337;
 export interface ViteChildConfig {
   rootDir: string;
   publicUrl: string;
-  /**
-   * The host WorkerProxy's shared secret, for server-mode sources whose
-   * workerd is exposed directly behind the proxy (see `DevContext.worker`).
-   */
-  proxySharedSecret: string;
   accountId: string;
   storageDirectory: string;
   stack: { name: string; stage: string };
@@ -52,6 +47,7 @@ export interface ViteChildConfig {
     workflows: Workflow[];
     hyperdrives: Record<string, Required<HyperdriveOrigin>>;
     queueConsumers: QueueConsumer[];
+    crons: RuntimeWorker["crons"];
     assets: RuntimeWorker["assets"];
   };
 }

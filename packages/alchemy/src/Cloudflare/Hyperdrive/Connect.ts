@@ -4,6 +4,7 @@ import * as Redacted from "effect/Redacted";
 import * as Binding from "../../Binding.ts";
 import type { RuntimeContext } from "../../RuntimeContext.ts";
 import type { Connection } from "./Connection.ts";
+import type { ConnectionLookup } from "./ConnectionLookup.ts";
 
 /**
  * A typed accessor for a Cloudflare Hyperdrive runtime binding inside a
@@ -22,7 +23,8 @@ import type { Connection } from "./Connection.ts";
  * @category Storage & Databases
  */
 /**
- * Bind a {@link Connection} to a Worker and obtain the Effect-native
+ * Bind a {@link Connection} (or an existing configuration from
+ * {@link lookup}) to a Worker and obtain the Effect-native
  * Hyperdrive client (connection string, host, port, …).
  *
  * `Connect` is a single identifier that is simultaneously the binding's Context
@@ -41,12 +43,10 @@ import type { Connection } from "./Connection.ts";
 export interface Connect extends Binding.Service<
   Connect,
   "Cloudflare.Hyperdrive.Connect",
-  (connection: Connection) => Effect.Effect<ConnectClient>
+  (connection: Connection | ConnectionLookup) => Effect.Effect<ConnectClient>
 > {}
 
-export const Connect = Binding.Service<Connect>(
-  "Cloudflare.Hyperdrive.Connect",
-);
+export const Connect = Binding.Service<Connect>("Cloudflare.Hyperdrive.Connect");
 
 export interface ConnectClient {
   /**
@@ -57,11 +57,7 @@ export interface ConnectClient {
   /**
    * A valid DB connection string for use with a driver/ORM.
    */
-  connectionString: Effect.Effect<
-    Redacted.Redacted<string>,
-    never,
-    RuntimeContext
-  >;
+  connectionString: Effect.Effect<Redacted.Redacted<string>, never, RuntimeContext>;
   /**
    * Hostname valid only within the current Worker invocation.
    */

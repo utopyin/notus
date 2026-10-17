@@ -1,7 +1,6 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
 import type * as Output from "../../Output.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { BrowserCustom } from "./BrowserCustom.ts";
 import type { CodeInterpreter } from "./CodeInterpreter.ts";
 import type { Memory } from "./Memory.ts";
@@ -24,11 +23,7 @@ import type { Runtime } from "./Runtime.ts";
  */
 
 /** The AgentCore resources data-plane bindings can scope to. */
-export type AgentCoreBindable =
-  | Memory
-  | CodeInterpreter
-  | BrowserCustom
-  | Runtime;
+export type AgentCoreBindable = Memory | CodeInterpreter | BrowserCustom | Runtime;
 
 /**
  * Build the impl Effect for a single-operation AgentCore data-plane binding.
@@ -58,27 +53,22 @@ export const makeAgentCoreHttpBinding = <
   arns: (resource: Res) => readonly Output.Output<string>[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (resource: Res) {
       const Identifier = yield* options.identifier(resource);
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, ${options.tag}(${resource}))`({
-            policyStatements: [
-              {
-                Effect: "Allow",
-                Action: [...options.actions],
-                Resource: [...options.arns(resource)],
-              },
-            ],
-          });
-        }
+        yield* AWSBindings.bind`${options.tag}(${resource})`({
+          policyStatements: [
+            {
+              Effect: "Allow",
+              Action: [...options.actions],
+              Resource: [...options.arns(resource)],
+            },
+          ],
+        });
       }
-      return Effect.fn(`${options.tag}(${resource.LogicalId})`)(function* (
-        request?: Omit<I, K>,
-      ) {
+      return Effect.fn(`${options.tag}(${resource.LogicalId})`)(function* (request?: Omit<I, K>) {
         return yield* op({
           ...request,
           [options.requestKey]: yield* Identifier,

@@ -1,34 +1,20 @@
 /** @effect-diagnostics layerMergeAllWithDependencies:off */
-import {
-  isRetryable,
-  isThrottlingError,
-  isTransientError,
-} from "@distilled.cloud/aws/Category";
-import {
-  capped,
-  jittered,
-  Retry,
-  type Factory as RetryFactory,
-} from "@distilled.cloud/aws/Retry";
+import { isRetryable, isThrottlingError, isTransientError } from "@distilled.cloud/aws/Category";
+import { capped, jittered, Retry, type Factory as RetryFactory } from "@distilled.cloud/aws/Retry";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { pipe } from "effect/Function";
+import * as HttpClientError from "effect/http/HttpClientError";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import { CredentialsStoreLive } from "../Auth/Credentials.ts";
 import * as Command from "../Command/index.ts";
 import { DockerLive } from "../Docker/Docker.ts";
 import { KeyPair, KeyPairProvider } from "../KeyPair.ts";
 import * as ProviderLayer from "../Local/ProviderLayer.ts";
-import { defaultProviderMode } from "../ProviderMode.ts";
-import {
-  captureAwsEnvironment,
-  pinCollectionEnvironment,
-} from "./Local/ProviderContext.ts";
-import { flociDual, flociServices } from "./Local/FlociServices.ts";
 import * as Provider from "../Provider.ts";
+import { defaultProviderMode } from "../ProviderMode.ts";
 import { Random, RandomProvider } from "../Random.ts";
 import {
   Server as WebsiteServer,
@@ -90,11 +76,11 @@ import * as DataSync from "./DataSync/index.ts";
 import * as DataZone from "./DataZone/index.ts";
 import * as DAX from "./DAX/index.ts";
 import * as Deadline from "./Deadline/index.ts";
+import * as Detective from "./Detective/index.ts";
+import * as DevOpsGuru from "./DevOpsGuru/index.ts";
 import * as DirectoryService from "./DirectoryService/index.ts";
 import * as DLM from "./DLM/index.ts";
 import * as DMS from "./DMS/index.ts";
-import * as Detective from "./Detective/index.ts";
-import * as DevOpsGuru from "./DevOpsGuru/index.ts";
 import * as DocDB from "./DocDB/index.ts";
 import * as DocDBElastic from "./DocDBElastic/index.ts";
 import * as DSQL from "./DSQL/index.ts";
@@ -112,12 +98,12 @@ import * as EMRContainers from "./EMRContainers/index.ts";
 import * as EMRServerless from "./EMRServerless/index.ts";
 import * as Endpoint from "./Endpoint.ts";
 import * as EntityResolution from "./EntityResolution/index.ts";
-import { Default as DefaultEnvironment } from "./Environment.ts";
+import { providedOrDefault } from "./Environment.ts";
 import * as EventBridge from "./EventBridge/index.ts";
-import * as FIS from "./FIS/index.ts";
-import * as FMS from "./FMS/index.ts";
 import * as FinSpace from "./FinSpace/index.ts";
 import * as Firehose from "./Firehose/index.ts";
+import * as FIS from "./FIS/index.ts";
+import * as FMS from "./FMS/index.ts";
 import * as Forecast from "./Forecast/index.ts";
 import * as FraudDetector from "./FraudDetector/index.ts";
 import * as FSx from "./FSx/index.ts";
@@ -152,20 +138,22 @@ import * as LakeFormation from "./LakeFormation/index.ts";
 import * as Lambda from "./Lambda/index.ts";
 import * as LexV2 from "./LexV2/index.ts";
 import * as LicenseManager from "./LicenseManager/index.ts";
+import { flociDual, flociServices } from "./Local/FlociServices.ts";
+import { captureAwsEnvironment, pinCollectionEnvironment } from "./Local/ProviderContext.ts";
 import * as Location from "./Location/index.ts";
 import * as Logs from "./Logs/index.ts";
+import * as Macie2 from "./Macie2/index.ts";
+import * as MailManager from "./MailManager/index.ts";
 import * as MediaConnect from "./MediaConnect/index.ts";
 import * as MediaConvert from "./MediaConvert/index.ts";
 import * as MediaLive from "./MediaLive/index.ts";
 import * as MediaPackageV2 from "./MediaPackageV2/index.ts";
 import * as MediaTailor from "./MediaTailor/index.ts";
 import * as MedicalImaging from "./MedicalImaging/index.ts";
+import * as MemoryDB from "./MemoryDB/index.ts";
 import * as MQ from "./MQ/index.ts";
 import * as MWAA from "./MWAA/index.ts";
 import * as MWAAServerless from "./MWAAServerless/index.ts";
-import * as Macie2 from "./Macie2/index.ts";
-import * as MailManager from "./MailManager/index.ts";
-import * as MemoryDB from "./MemoryDB/index.ts";
 import * as Neptune from "./Neptune/index.ts";
 import * as NeptuneGraph from "./NeptuneGraph/index.ts";
 import * as NetworkFirewall from "./NetworkFirewall/index.ts";
@@ -176,8 +164,8 @@ import * as ObservabilityAdmin from "./ObservabilityAdmin/index.ts";
 import * as Omics from "./Omics/index.ts";
 import * as OpenSearch from "./OpenSearch/index.ts";
 import * as OpenSearchServerless from "./OpenSearchServerless/index.ts";
-import * as OSIS from "./OSIS/index.ts";
 import * as Organizations from "./Organizations/index.ts";
+import * as OSIS from "./OSIS/index.ts";
 import * as PaymentCryptography from "./PaymentCryptography/index.ts";
 import * as Personalize from "./Personalize/index.ts";
 import * as PinpointSMSVoiceV2 from "./PinpointSMSVoiceV2/index.ts";
@@ -187,15 +175,15 @@ import * as QApps from "./QApps/index.ts";
 import * as QBusiness from "./QBusiness/index.ts";
 import * as QuickSight from "./QuickSight/index.ts";
 import * as RAM from "./RAM/index.ts";
-import * as RDS from "./RDS/index.ts";
 import * as Rbin from "./Rbin/index.ts";
-import * as RePostSpace from "./RePostSpace/index.ts";
+import * as RDS from "./RDS/index.ts";
 import * as Redshift from "./Redshift/index.ts";
 import * as RedshiftServerless from "./RedshiftServerless/index.ts";
+import * as Region from "./Region.ts";
+import * as RePostSpace from "./RePostSpace/index.ts";
 import * as ResourceExplorer from "./ResourceExplorer/index.ts";
 import * as ResourceGroups from "./ResourceGroups/index.ts";
 import * as RolesAnywhere from "./RolesAnywhere/index.ts";
-import * as Region from "./Region.ts";
 import * as Route53 from "./Route53/index.ts";
 import * as Route53Profiles from "./Route53Profiles/index.ts";
 import * as Route53Resolver from "./Route53Resolver/index.ts";
@@ -235,10 +223,41 @@ import * as WAFv2 from "./WAFv2/index.ts";
 import * as Website from "./Website/index.ts";
 import * as XRay from "./XRay/index.ts";
 
-export class Providers extends Provider.ProviderCollection<Providers>()(
-  "AWS",
-) {}
+export class Providers extends Provider.ProviderCollection<Providers>()("AWS") {}
 
+/**
+ * Every AWS provider, pinned to one AWS environment (account, region and
+ * credentials).
+ *
+ * By default the environment resolves lazily from the configured profile, CI
+ * credentials or the ambient AWS environment. Provide your own
+ * `AWSEnvironment` to deploy with another credential source, e.g. a role
+ * assumed at runtime; provide the same layer to {@link state} so resources and
+ * state share it.
+ *
+ * ```typescript
+ * const environment = Layer.effect(
+ *   AWS.AWSEnvironment,
+ *   Effect.gen(function* () {
+ *     const session = yield* assumeDeployRole;
+ *     return Effect.succeed({
+ *       accountId: session.accountId,
+ *       region: session.region,
+ *       credentials: session.credentials,
+ *     });
+ *   }),
+ * );
+ *
+ * const Stack = Alchemy.Stack(
+ *   "my-stack",
+ *   {
+ *     providers: AWS.providers().pipe(Layer.provide(environment)),
+ *     state: AWS.state({ bucketName: "my-company-state" }).pipe(Layer.provide(environment)),
+ *   },
+ *   program,
+ * );
+ * ```
+ */
 export const providers = () =>
   Layer.effect(
     Providers,
@@ -504,11 +523,16 @@ export const providers = () =>
         EC2.RouteTable,
         EC2.RouteTableAssociation,
         EC2.SecurityGroup,
+        EC2.DefaultSecurityGroup,
         EC2.SecurityGroupRule,
         EC2.Snapshot,
         EC2.Subnet,
         EC2.Volume,
         EC2.VolumeAttachment,
+        EC2.ClientVpnEndpoint,
+        EC2.ClientVpnTargetNetworkAssociation,
+        EC2.ClientVpnAuthorizationRule,
+        EC2.ClientVpnRoute,
         EC2.Vpc,
         EC2.VpcEndpoint,
         EC2.VpcPeeringConnection,
@@ -686,6 +710,9 @@ export const providers = () =>
         Lambda.MicrovmImage,
         Lambda.NetworkConnector,
         Lambda.Permission,
+        Lambda.WebFunction,
+        Lambda.WebFunctionEndpoint,
+        Lambda.WebFunctionPermission,
         LexV2.Bot,
         LexV2.BotAlias,
         LexV2.BotLocale,
@@ -983,9 +1010,13 @@ export const providers = () =>
           ACMPCA.PermissionProvider(),
           AppFlow.ConnectorProfileProvider(),
           AppFlow.FlowProvider(),
-          AppIntegrations.ApplicationProvider(),
-          AppIntegrations.DataIntegrationProvider(),
-          AppIntegrations.EventIntegrationProvider(),
+          flociDual(AppIntegrations.Application, () => AppIntegrations.ApplicationProvider()),
+          flociDual(AppIntegrations.DataIntegration, () =>
+            AppIntegrations.DataIntegrationProvider(),
+          ),
+          flociDual(AppIntegrations.EventIntegration, () =>
+            AppIntegrations.EventIntegrationProvider(),
+          ),
           B2BI.CapabilityProvider(),
           B2BI.PartnershipProvider(),
           B2BI.ProfileProvider(),
@@ -993,91 +1024,57 @@ export const providers = () =>
           BedrockDataAutomation.BlueprintProvider(),
           BedrockDataAutomation.DataAutomationLibraryProvider(),
           BedrockDataAutomation.DataAutomationProjectProvider(),
-          Config.AggregationAuthorizationProvider(),
-          Config.ConfigRuleProvider(),
-          Config.ConfigurationRecorderProvider(),
-          Config.DeliveryChannelProvider(),
-          Config.RetentionConfigurationProvider(),
+          flociDual(Config.AggregationAuthorization, () =>
+            Config.AggregationAuthorizationProvider(),
+          ),
+          flociDual(Config.ConfigRule, () => Config.ConfigRuleProvider()),
+          flociDual(Config.ConfigurationRecorder, () => Config.ConfigurationRecorderProvider()),
+          flociDual(Config.DeliveryChannel, () => Config.DeliveryChannelProvider()),
+          flociDual(Config.RetentionConfiguration, () => Config.RetentionConfigurationProvider()),
         ),
         Layer.mergeAll(
-          flociDual(ACM.AccountConfiguration, () =>
-            ACM.AccountConfigurationProvider(),
-          ),
+          flociDual(ACM.AccountConfiguration, () => ACM.AccountConfigurationProvider()),
           flociDual(ACM.Certificate, () => ACM.CertificateProvider()),
-          AMP.AlertManagerDefinitionProvider(),
-          AMP.AnomalyDetectorProvider(),
-          AMP.LoggingConfigurationProvider(),
-          AMP.QueryLoggingConfigurationProvider(),
-          AMP.ResourcePolicyProvider(),
-          AMP.RuleGroupsNamespaceProvider(),
-          AMP.ScraperProvider(),
-          AMP.ScraperLoggingConfigurationProvider(),
-          AMP.WorkspaceProvider(),
+          flociDual(AMP.AlertManagerDefinition, () => AMP.AlertManagerDefinitionProvider()),
+          flociDual(AMP.AnomalyDetector, () => AMP.AnomalyDetectorProvider()),
+          flociDual(AMP.LoggingConfiguration, () => AMP.LoggingConfigurationProvider()),
+          flociDual(AMP.QueryLoggingConfiguration, () => AMP.QueryLoggingConfigurationProvider()),
+          flociDual(AMP.ResourcePolicy, () => AMP.ResourcePolicyProvider()),
+          flociDual(AMP.RuleGroupsNamespace, () => AMP.RuleGroupsNamespaceProvider()),
+          flociDual(AMP.Scraper, () => AMP.ScraperProvider()),
+          flociDual(AMP.ScraperLoggingConfiguration, () =>
+            AMP.ScraperLoggingConfigurationProvider(),
+          ),
+          flociDual(AMP.Workspace, () => AMP.WorkspaceProvider()),
           flociDual(ApiGateway.Account, () => ApiGateway.AccountProvider()),
           flociDual(ApiGateway.ApiKey, () => ApiGateway.ApiKeyProvider()),
-          flociDual(ApiGateway.Authorizer, () =>
-            ApiGateway.AuthorizerProvider(),
-          ),
-          flociDual(ApiGateway.BasePathMapping, () =>
-            ApiGateway.BasePathMappingProvider(),
-          ),
-          flociDual(ApiGateway.DeploymentResource, () =>
-            ApiGateway.DeploymentProvider(),
-          ),
-          flociDual(ApiGateway.DomainName, () =>
-            ApiGateway.DomainNameProvider(),
-          ),
-          flociDual(ApiGateway.GatewayResponse, () =>
-            ApiGateway.GatewayResponseProvider(),
-          ),
-          flociDual(ApiGateway.MethodResource, () =>
-            ApiGateway.MethodProvider(),
-          ),
-          flociDual(ApiGateway.GatewayResource, () =>
-            ApiGateway.ResourceProvider(),
-          ),
+          flociDual(ApiGateway.Authorizer, () => ApiGateway.AuthorizerProvider()),
+          flociDual(ApiGateway.BasePathMapping, () => ApiGateway.BasePathMappingProvider()),
+          flociDual(ApiGateway.DeploymentResource, () => ApiGateway.DeploymentProvider()),
+          flociDual(ApiGateway.DomainName, () => ApiGateway.DomainNameProvider()),
+          flociDual(ApiGateway.GatewayResponse, () => ApiGateway.GatewayResponseProvider()),
+          flociDual(ApiGateway.MethodResource, () => ApiGateway.MethodProvider()),
+          flociDual(ApiGateway.GatewayResource, () => ApiGateway.ResourceProvider()),
           flociDual(ApiGateway.RestApi, () => ApiGateway.RestApiProvider()),
           flociDual(ApiGateway.StageResource, () => ApiGateway.StageProvider()),
           flociDual(ApiGateway.UsagePlan, () => ApiGateway.UsagePlanProvider()),
-          flociDual(ApiGateway.UsagePlanKey, () =>
-            ApiGateway.UsagePlanKeyProvider(),
-          ),
+          flociDual(ApiGateway.UsagePlanKey, () => ApiGateway.UsagePlanKeyProvider()),
           flociDual(ApiGateway.VpcLink, () => ApiGateway.VpcLinkProvider()),
           flociDual(ApiGatewayV2.Api, () => ApiGatewayV2.ApiProvider()),
-          ApiGatewayV2.ApiMappingProvider(),
-          flociDual(ApiGatewayV2.AuthorizerResource, () =>
-            ApiGatewayV2.AuthorizerProvider(),
-          ),
-          flociDual(ApiGatewayV2.DomainName, () =>
-            ApiGatewayV2.DomainNameProvider(),
-          ),
-          flociDual(ApiGatewayV2.IntegrationResource, () =>
-            ApiGatewayV2.IntegrationProvider(),
-          ),
-          flociDual(ApiGatewayV2.RouteResource, () =>
-            ApiGatewayV2.RouteProvider(),
-          ),
-          flociDual(ApiGatewayV2.StageResource, () =>
-            ApiGatewayV2.StageProvider(),
-          ),
+          flociDual(ApiGatewayV2.ApiMappingResource, () => ApiGatewayV2.ApiMappingProvider()),
+          flociDual(ApiGatewayV2.AuthorizerResource, () => ApiGatewayV2.AuthorizerProvider()),
+          flociDual(ApiGatewayV2.DomainName, () => ApiGatewayV2.DomainNameProvider()),
+          flociDual(ApiGatewayV2.IntegrationResource, () => ApiGatewayV2.IntegrationProvider()),
+          flociDual(ApiGatewayV2.RouteResource, () => ApiGatewayV2.RouteProvider()),
+          flociDual(ApiGatewayV2.StageResource, () => ApiGatewayV2.StageProvider()),
           flociDual(ApiGatewayV2.VpcLink, () => ApiGatewayV2.VpcLinkProvider()),
-          flociDual(AppConfig.Application, () =>
-            AppConfig.ApplicationProvider(),
-          ),
-          flociDual(AppConfig.ConfigurationProfile, () =>
-            AppConfig.ConfigurationProfileProvider(),
-          ),
+          flociDual(AppConfig.Application, () => AppConfig.ApplicationProvider()),
+          flociDual(AppConfig.ConfigurationProfile, () => AppConfig.ConfigurationProfileProvider()),
           flociDual(AppConfig.Deployment, () => AppConfig.DeploymentProvider()),
-          flociDual(AppConfig.DeploymentStrategy, () =>
-            AppConfig.DeploymentStrategyProvider(),
-          ),
-          flociDual(AppConfig.Environment, () =>
-            AppConfig.EnvironmentProvider(),
-          ),
+          flociDual(AppConfig.DeploymentStrategy, () => AppConfig.DeploymentStrategyProvider()),
+          flociDual(AppConfig.Environment, () => AppConfig.EnvironmentProvider()),
           flociDual(AppConfig.Extension, () => AppConfig.ExtensionProvider()),
-          flociDual(AppConfig.ExtensionAssociation, () =>
-            AppConfig.ExtensionAssociationProvider(),
-          ),
+          flociDual(AppConfig.ExtensionAssociation, () => AppConfig.ExtensionAssociationProvider()),
           flociDual(AppConfig.HostedConfigurationVersion, () =>
             AppConfig.HostedConfigurationVersionProvider(),
           ),
@@ -1094,132 +1091,80 @@ export const providers = () =>
           AppRunner.ObservabilityConfigurationProvider(),
           AppRunner.ServiceProvider(),
           AppRunner.VpcConnectorProvider(),
-          flociDual(AppSync.ApiAssociationResource, () =>
-            AppSync.ApiAssociationProvider(),
-          ),
+          flociDual(AppSync.ApiAssociationResource, () => AppSync.ApiAssociationProvider()),
           flociDual(AppSync.ApiKeyResource, () => AppSync.ApiKeyProvider()),
-          flociDual(AppSync.DataSourceResource, () =>
-            AppSync.DataSourceProvider(),
-          ),
+          flociDual(AppSync.DataSourceResource, () => AppSync.DataSourceProvider()),
           flociDual(AppSync.DomainName, () => AppSync.DomainNameProvider()),
           flociDual(AppSync.FunctionResource, () => AppSync.FunctionProvider()),
           flociDual(AppSync.GraphqlApi, () => AppSync.GraphqlApiProvider()),
           flociDual(AppSync.ResolverResource, () => AppSync.ResolverProvider()),
           flociDual(Athena.DataCatalog, () => Athena.DataCatalogProvider()),
           flociDual(Athena.NamedQuery, () => Athena.NamedQueryProvider()),
-          flociDual(Athena.PreparedStatement, () =>
-            Athena.PreparedStatementProvider(),
-          ),
+          flociDual(Athena.PreparedStatement, () => Athena.PreparedStatementProvider()),
           flociDual(Athena.WorkGroup, () => Athena.WorkGroupProvider()),
-          flociDual(AutoScaling.AutoScalingGroup, () =>
-            AutoScaling.AutoScalingGroupProvider(),
-          ),
-          flociDual(AutoScaling.LaunchTemplate, () =>
-            AutoScaling.LaunchTemplateProvider(),
-          ),
-          flociDual(AutoScaling.LifecycleHook, () =>
-            AutoScaling.LifecycleHookProvider(),
-          ),
-          flociDual(AutoScaling.ScalingPolicy, () =>
-            AutoScaling.ScalingPolicyProvider(),
-          ),
-          flociDual(AutoScaling.ScheduledAction, () =>
-            AutoScaling.ScheduledActionProvider(),
-          ),
-          flociDual(Batch.ComputeEnvironment, () =>
-            Batch.ComputeEnvironmentProvider(),
-          ),
+          flociDual(AutoScaling.AutoScalingGroup, () => AutoScaling.AutoScalingGroupProvider()),
+          flociDual(AutoScaling.LaunchTemplate, () => AutoScaling.LaunchTemplateProvider()),
+          flociDual(AutoScaling.LifecycleHook, () => AutoScaling.LifecycleHookProvider()),
+          flociDual(AutoScaling.ScalingPolicy, () => AutoScaling.ScalingPolicyProvider()),
+          flociDual(AutoScaling.ScheduledAction, () => AutoScaling.ScheduledActionProvider()),
+          flociDual(Batch.ComputeEnvironment, () => Batch.ComputeEnvironmentProvider()),
           flociDual(Batch.JobDefinition, () => Batch.JobDefinitionProvider()),
           flociDual(Batch.JobQueue, () => Batch.JobQueueProvider()),
-          CloudControl.CloudControlResourceProvider(),
-          CloudFormation.StackProvider(),
-          flociDual(CloudFront.CachePolicy, () =>
-            CloudFront.CachePolicyProvider(),
-          ),
-          flociDual(CloudFront.Distribution, () =>
-            CloudFront.DistributionProvider(),
-          ),
+          flociDual(CloudControl.Resource, () => CloudControl.CloudControlResourceProvider()),
+          flociDual(CloudFormation.Stack, () => CloudFormation.StackProvider()),
+          flociDual(CloudFront.CachePolicy, () => CloudFront.CachePolicyProvider()),
+          flociDual(CloudFront.Distribution, () => CloudFront.DistributionProvider()),
           flociDual(CloudFront.Function, () => CloudFront.FunctionProvider()),
-          flociDual(CloudFront.Invalidation, () =>
-            CloudFront.InvalidationProvider(),
-          ),
+          flociDual(CloudFront.Invalidation, () => CloudFront.InvalidationProvider()),
           flociDual(CloudFront.KeyGroup, () => CloudFront.KeyGroupProvider()),
-          flociDual(CloudFront.KeyValueStore, () =>
-            CloudFront.KeyValueStoreProvider(),
-          ),
+          flociDual(CloudFront.KeyValueStore, () => CloudFront.KeyValueStoreProvider()),
           flociDual(CloudFront.KvEntries, () => CloudFront.KvEntriesProvider()),
-          flociDual(CloudFront.KvRoutesUpdate, () =>
-            CloudFront.KvRoutesUpdateProvider(),
-          ),
-          flociDual(CloudFront.OriginAccessControl, () =>
-            CloudFront.OriginAccessControlProvider(),
-          ),
-          flociDual(CloudFront.OriginRequestPolicy, () =>
-            CloudFront.OriginRequestPolicyProvider(),
-          ),
+          flociDual(CloudFront.KvRoutesUpdate, () => CloudFront.KvRoutesUpdateProvider()),
+          flociDual(CloudFront.OriginAccessControl, () => CloudFront.OriginAccessControlProvider()),
+          flociDual(CloudFront.OriginRequestPolicy, () => CloudFront.OriginRequestPolicyProvider()),
           flociDual(CloudFront.PublicKey, () => CloudFront.PublicKeyProvider()),
-          flociDual(CloudFront.RealtimeLogConfig, () =>
-            CloudFront.RealtimeLogConfigProvider(),
-          ),
+          flociDual(CloudFront.RealtimeLogConfig, () => CloudFront.RealtimeLogConfigProvider()),
           flociDual(CloudFront.ResponseHeadersPolicy, () =>
             CloudFront.ResponseHeadersPolicyProvider(),
           ),
           flociDual(CloudFront.VpcOrigin, () => CloudFront.VpcOriginProvider()),
-          CloudHSMV2.ClusterProvider(),
-          CloudHSMV2.HsmProvider(),
-          flociDual(CloudMap.HttpNamespace, () =>
-            CloudMap.HttpNamespaceProvider(),
-          ),
-          flociDual(CloudMap.InstanceRegistration, () =>
-            CloudMap.InstanceRegistrationProvider(),
-          ),
-          flociDual(CloudMap.PrivateDnsNamespace, () =>
-            CloudMap.PrivateDnsNamespaceProvider(),
-          ),
-          flociDual(CloudMap.PublicDnsNamespace, () =>
-            CloudMap.PublicDnsNamespaceProvider(),
-          ),
+          flociDual(CloudHSMV2.Cluster, () => CloudHSMV2.ClusterProvider()),
+          flociDual(CloudHSMV2.Hsm, () => CloudHSMV2.HsmProvider()),
+          flociDual(CloudMap.HttpNamespace, () => CloudMap.HttpNamespaceProvider()),
+          flociDual(CloudMap.InstanceRegistration, () => CloudMap.InstanceRegistrationProvider()),
+          flociDual(CloudMap.PrivateDnsNamespace, () => CloudMap.PrivateDnsNamespaceProvider()),
+          flociDual(CloudMap.PublicDnsNamespace, () => CloudMap.PublicDnsNamespaceProvider()),
           flociDual(CloudMap.Service, () => CloudMap.ServiceProvider()),
-          CloudWatch.AlarmMuteRuleProvider(),
-          CloudWatch.AlarmProvider(),
-          CloudWatch.AnomalyDetectorProvider(),
-          CloudWatch.CompositeAlarmProvider(),
-          CloudWatch.DashboardProvider(),
-          CloudWatch.InsightRuleProvider(),
-          CloudWatch.MetricStreamProvider(),
-          CodeArtifact.DomainProvider(),
-          CodeArtifact.RepositoryProvider(),
-          CodeBuild.ProjectProvider(),
-          CodeBuild.ReportGroupProvider(),
+          flociDual(CloudWatch.AlarmMuteRule, () => CloudWatch.AlarmMuteRuleProvider()),
+          flociDual(CloudWatch.Alarm, () => CloudWatch.AlarmProvider()),
+          flociDual(CloudWatch.AnomalyDetector, () => CloudWatch.AnomalyDetectorProvider()),
+          flociDual(CloudWatch.CompositeAlarm, () => CloudWatch.CompositeAlarmProvider()),
+          flociDual(CloudWatch.Dashboard, () => CloudWatch.DashboardProvider()),
+          flociDual(CloudWatch.InsightRule, () => CloudWatch.InsightRuleProvider()),
+          flociDual(CloudWatch.MetricStream, () => CloudWatch.MetricStreamProvider()),
+          flociDual(CodeArtifact.Domain, () => CodeArtifact.DomainProvider()),
+          flociDual(CodeArtifact.Repository, () => CodeArtifact.RepositoryProvider()),
+          flociDual(CodeBuild.Project, () => CodeBuild.ProjectProvider()),
+          flociDual(CodeBuild.ReportGroup, () => CodeBuild.ReportGroupProvider()),
           CodeConnections.ConnectionProvider(),
           CodeConnections.HostProvider(),
           CodeConnections.RepositoryLinkProvider(),
           CodeConnections.SyncConfigurationProvider(),
-          CodeDeploy.ApplicationProvider(),
-          CodeDeploy.DeploymentConfigProvider(),
-          CodeDeploy.DeploymentGroupProvider(),
-          CodePipeline.PipelineProvider(),
+          flociDual(CodeDeploy.Application, () => CodeDeploy.ApplicationProvider()),
+          flociDual(CodeDeploy.DeploymentConfig, () => CodeDeploy.DeploymentConfigProvider()),
+          flociDual(CodeDeploy.DeploymentGroup, () => CodeDeploy.DeploymentGroupProvider()),
+          flociDual(CodePipeline.Pipeline, () => CodePipeline.PipelineProvider()),
           flociDual(Cognito.Group, () => Cognito.GroupProvider()),
           flociDual(Cognito.IdentityPool, () => Cognito.IdentityPoolProvider()),
           flociDual(Cognito.IdentityPoolRoleAttachment, () =>
             Cognito.IdentityPoolRoleAttachmentProvider(),
           ),
-          flociDual(Cognito.IdentityProvider, () =>
-            Cognito.IdentityProviderProvider(),
-          ),
-          flociDual(Cognito.ManagedLoginBranding, () =>
-            Cognito.ManagedLoginBrandingProvider(),
-          ),
-          flociDual(Cognito.ResourceServer, () =>
-            Cognito.ResourceServerProvider(),
-          ),
-          flociDual(Cognito.UserPoolClient, () =>
-            Cognito.UserPoolClientProvider(),
-          ),
+          flociDual(Cognito.IdentityProvider, () => Cognito.IdentityProviderProvider()),
+          flociDual(Cognito.ManagedLoginBranding, () => Cognito.ManagedLoginBrandingProvider()),
+          flociDual(Cognito.ResourceServer, () => Cognito.ResourceServerProvider()),
+          flociDual(Cognito.UserPoolClient, () => Cognito.UserPoolClientProvider()),
           flociDual(Cognito.User, () => Cognito.UserProvider()),
-          flociDual(Cognito.UserPoolDomain, () =>
-            Cognito.UserPoolDomainProvider(),
-          ),
+          flociDual(Cognito.UserPoolDomain, () => Cognito.UserPoolDomainProvider()),
           flociDual(Cognito.UserPool, () => Cognito.UserPoolProvider()),
         ),
         Layer.mergeAll(
@@ -1232,9 +1177,9 @@ export const providers = () =>
           DataExchange.DataSetProvider(),
           DataExchange.EventActionProvider(),
           DataExchange.RevisionProvider(),
-          DataSync.LocationEfsProvider(),
-          DataSync.LocationS3Provider(),
-          DataSync.TaskProvider(),
+          flociDual(DataSync.LocationEfs, () => DataSync.LocationEfsProvider()),
+          flociDual(DataSync.LocationS3, () => DataSync.LocationS3Provider()),
+          flociDual(DataSync.Task, () => DataSync.TaskProvider()),
           DataZone.DomainProvider(),
           DataZone.EnvironmentProvider(),
           DataZone.EnvironmentBlueprintConfigurationProvider(),
@@ -1252,13 +1197,13 @@ export const providers = () =>
           DirectoryService.DirectoryProvider(),
           DirectoryService.EventTopicProvider(),
           DLM.LifecyclePolicyProvider(),
-          DocDB.DBClusterProvider(),
-          DocDB.DBInstanceProvider(),
-          DocDB.DBSubnetGroupProvider(),
+          flociDual(DocDB.DBCluster, () => DocDB.DBClusterProvider()),
+          flociDual(DocDB.DBInstance, () => DocDB.DBInstanceProvider()),
+          flociDual(DocDB.DBSubnetGroup, () => DocDB.DBSubnetGroupProvider()),
           DocDBElastic.ClusterProvider(),
-          DMS.EndpointProvider(),
-          DMS.ReplicationInstanceProvider(),
-          DMS.ReplicationSubnetGroupProvider(),
+          flociDual(DMS.Endpoint, () => DMS.EndpointProvider()),
+          flociDual(DMS.ReplicationInstance, () => DMS.ReplicationInstanceProvider()),
+          flociDual(DMS.ReplicationSubnetGroup, () => DMS.ReplicationSubnetGroupProvider()),
           DSQL.ClusterProvider(),
           DSQL.ClusterPolicyProvider(),
           DSQL.StreamProvider(),
@@ -1267,47 +1212,50 @@ export const providers = () =>
           DevOpsGuru.ResourceCollectionProvider(),
           DevOpsGuru.ServiceIntegrationProvider(),
           flociDual(DynamoDB.Table, () => DynamoDB.TableProvider()),
-          flociDual(EC2.DhcpOptions, () => EC2.DhcpOptionsProvider()),
-          flociDual(EC2.EgressOnlyInternetGateway, () =>
-            EC2.EgressOnlyInternetGatewayProvider(),
+          // Keep this service-sized group nested: a flat mergeAll here exceeds
+          // Effect's variadic inference limit and silently drops tail layers.
+          Layer.mergeAll(
+            flociDual(EC2.ClientVpnEndpoint, () => EC2.ClientVpnEndpointProvider()),
+            flociDual(EC2.ClientVpnTargetNetworkAssociation, () =>
+              EC2.ClientVpnTargetNetworkAssociationProvider(),
+            ),
+            flociDual(EC2.ClientVpnAuthorizationRule, () =>
+              EC2.ClientVpnAuthorizationRuleProvider(),
+            ),
+            flociDual(EC2.ClientVpnRoute, () => EC2.ClientVpnRouteProvider()),
+            flociDual(EC2.DefaultSecurityGroup, () => EC2.DefaultSecurityGroupProvider()),
+            flociDual(EC2.DhcpOptions, () => EC2.DhcpOptionsProvider()),
+            flociDual(EC2.EgressOnlyInternetGateway, () => EC2.EgressOnlyInternetGatewayProvider()),
+            flociDual(EC2.EIP, () => EC2.EIPProvider()),
+            flociDual(EC2.FlowLog, () => EC2.FlowLogProvider()),
+            flociDual(EC2.Instance, () => EC2.InstanceProvider()),
+            // Dual EC2 networking glue: local (floci) ECS services/tasks run
+            // inside an emulated VPC — a live VPC can't host local containers
+            // and local target groups can't reference a live vpcId.
+            flociDual(EC2.InternetGateway, () => EC2.InternetGatewayProvider()),
+            flociDual(EC2.KeyPair, () => EC2.KeyPairProvider()),
+            flociDual(EC2.NatGateway, () => EC2.NatGatewayProvider()),
+            flociDual(EC2.NetworkAclAssociation, () => EC2.NetworkAclAssociationProvider()),
+            flociDual(EC2.NetworkAclEntry, () => EC2.NetworkAclEntryProvider()),
+            flociDual(EC2.NetworkAcl, () => EC2.NetworkAclProvider()),
+            flociDual(EC2.NetworkInterface, () => EC2.NetworkInterfaceProvider()),
+            flociDual(EC2.NetworkInterfaceAttachment, () =>
+              EC2.NetworkInterfaceAttachmentProvider(),
+            ),
+            flociDual(EC2.PrefixList, () => EC2.PrefixListProvider()),
+            flociDual(EC2.Route, () => EC2.RouteProvider()),
+            flociDual(EC2.RouteTableAssociation, () => EC2.RouteTableAssociationProvider()),
+            flociDual(EC2.RouteTable, () => EC2.RouteTableProvider()),
+            flociDual(EC2.SecurityGroup, () => EC2.SecurityGroupProvider()),
+            flociDual(EC2.SecurityGroupRule, () => EC2.SecurityGroupRuleProvider()),
+            flociDual(EC2.Snapshot, () => EC2.SnapshotProvider()),
+            flociDual(EC2.Subnet, () => EC2.SubnetProvider()),
+            flociDual(EC2.Volume, () => EC2.VolumeProvider()),
+            flociDual(EC2.VolumeAttachment, () => EC2.VolumeAttachmentProvider()),
+            flociDual(EC2.VpcEndpoint, () => EC2.VpcEndpointProvider()),
+            flociDual(EC2.VpcPeeringConnection, () => EC2.VpcPeeringConnectionProvider()),
+            flociDual(EC2.Vpc, () => EC2.VpcProvider()),
           ),
-          flociDual(EC2.EIP, () => EC2.EIPProvider()),
-          flociDual(EC2.FlowLog, () => EC2.FlowLogProvider()),
-          flociDual(EC2.Instance, () => EC2.InstanceProvider()),
-          // Dual EC2 networking glue: local (floci) ECS services/tasks run
-          // inside an emulated VPC — a live VPC can't host local containers
-          // and local target groups can't reference a live vpcId.
-          flociDual(EC2.InternetGateway, () => EC2.InternetGatewayProvider()),
-          flociDual(EC2.KeyPair, () => EC2.KeyPairProvider()),
-          flociDual(EC2.NatGateway, () => EC2.NatGatewayProvider()),
-          flociDual(EC2.NetworkAclAssociation, () =>
-            EC2.NetworkAclAssociationProvider(),
-          ),
-          flociDual(EC2.NetworkAclEntry, () => EC2.NetworkAclEntryProvider()),
-          flociDual(EC2.NetworkAcl, () => EC2.NetworkAclProvider()),
-          flociDual(EC2.NetworkInterface, () => EC2.NetworkInterfaceProvider()),
-          flociDual(EC2.NetworkInterfaceAttachment, () =>
-            EC2.NetworkInterfaceAttachmentProvider(),
-          ),
-          flociDual(EC2.PrefixList, () => EC2.PrefixListProvider()),
-          flociDual(EC2.Route, () => EC2.RouteProvider()),
-          flociDual(EC2.RouteTableAssociation, () =>
-            EC2.RouteTableAssociationProvider(),
-          ),
-          flociDual(EC2.RouteTable, () => EC2.RouteTableProvider()),
-          flociDual(EC2.SecurityGroup, () => EC2.SecurityGroupProvider()),
-          flociDual(EC2.SecurityGroupRule, () =>
-            EC2.SecurityGroupRuleProvider(),
-          ),
-          flociDual(EC2.Snapshot, () => EC2.SnapshotProvider()),
-          flociDual(EC2.Subnet, () => EC2.SubnetProvider()),
-          flociDual(EC2.Volume, () => EC2.VolumeProvider()),
-          flociDual(EC2.VolumeAttachment, () => EC2.VolumeAttachmentProvider()),
-          flociDual(EC2.VpcEndpoint, () => EC2.VpcEndpointProvider()),
-          flociDual(EC2.VpcPeeringConnection, () =>
-            EC2.VpcPeeringConnectionProvider(),
-          ),
-          flociDual(EC2.Vpc, () => EC2.VpcProvider()),
           flociDual(ECR.Image, () => ECR.ImageProvider()),
           flociDual(ECR.RegistryPolicy, () => ECR.RegistryPolicyProvider()),
           flociDual(ECR.Repository, () => ECR.RepositoryProvider()),
@@ -1332,59 +1280,41 @@ export const providers = () =>
             local: () => ECS.FlociTaskProvider(),
             dataPlane: flociServices,
           }),
-          EFS.AccessPointProvider(),
-          EFS.FileSystemProvider(),
-          EFS.MountTargetProvider(),
-          EKS.AccessEntryProvider(),
-          EKS.AddonProvider(),
-          EKS.ClusterProvider(),
-          EKS.FargateProfileProvider(),
-          EKS.NodegroupProvider(),
-          EKS.PodIdentityAssociationProvider(),
-          flociDual(ElastiCache.CacheCluster, () =>
-            ElastiCache.CacheClusterProvider(),
-          ),
-          flociDual(ElastiCache.ReplicationGroup, () =>
-            ElastiCache.ReplicationGroupProvider(),
-          ),
-          ElastiCache.ServerlessCacheProvider(),
-          flociDual(ElastiCache.SubnetGroup, () =>
-            ElastiCache.SubnetGroupProvider(),
-          ),
+          flociDual(EFS.AccessPoint, () => EFS.AccessPointProvider()),
+          flociDual(EFS.FileSystem, () => EFS.FileSystemProvider()),
+          flociDual(EFS.MountTarget, () => EFS.MountTargetProvider()),
+          flociDual(EKS.AccessEntry, () => EKS.AccessEntryProvider()),
+          flociDual(EKS.Addon, () => EKS.AddonProvider()),
+          flociDual(EKS.Cluster, () => EKS.ClusterProvider()),
+          flociDual(EKS.FargateProfile, () => EKS.FargateProfileProvider()),
+          flociDual(EKS.Nodegroup, () => EKS.NodegroupProvider()),
+          flociDual(EKS.PodIdentityAssociation, () => EKS.PodIdentityAssociationProvider()),
+          flociDual(ElastiCache.CacheCluster, () => ElastiCache.CacheClusterProvider()),
+          flociDual(ElastiCache.ReplicationGroup, () => ElastiCache.ReplicationGroupProvider()),
+          flociDual(ElastiCache.ServerlessCache, () => ElastiCache.ServerlessCacheProvider()),
+          flociDual(ElastiCache.SubnetGroup, () => ElastiCache.SubnetGroupProvider()),
           // Dual ELBv2: floci emulates ALBs with locally-resolvable DNS
           // (`*.elb.localhost.floci.io` → 127.0.0.1, host-routed on the
           // gateway port) so local ECS services are reachable behind a
           // local load balancer in dev.
           flociDual(ELBv2.Listener, () => ELBv2.ListenerProvider()),
-          flociDual(ELBv2.ListenerCertificate, () =>
-            ELBv2.ListenerCertificateProvider(),
-          ),
+          flociDual(ELBv2.ListenerCertificate, () => ELBv2.ListenerCertificateProvider()),
           flociDual(ELBv2.ListenerRule, () => ELBv2.ListenerRuleProvider()),
           flociDual(ELBv2.LoadBalancer, () => ELBv2.LoadBalancerProvider()),
           flociDual(ELBv2.TargetGroup, () => ELBv2.TargetGroupProvider()),
-          flociDual(ELBv2.TargetGroupAttachment, () =>
-            ELBv2.TargetGroupAttachmentProvider(),
-          ),
+          flociDual(ELBv2.TargetGroupAttachment, () => ELBv2.TargetGroupAttachmentProvider()),
           flociDual(ELBv2.TrustStore, () => ELBv2.TrustStoreProvider()),
-          flociDual(EventBridge.ApiDestination, () =>
-            EventBridge.ApiDestinationProvider(),
-          ),
+          flociDual(EventBridge.ApiDestination, () => EventBridge.ApiDestinationProvider()),
           flociDual(EventBridge.Archive, () => EventBridge.ArchiveProvider()),
-          flociDual(EventBridge.Connection, () =>
-            EventBridge.ConnectionProvider(),
-          ),
+          flociDual(EventBridge.Connection, () => EventBridge.ConnectionProvider()),
           flociDual(EventBridge.EventBus, () => EventBridge.EventBusProvider()),
           // Dual like EventBus/Rule: a live PutPermission against a
           // floci-emulated bus would fail with ResourceNotFoundException.
-          flociDual(EventBridge.Permission, () =>
-            EventBridge.PermissionProvider(),
-          ),
+          flociDual(EventBridge.Permission, () => EventBridge.PermissionProvider()),
           flociDual(EventBridge.Rule, () => EventBridge.RuleProvider()),
-          FIS.ExperimentTemplateProvider(),
-          FIS.TargetAccountConfigurationProvider(),
-          flociDual(Firehose.DeliveryStream, () =>
-            Firehose.DeliveryStreamProvider(),
-          ),
+          flociDual(FIS.ExperimentTemplate, () => FIS.ExperimentTemplateProvider()),
+          flociDual(FIS.TargetAccountConfiguration, () => FIS.TargetAccountConfigurationProvider()),
+          flociDual(Firehose.DeliveryStream, () => Firehose.DeliveryStreamProvider()),
           FSx.FileSystemProvider(),
           Glacier.VaultProvider(),
           flociDual(Glue.Connection, () => Glue.ConnectionProvider()),
@@ -1398,41 +1328,31 @@ export const providers = () =>
           HealthLake.FHIRDatastoreProvider(),
           flociDual(IAM.AccessKey, () => IAM.AccessKeyProvider()),
           flociDual(IAM.AccountAlias, () => IAM.AccountAliasProvider()),
-          flociDual(IAM.AccountPasswordPolicy, () =>
-            IAM.AccountPasswordPolicyProvider(),
-          ),
+          flociDual(IAM.AccountPasswordPolicy, () => IAM.AccountPasswordPolicyProvider()),
           flociDual(IAM.GroupMembership, () => IAM.GroupMembershipProvider()),
           flociDual(IAM.Group, () => IAM.GroupProvider()),
           flociDual(IAM.InstanceProfile, () => IAM.InstanceProfileProvider()),
           flociDual(IAM.LoginProfile, () => IAM.LoginProfileProvider()),
-          flociDual(IAM.OpenIDConnectProvider, () =>
-            IAM.OpenIDConnectProviderProvider(),
-          ),
+          flociDual(IAM.OpenIDConnectProvider, () => IAM.OpenIDConnectProviderProvider()),
           flociDual(IAM.Policy, () => IAM.PolicyProvider()),
           flociDual(IAM.Role, () => IAM.RoleProvider()),
           flociDual(IAM.SAMLProvider, () => IAM.SAMLProviderProvider()),
-          flociDual(IAM.ServerCertificate, () =>
-            IAM.ServerCertificateProvider(),
-          ),
-          flociDual(IAM.ServiceLinkedRole, () =>
-            IAM.ServiceLinkedRoleProvider(),
-          ),
-          flociDual(IAM.ServiceSpecificCredential, () =>
-            IAM.ServiceSpecificCredentialProvider(),
-          ),
-          flociDual(IAM.SigningCertificate, () =>
-            IAM.SigningCertificateProvider(),
-          ),
+          flociDual(IAM.ServerCertificate, () => IAM.ServerCertificateProvider()),
+          flociDual(IAM.ServiceLinkedRole, () => IAM.ServiceLinkedRoleProvider()),
+          flociDual(IAM.ServiceSpecificCredential, () => IAM.ServiceSpecificCredentialProvider()),
+          flociDual(IAM.SigningCertificate, () => IAM.SigningCertificateProvider()),
           flociDual(IAM.SSHPublicKey, () => IAM.SSHPublicKeyProvider()),
           flociDual(IAM.User, () => IAM.UserProvider()),
           flociDual(IAM.VirtualMFADevice, () => IAM.VirtualMFADeviceProvider()),
         ),
         Layer.mergeAll(
-          IdentityCenter.AccountAssignmentProvider(),
-          IdentityCenter.GroupProvider(),
-          IdentityCenter.InstanceProvider(),
-          IdentityCenter.PermissionSetProvider(),
-          Kafka.ServerlessClusterProvider(),
+          flociDual(IdentityCenter.AccountAssignment, () =>
+            IdentityCenter.AccountAssignmentProvider(),
+          ),
+          flociDual(IdentityCenter.Group, () => IdentityCenter.GroupProvider()),
+          flociDual(IdentityCenter.Instance, () => IdentityCenter.InstanceProvider()),
+          flociDual(IdentityCenter.PermissionSet, () => IdentityCenter.PermissionSetProvider()),
+          flociDual(Kafka.ServerlessCluster, () => Kafka.ServerlessClusterProvider()),
           Kendra.DataSourceProvider(),
           Kendra.IndexProvider(),
           Keyspaces.KeyspaceProvider(),
@@ -1440,30 +1360,30 @@ export const providers = () =>
           Keyspaces.TypeProvider(),
           flociDual(KMS.Alias, () => KMS.AliasProvider()),
           flociDual(KMS.Key, () => KMS.KeyProvider()),
-          flociDual(Kinesis.StreamConsumer, () =>
-            Kinesis.StreamConsumerProvider(),
-          ),
+          flociDual(Kinesis.StreamConsumer, () => Kinesis.StreamConsumerProvider()),
           flociDual(Kinesis.Stream, () => Kinesis.StreamProvider()),
-          KinesisAnalyticsV2.ApplicationProvider(),
-          KinesisAnalyticsV2.ApplicationCloudWatchLoggingOptionProvider(),
-          KinesisAnalyticsV2.ApplicationSnapshotProvider(),
+          flociDual(KinesisAnalyticsV2.Application, () => KinesisAnalyticsV2.ApplicationProvider()),
+          flociDual(KinesisAnalyticsV2.ApplicationCloudWatchLoggingOption, () =>
+            KinesisAnalyticsV2.ApplicationCloudWatchLoggingOptionProvider(),
+          ),
+          flociDual(KinesisAnalyticsV2.ApplicationSnapshot, () =>
+            KinesisAnalyticsV2.ApplicationSnapshotProvider(),
+          ),
           KinesisVideo.SignalingChannelProvider(),
           KinesisVideo.StreamProvider(),
-          LakeFormation.DataCellsFilterProvider(),
-          LakeFormation.DataLakeSettingsProvider(),
-          LakeFormation.LFTagProvider(),
-          LakeFormation.LFTagAssociationProvider(),
-          LakeFormation.LFTagExpressionProvider(),
-          LakeFormation.OptInProvider(),
-          LakeFormation.PermissionsProvider(),
-          LakeFormation.ResourceProvider(),
+          flociDual(LakeFormation.DataCellsFilter, () => LakeFormation.DataCellsFilterProvider()),
+          flociDual(LakeFormation.DataLakeSettings, () => LakeFormation.DataLakeSettingsProvider()),
+          flociDual(LakeFormation.LFTag, () => LakeFormation.LFTagProvider()),
+          flociDual(LakeFormation.LFTagAssociation, () => LakeFormation.LFTagAssociationProvider()),
+          flociDual(LakeFormation.LFTagExpression, () => LakeFormation.LFTagExpressionProvider()),
+          flociDual(LakeFormation.OptIn, () => LakeFormation.OptInProvider()),
+          flociDual(LakeFormation.Permissions, () => LakeFormation.PermissionsProvider()),
+          flociDual(LakeFormation.Resource, () => LakeFormation.ResourceProvider()),
           flociDual(Lambda.Alias, () => Lambda.AliasProvider()),
           // Requires the alchemy floci fork ≥ 1.6.0-alchemy.2: the
           // reconciler's ownership scan calls lambda ListTags on
           // `event-source-mapping:` ARNs, which stock floci 1.6.0 rejects.
-          flociDual(Lambda.EventSourceMapping, () =>
-            Lambda.EventSourceMappingProvider(),
-          ),
+          flociDual(Lambda.EventSourceMapping, () => Lambda.EventSourceMappingProvider()),
           // Dual: live Lambda in deploy, floci-emulated (RPC-sidecar-hosted,
           // hot-reloading) Lambda in dev — see FlociFunctionProvider.
           ProviderLayer.dual(Lambda.Function, {
@@ -1482,20 +1402,21 @@ export const providers = () =>
             local: () => Lambda.FlociMicrovmImageProvider(),
             dataPlane: flociServices,
           }),
-          flociDual(Lambda.NetworkConnector, () =>
-            Lambda.NetworkConnectorProvider(),
-          ),
+          flociDual(Lambda.NetworkConnector, () => Lambda.NetworkConnectorProvider()),
           // Dual: glue onto the (dual) Lambda Function — a live addPermission
           // against a floci function ARN fails with ResourceNotFoundException.
           flociDual(Lambda.Permission, () => Lambda.PermissionProvider()),
+          // Live-only: floci does not emulate Web Functions, so `alchemy dev`
+          // deploys them to AWS like any mode-agnostic provider.
+          Lambda.WebFunctionProvider(),
+          Lambda.WebFunctionEndpointProvider(),
+          Lambda.WebFunctionPermissionProvider(),
           flociDual(Logs.Destination, () => Logs.DestinationProvider()),
           flociDual(Logs.LogGroup, () => Logs.LogGroupProvider()),
           flociDual(Logs.LogStream, () => Logs.LogStreamProvider()),
           flociDual(Logs.MetricFilter, () => Logs.MetricFilterProvider()),
           flociDual(Logs.ResourcePolicy, () => Logs.ResourcePolicyProvider()),
-          flociDual(Logs.SubscriptionFilter, () =>
-            Logs.SubscriptionFilterProvider(),
-          ),
+          flociDual(Logs.SubscriptionFilter, () => Logs.SubscriptionFilterProvider()),
           MediaConnect.FlowProvider(),
           MediaConvert.JobProvider(),
           MediaConvert.JobTemplateProvider(),
@@ -1509,8 +1430,8 @@ export const providers = () =>
           MediaPackageV2.OriginEndpointProvider(),
           MediaTailor.PlaybackConfigurationProvider(),
           MedicalImaging.DatastoreProvider(),
-          MQ.BrokerProvider(),
-          MQ.ConfigurationProvider(),
+          flociDual(MQ.Broker, () => MQ.BrokerProvider()),
+          flociDual(MQ.Configuration, () => MQ.ConfigurationProvider()),
           MailManager.AddonInstanceProvider(),
           MailManager.AddonSubscriptionProvider(),
           MailManager.AddressListProvider(),
@@ -1519,18 +1440,20 @@ export const providers = () =>
           MailManager.RelayProvider(),
           MailManager.RuleSetProvider(),
           MailManager.TrafficPolicyProvider(),
-          MemoryDB.ACLProvider(),
-          MemoryDB.ClusterProvider(),
-          MemoryDB.ParameterGroupProvider(),
-          MemoryDB.SubnetGroupProvider(),
-          MemoryDB.UserProvider(),
-          Neptune.DBClusterProvider(),
-          Neptune.DBClusterParameterGroupProvider(),
-          Neptune.DBInstanceProvider(),
-          Neptune.DBParameterGroupProvider(),
-          Neptune.DBSubnetGroupProvider(),
+          flociDual(MemoryDB.ACL, () => MemoryDB.ACLProvider()),
+          flociDual(MemoryDB.Cluster, () => MemoryDB.ClusterProvider()),
+          flociDual(MemoryDB.ParameterGroup, () => MemoryDB.ParameterGroupProvider()),
+          flociDual(MemoryDB.SubnetGroup, () => MemoryDB.SubnetGroupProvider()),
+          flociDual(MemoryDB.User, () => MemoryDB.UserProvider()),
+          flociDual(Neptune.DBCluster, () => Neptune.DBClusterProvider()),
+          flociDual(Neptune.DBClusterParameterGroup, () =>
+            Neptune.DBClusterParameterGroupProvider(),
+          ),
+          flociDual(Neptune.DBInstance, () => Neptune.DBInstanceProvider()),
+          flociDual(Neptune.DBParameterGroup, () => Neptune.DBParameterGroupProvider()),
+          flociDual(Neptune.DBSubnetGroup, () => Neptune.DBSubnetGroupProvider()),
           NeptuneGraph.GraphProvider(),
-          OpenSearch.DomainProvider(),
+          flociDual(OpenSearch.Domain, () => OpenSearch.DomainProvider()),
           OpenSearchServerless.AccessPolicyProvider(),
           OSIS.PipelineEndpointProvider(),
           OSIS.PipelineProvider(),
@@ -1541,16 +1464,24 @@ export const providers = () =>
           OpenSearchServerless.SecurityConfigProvider(),
           OpenSearchServerless.SecurityPolicyProvider(),
           OpenSearchServerless.VpcEndpointProvider(),
-          Organizations.AccountProvider(),
-          Organizations.DelegatedAdministratorProvider(),
-          Organizations.OrganizationalUnitProvider(),
-          Organizations.OrganizationProvider(),
-          Organizations.OrganizationResourcePolicyProvider(),
-          Organizations.PolicyAttachmentProvider(),
-          Organizations.PolicyProvider(),
-          Organizations.RootPolicyTypeProvider(),
-          Organizations.RootProvider(),
-          Organizations.TrustedServiceAccessProvider(),
+          flociDual(Organizations.Account, () => Organizations.AccountProvider()),
+          flociDual(Organizations.DelegatedAdministrator, () =>
+            Organizations.DelegatedAdministratorProvider(),
+          ),
+          flociDual(Organizations.OrganizationalUnit, () =>
+            Organizations.OrganizationalUnitProvider(),
+          ),
+          flociDual(Organizations.Organization, () => Organizations.OrganizationProvider()),
+          flociDual(Organizations.OrganizationResourcePolicy, () =>
+            Organizations.OrganizationResourcePolicyProvider(),
+          ),
+          flociDual(Organizations.PolicyAttachment, () => Organizations.PolicyAttachmentProvider()),
+          flociDual(Organizations.Policy, () => Organizations.PolicyProvider()),
+          flociDual(Organizations.RootPolicyType, () => Organizations.RootPolicyTypeProvider()),
+          flociDual(Organizations.Root, () => Organizations.RootProvider()),
+          flociDual(Organizations.TrustedServiceAccess, () =>
+            Organizations.TrustedServiceAccessProvider(),
+          ),
           PaymentCryptography.AliasProvider(),
           PaymentCryptography.KeyProvider(),
           flociDual(Pipes.Pipe, () => Pipes.PipeProvider()),
@@ -1565,57 +1496,43 @@ export const providers = () =>
           QuickSight.DashboardProvider(),
           QuickSight.DataSetProvider(),
           QuickSight.DataSourceProvider(),
-          flociDual(RDS.DBClusterEndpoint, () =>
-            RDS.DBClusterEndpointProvider(),
-          ),
-          flociDual(RDS.DBClusterParameterGroup, () =>
-            RDS.DBClusterParameterGroupProvider(),
-          ),
+          flociDual(RDS.DBClusterEndpoint, () => RDS.DBClusterEndpointProvider()),
+          flociDual(RDS.DBClusterParameterGroup, () => RDS.DBClusterParameterGroupProvider()),
           flociDual(RDS.DBCluster, () => RDS.DBClusterProvider()),
           flociDual(RDS.DBInstance, () => RDS.DBInstanceProvider()),
           flociDual(RDS.DBParameterGroup, () => RDS.DBParameterGroupProvider()),
-          RDS.DBProxyEndpointProvider(),
-          RDS.DBProxyProvider(),
-          RDS.DBProxyTargetGroupProvider(),
+          flociDual(RDS.DBProxyEndpoint, () => RDS.DBProxyEndpointProvider()),
+          flociDual(RDS.DBProxy, () => RDS.DBProxyProvider()),
+          flociDual(RDS.DBProxyTargetGroup, () => RDS.DBProxyTargetGroupProvider()),
           flociDual(RDS.DBSubnetGroup, () => RDS.DBSubnetGroupProvider()),
           RePostSpace.SpaceProvider(),
-          Redshift.ClusterParameterGroupProvider(),
-          Redshift.ClusterProvider(),
-          Redshift.ClusterSubnetGroupProvider(),
-          Redshift.EventSubscriptionProvider(),
+          flociDual(Redshift.ClusterParameterGroup, () => Redshift.ClusterParameterGroupProvider()),
+          flociDual(Redshift.Cluster, () => Redshift.ClusterProvider()),
+          flociDual(Redshift.ClusterSubnetGroup, () => Redshift.ClusterSubnetGroupProvider()),
+          flociDual(Redshift.EventSubscription, () => Redshift.EventSubscriptionProvider()),
           RedshiftServerless.NamespaceProvider(),
           RedshiftServerless.WorkgroupProvider(),
           flociDual(Route53.HealthCheck, () => Route53.HealthCheckProvider()),
           flociDual(Route53.HostedZone, () => Route53.HostedZoneProvider()),
-          flociDual(Route53.QueryLoggingConfig, () =>
-            Route53.QueryLoggingConfigProvider(),
-          ),
+          flociDual(Route53.QueryLoggingConfig, () => Route53.QueryLoggingConfigProvider()),
           flociDual(Route53.Record, () => Route53.RecordProvider()),
           flociDual(Route53.Records, () => Route53.RecordsProvider()),
           flociDual(Route53.VpcAssociationAuthorization, () =>
             Route53.VpcAssociationAuthorizationProvider(),
           ),
-          flociDual(Route53.ZoneVpcAssociation, () =>
-            Route53.ZoneVpcAssociationProvider(),
-          ),
+          flociDual(Route53.ZoneVpcAssociation, () => Route53.ZoneVpcAssociationProvider()),
           flociDual(S3.Bucket, () => S3.BucketProvider()),
           // Dual: schedules created by e.g. `AWS.ECS.every` reference local
           // cluster/task/role ARNs in dev — a live PutSchedule with a floci
           // role ARN fails validation.
-          flociDual(Scheduler.ScheduleGroup, () =>
-            Scheduler.ScheduleGroupProvider(),
-          ),
+          flociDual(Scheduler.ScheduleGroup, () => Scheduler.ScheduleGroupProvider()),
           flociDual(Scheduler.Schedule, () => Scheduler.ScheduleProvider()),
           flociDual(SecretsManager.RotationSchedule, () =>
             SecretsManager.RotationScheduleProvider(),
           ),
-          flociDual(SecretsManager.Secret, () =>
-            SecretsManager.SecretProvider(),
-          ),
+          flociDual(SecretsManager.Secret, () => SecretsManager.SecretProvider()),
           flociDual(SES.AccountSettings, () => SES.AccountSettingsProvider()),
-          flociDual(SES.ActiveReceiptRuleSet, () =>
-            SES.ActiveReceiptRuleSetProvider(),
-          ),
+          flociDual(SES.ActiveReceiptRuleSet, () => SES.ActiveReceiptRuleSetProvider()),
           flociDual(SES.ConfigurationSetEventDestination, () =>
             SES.ConfigurationSetEventDestinationProvider(),
           ),
@@ -1627,21 +1544,15 @@ export const providers = () =>
           ),
           flociDual(SES.DedicatedIpPool, () => SES.DedicatedIpPoolProvider()),
           flociDual(SES.EmailIdentity, () => SES.EmailIdentityProvider()),
-          flociDual(SES.EmailIdentityPolicy, () =>
-            SES.EmailIdentityPolicyProvider(),
-          ),
+          flociDual(SES.EmailIdentityPolicy, () => SES.EmailIdentityPolicyProvider()),
           flociDual(SES.EmailTemplate, () => SES.EmailTemplateProvider()),
-          flociDual(SES.MultiRegionEndpoint, () =>
-            SES.MultiRegionEndpointProvider(),
-          ),
+          flociDual(SES.MultiRegionEndpoint, () => SES.MultiRegionEndpointProvider()),
           flociDual(SES.ReceiptFilter, () => SES.ReceiptFilterProvider()),
           flociDual(SES.ReceiptRule, () => SES.ReceiptRuleProvider()),
           flociDual(SES.ReceiptRuleSet, () => SES.ReceiptRuleSetProvider()),
           flociDual(SES.Tenant, () => SES.TenantProvider()),
-          flociDual(SES.TenantResourceAssociation, () =>
-            SES.TenantResourceAssociationProvider(),
-          ),
-          SNS.PlatformApplicationProvider(),
+          flociDual(SES.TenantResourceAssociation, () => SES.TenantResourceAssociationProvider()),
+          flociDual(SNS.PlatformApplication, () => SNS.PlatformApplicationProvider()),
           // Dual: glue onto the (dual) SNS Topic — a live subscribe with a
           // floci topic ARN fails with InvalidParameterException: TopicArn.
           flociDual(SNS.Subscription, () => SNS.SubscriptionProvider()),
@@ -1649,27 +1560,15 @@ export const providers = () =>
           SocialMessaging.LinkedWhatsAppBusinessAccountProvider(),
           flociDual(SQS.Queue, () => SQS.QueueProvider()),
           flociDual(SSM.Parameter, () => SSM.ParameterProvider()),
-          flociDual(StepFunctions.Activity, () =>
-            StepFunctions.ActivityProvider(),
-          ),
-          flociDual(StepFunctions.StateMachine, () =>
-            StepFunctions.StateMachineProvider(),
-          ),
+          flociDual(StepFunctions.Activity, () => StepFunctions.ActivityProvider()),
+          flociDual(StepFunctions.StateMachine, () => StepFunctions.StateMachineProvider()),
           flociDual(WAFv2.IPSet, () => WAFv2.IPSetProvider()),
-          flociDual(WAFv2.LoggingConfiguration, () =>
-            WAFv2.LoggingConfigurationProvider(),
-          ),
-          flociDual(WAFv2.RegexPatternSet, () =>
-            WAFv2.RegexPatternSetProvider(),
-          ),
+          flociDual(WAFv2.LoggingConfiguration, () => WAFv2.LoggingConfigurationProvider()),
+          flociDual(WAFv2.RegexPatternSet, () => WAFv2.RegexPatternSetProvider()),
           flociDual(WAFv2.RuleGroup, () => WAFv2.RuleGroupProvider()),
-          flociDual(WAFv2.WebACLAssociation, () =>
-            WAFv2.WebACLAssociationProvider(),
-          ),
+          flociDual(WAFv2.WebACLAssociation, () => WAFv2.WebACLAssociationProvider()),
           flociDual(WAFv2.WebACL, () => WAFv2.WebACLProvider()),
-          flociDual(Website.AssetDeployment, () =>
-            Website.AssetDeploymentProvider(),
-          ),
+          flociDual(Website.AssetDeployment, () => Website.AssetDeploymentProvider()),
           // ServerProvider is internally dual (LocalProvider.make → ServerLocal).
           WebsiteServerProvider(),
           XRay.GroupProvider(),
@@ -1679,69 +1578,81 @@ export const providers = () =>
           Bedrock.AgentAliasProvider(),
           Bedrock.DataSourceProvider(),
           Bedrock.KnowledgeBaseProvider(),
-          BedrockAgentCore.BrowserCustomProvider(),
-          BedrockAgentCore.CodeInterpreterProvider(),
-          BedrockAgentCore.GatewayProvider(),
-          BedrockAgentCore.MemoryProvider(),
-          BedrockAgentCore.RuntimeProvider(),
-          AccessAnalyzer.AnalyzerProvider(),
-          AccessAnalyzer.ArchiveRuleProvider(),
+          flociDual(BedrockAgentCore.BrowserCustom, () => BedrockAgentCore.BrowserCustomProvider()),
+          flociDual(BedrockAgentCore.CodeInterpreter, () =>
+            BedrockAgentCore.CodeInterpreterProvider(),
+          ),
+          flociDual(BedrockAgentCore.Gateway, () => BedrockAgentCore.GatewayProvider()),
+          flociDual(BedrockAgentCore.Memory, () => BedrockAgentCore.MemoryProvider()),
+          flociDual(BedrockAgentCore.Runtime, () => BedrockAgentCore.RuntimeProvider()),
+          flociDual(AccessAnalyzer.Analyzer, () => AccessAnalyzer.AnalyzerProvider()),
+          flociDual(AccessAnalyzer.ArchiveRule, () => AccessAnalyzer.ArchiveRuleProvider()),
           Textract.AdapterProvider(),
-          Transfer.ServerProvider(),
-          Transfer.UserProvider(),
+          flociDual(Transfer.Server, () => Transfer.ServerProvider()),
+          flociDual(Transfer.User, () => Transfer.UserProvider()),
           Translate.ParallelDataProvider(),
           Translate.TerminologyProvider(),
-          VerifiedPermissions.IdentitySourceProvider(),
-          VerifiedPermissions.PolicyProvider(),
-          VerifiedPermissions.PolicyStoreProvider(),
-          VerifiedPermissions.PolicyStoreAliasProvider(),
-          VerifiedPermissions.PolicyTemplateProvider(),
-          VerifiedPermissions.SchemaProvider(),
-          Backup.BackupVaultProvider(),
-          Backup.BackupPlanProvider(),
-          Backup.BackupSelectionProvider(),
+          flociDual(VerifiedPermissions.IdentitySource, () =>
+            VerifiedPermissions.IdentitySourceProvider(),
+          ),
+          flociDual(VerifiedPermissions.Policy, () => VerifiedPermissions.PolicyProvider()),
+          flociDual(VerifiedPermissions.PolicyStore, () =>
+            VerifiedPermissions.PolicyStoreProvider(),
+          ),
+          flociDual(VerifiedPermissions.PolicyStoreAlias, () =>
+            VerifiedPermissions.PolicyStoreAliasProvider(),
+          ),
+          flociDual(VerifiedPermissions.PolicyTemplate, () =>
+            VerifiedPermissions.PolicyTemplateProvider(),
+          ),
+          flociDual(VerifiedPermissions.Schema, () => VerifiedPermissions.SchemaProvider()),
+          flociDual(Backup.BackupVault, () => Backup.BackupVaultProvider()),
+          flociDual(Backup.BackupPlan, () => Backup.BackupPlanProvider()),
+          flociDual(Backup.BackupSelection, () => Backup.BackupSelectionProvider()),
           BackupSearch.SearchJobProvider(),
           BackupSearch.ExportJobProvider(),
-          BCMDataExports.ExportProvider(),
-          Budgets.BudgetProvider(),
-          Budgets.BudgetActionProvider(),
+          flociDual(BCMDataExports.Export, () => BCMDataExports.ExportProvider()),
+          flociDual(Budgets.Budget, () => Budgets.BudgetProvider()),
+          flociDual(Budgets.BudgetAction, () => Budgets.BudgetActionProvider()),
           Chatbot.AssociationProvider(),
           Chatbot.CustomActionProvider(),
           Chatbot.MicrosoftTeamsChannelConfigurationProvider(),
           Chatbot.SlackChannelConfigurationProvider(),
-          GuardDuty.DetectorProvider(),
-          GuardDuty.FilterProvider(),
-          GuardDuty.IPSetProvider(),
-          GuardDuty.ThreatIntelSetProvider(),
+          flociDual(GuardDuty.Detector, () => GuardDuty.DetectorProvider()),
+          flociDual(GuardDuty.Filter, () => GuardDuty.FilterProvider()),
+          flociDual(GuardDuty.IPSet, () => GuardDuty.IPSetProvider()),
+          flociDual(GuardDuty.ThreatIntelSet, () => GuardDuty.ThreatIntelSetProvider()),
           ImageBuilder.ComponentProvider(),
           ImageBuilder.DistributionConfigurationProvider(),
           ImageBuilder.ImagePipelineProvider(),
           ImageBuilder.ImageRecipeProvider(),
           ImageBuilder.InfrastructureConfigurationProvider(),
-          Inspector2.CisScanConfigurationProvider(),
-          Inspector2.EnablerProvider(),
-          Inspector2.FilterProvider(),
+          flociDual(Inspector2.CisScanConfiguration, () =>
+            Inspector2.CisScanConfigurationProvider(),
+          ),
+          flociDual(Inspector2.Enabler, () => Inspector2.EnablerProvider()),
+          flociDual(Inspector2.Filter, () => Inspector2.FilterProvider()),
           InternetMonitor.MonitorProvider(),
-          SecurityHub.ActionTargetProvider(),
-          SecurityHub.AutomationRuleProvider(),
-          SecurityHub.FindingAggregatorProvider(),
-          SecurityHub.HubProvider(),
-          SecurityHub.InsightProvider(),
+          flociDual(SecurityHub.ActionTarget, () => SecurityHub.ActionTargetProvider()),
+          flociDual(SecurityHub.AutomationRule, () => SecurityHub.AutomationRuleProvider()),
+          flociDual(SecurityHub.FindingAggregator, () => SecurityHub.FindingAggregatorProvider()),
+          flociDual(SecurityHub.Hub, () => SecurityHub.HubProvider()),
+          flociDual(SecurityHub.Insight, () => SecurityHub.InsightProvider()),
           SecurityLake.DataLakeProvider(),
           SecurityLake.AwsLogSourceProvider(),
           SecurityLake.CustomLogSourceProvider(),
           SecurityLake.ExceptionSubscriptionProvider(),
           SecurityLake.SubscriberProvider(),
           SecurityLake.SubscriberNotificationProvider(),
-          Detective.GraphProvider(),
+          flociDual(Detective.Graph, () => Detective.GraphProvider()),
           FMS.AdminAccountProvider(),
-          Macie2.SessionProvider(),
-          Macie2.ClassificationJobProvider(),
-          Macie2.AllowListProvider(),
-          Macie2.CustomDataIdentifierProvider(),
-          Macie2.FindingsFilterProvider(),
-          RAM.PermissionProvider(),
-          RAM.ResourceShareProvider(),
+          flociDual(Macie2.Session, () => Macie2.SessionProvider()),
+          flociDual(Macie2.ClassificationJob, () => Macie2.ClassificationJobProvider()),
+          flociDual(Macie2.AllowList, () => Macie2.AllowListProvider()),
+          flociDual(Macie2.CustomDataIdentifier, () => Macie2.CustomDataIdentifierProvider()),
+          flociDual(Macie2.FindingsFilter, () => Macie2.FindingsFilterProvider()),
+          flociDual(RAM.Permission, () => RAM.PermissionProvider()),
+          flociDual(RAM.ResourceShare, () => RAM.ResourceShareProvider()),
         ),
         Layer.mergeAll(
           AIOps.InvestigationGroupProvider(),
@@ -1761,24 +1672,24 @@ export const providers = () =>
           LexV2.SlotTypeProvider(),
           S3Files.FileSystemProvider(),
           S3Files.AccessPointProvider(),
-          S3Tables.TableBucketProvider(),
-          S3Tables.NamespaceProvider(),
-          S3Tables.TableProvider(),
-          flociDual(S3Vectors.VectorBucket, () =>
-            S3Vectors.VectorBucketProvider(),
-          ),
+          flociDual(S3Tables.TableBucket, () => S3Tables.TableBucketProvider()),
+          flociDual(S3Tables.Namespace, () => S3Tables.NamespaceProvider()),
+          flociDual(S3Tables.Table, () => S3Tables.TableProvider()),
+          flociDual(S3Vectors.VectorBucket, () => S3Vectors.VectorBucketProvider()),
           flociDual(S3Vectors.Index, () => S3Vectors.IndexProvider()),
-          SageMaker.ModelProvider(),
-          SageMaker.EndpointConfigProvider(),
-          SageMaker.EndpointProvider(),
-          SageMaker.FeatureGroupProvider(),
-          SageMaker.ClusterProvider(),
-          SageMaker.ClusterSchedulerConfigProvider(),
-          SageMaker.ComputeQuotaProvider(),
-          Account.AccountNameProvider(),
-          Account.AlternateContactProvider(),
-          Account.ContactInformationProvider(),
-          Account.RegionProvider(),
+          flociDual(SageMaker.Model, () => SageMaker.ModelProvider()),
+          flociDual(SageMaker.EndpointConfig, () => SageMaker.EndpointConfigProvider()),
+          flociDual(SageMaker.Endpoint, () => SageMaker.EndpointProvider()),
+          flociDual(SageMaker.FeatureGroup, () => SageMaker.FeatureGroupProvider()),
+          flociDual(SageMaker.Cluster, () => SageMaker.ClusterProvider()),
+          flociDual(SageMaker.ClusterSchedulerConfig, () =>
+            SageMaker.ClusterSchedulerConfigProvider(),
+          ),
+          flociDual(SageMaker.ComputeQuota, () => SageMaker.ComputeQuotaProvider()),
+          flociDual(Account.AccountName, () => Account.AccountNameProvider()),
+          flociDual(Account.AlternateContact, () => Account.AlternateContactProvider()),
+          flociDual(Account.ContactInformation, () => Account.ContactInformationProvider()),
+          flociDual(Account.Region, () => Account.RegionProvider()),
           Amplify.AppProvider(),
           Amplify.BranchProvider(),
           ECRPublic.PublicRepositoryProvider(),
@@ -1792,7 +1703,7 @@ export const providers = () =>
           VpcLattice.ListenerProvider(),
           VpcLattice.RuleProvider(),
           VpcLattice.AccessLogSubscriptionProvider(),
-          MWAA.EnvironmentProvider(),
+          flociDual(MWAA.Environment, () => MWAA.EnvironmentProvider()),
           MWAAServerless.WorkflowProvider(),
           Location.ApiKeyProvider(),
           Location.MapProvider(),
@@ -1819,10 +1730,10 @@ export const providers = () =>
           PinpointSMSVoiceV2.EventDestinationProvider(),
           PinpointSMSVoiceV2.OptOutListProvider(),
           PinpointSMSVoiceV2.PhoneNumberProvider(),
-          IoT.ThingProvider(),
-          IoT.ThingTypeProvider(),
-          IoT.PolicyProvider(),
-          IoT.TopicRuleProvider(),
+          flociDual(IoT.Thing, () => IoT.ThingProvider()),
+          flociDual(IoT.ThingType, () => IoT.ThingTypeProvider()),
+          flociDual(IoT.Policy, () => IoT.PolicyProvider()),
+          flociDual(IoT.TopicRule, () => IoT.TopicRuleProvider()),
           IoTFleetWise.CampaignProvider(),
           IoTFleetWise.DecoderManifestProvider(),
           IoTFleetWise.FleetProvider(),
@@ -1860,23 +1771,25 @@ export const providers = () =>
           FinSpace.KxClusterProvider(),
           FinSpace.KxDatabaseProvider(),
           FinSpace.KxEnvironmentProvider(),
-          ControlTower.EnabledBaselineProvider(),
-          ControlTower.EnabledControlProvider(),
-          ControlTower.LandingZoneProvider(),
-          CostAndUsageReport.ReportDefinitionProvider(),
+          flociDual(ControlTower.EnabledBaseline, () => ControlTower.EnabledBaselineProvider()),
+          flociDual(ControlTower.EnabledControl, () => ControlTower.EnabledControlProvider()),
+          flociDual(ControlTower.LandingZone, () => ControlTower.LandingZoneProvider()),
+          flociDual(CostAndUsageReport.ReportDefinition, () =>
+            CostAndUsageReport.ReportDefinitionProvider(),
+          ),
           CostExplorer.AnomalyMonitorProvider(),
           CostExplorer.AnomalySubscriptionProvider(),
           CostExplorer.CostCategoryProvider(),
           Rbin.RuleProvider(),
-          RUM.AppMonitorProvider(),
-          RUM.MetricsDestinationProvider(),
-          RUM.ResourcePolicyProvider(),
-          EMR.ClusterProvider(),
-          EMR.SecurityConfigurationProvider(),
-          EMR.StudioProvider(),
+          flociDual(RUM.AppMonitor, () => RUM.AppMonitorProvider()),
+          flociDual(RUM.MetricsDestination, () => RUM.MetricsDestinationProvider()),
+          flociDual(RUM.ResourcePolicy, () => RUM.ResourcePolicyProvider()),
+          flociDual(EMR.Cluster, () => EMR.ClusterProvider()),
+          flociDual(EMR.SecurityConfiguration, () => EMR.SecurityConfigurationProvider()),
+          flociDual(EMR.Studio, () => EMR.StudioProvider()),
           EMRContainers.JobTemplateProvider(),
           EMRContainers.VirtualClusterProvider(),
-          EMRServerless.ApplicationProvider(),
+          flociDual(EMRServerless.Application, () => EMRServerless.ApplicationProvider()),
           EntityResolution.SchemaMappingProvider(),
           EntityResolution.MatchingWorkflowProvider(),
           EntityResolution.IdNamespaceProvider(),
@@ -1887,9 +1800,13 @@ export const providers = () =>
           Route53Profiles.ProfileProvider(),
           Route53Profiles.ProfileAssociationProvider(),
           Route53Profiles.ProfileResourceAssociationProvider(),
-          Route53Resolver.ResolverEndpointProvider(),
-          Route53Resolver.ResolverRuleProvider(),
-          Route53Resolver.ResolverRuleAssociationProvider(),
+          flociDual(Route53Resolver.ResolverEndpoint, () =>
+            Route53Resolver.ResolverEndpointProvider(),
+          ),
+          flociDual(Route53Resolver.ResolverRule, () => Route53Resolver.ResolverRuleProvider()),
+          flociDual(Route53Resolver.ResolverRuleAssociation, () =>
+            Route53Resolver.ResolverRuleAssociationProvider(),
+          ),
           Shield.ProtectionProvider(),
           Shield.ProtectionGroupProvider(),
           Shield.SubscriptionProvider(),
@@ -1897,18 +1814,18 @@ export const providers = () =>
           Signer.SigningProfileProvider(),
           SimpleDB.DomainProvider(),
           Timestream.DatabaseProvider(),
-          Timestream.DbInstanceProvider(),
+          flociDual(Timestream.DbInstance, () => Timestream.DbInstanceProvider()),
           Timestream.ScheduledQueryProvider(),
           Timestream.TableProvider(),
-          ResourceExplorer.IndexProvider(),
-          ResourceExplorer.ViewProvider(),
+          flociDual(ResourceExplorer.Index, () => ResourceExplorer.IndexProvider()),
+          flociDual(ResourceExplorer.View, () => ResourceExplorer.ViewProvider()),
           Notifications.ChannelAssociationProvider(),
           Notifications.EventRuleProvider(),
           Notifications.NotificationConfigurationProvider(),
           Notifications.NotificationHubProvider(),
           NotificationsContacts.EmailContactProvider(),
-          OAM.LinkProvider(),
-          OAM.SinkProvider(),
+          flociDual(OAM.Link, () => OAM.LinkProvider()),
+          flociDual(OAM.Sink, () => OAM.SinkProvider()),
           ObservabilityAdmin.TelemetryConfigProvider(),
           ObservabilityAdmin.TelemetryRuleProvider(),
           Omics.AnnotationStoreProvider(),
@@ -1917,29 +1834,39 @@ export const providers = () =>
           Omics.SequenceStoreProvider(),
           Omics.VariantStoreProvider(),
           Omics.WorkflowProvider(),
-          GlobalAccelerator.AcceleratorProvider(),
-          GlobalAccelerator.ListenerProvider(),
-          GlobalAccelerator.EndpointGroupProvider(),
+          flociDual(GlobalAccelerator.Accelerator, () => GlobalAccelerator.AcceleratorProvider()),
+          flociDual(GlobalAccelerator.Listener, () => GlobalAccelerator.ListenerProvider()),
+          flociDual(GlobalAccelerator.EndpointGroup, () =>
+            GlobalAccelerator.EndpointGroupProvider(),
+          ),
           AppRegistry.ApplicationProvider(),
           AppRegistry.AttributeGroupProvider(),
           AppRegistry.AttributeGroupAssociationProvider(),
           AppRegistry.ResourceAssociationProvider(),
-          ServiceCatalog.PortfolioProvider(),
-          ServiceCatalog.PortfolioProductAssociationProvider(),
-          ServiceCatalog.PrincipalPortfolioAssociationProvider(),
-          ServiceCatalog.ProductProvider(),
-          ServiceQuotas.ServiceQuotaIncreaseRequestProvider(),
+          flociDual(ServiceCatalog.Portfolio, () => ServiceCatalog.PortfolioProvider()),
+          flociDual(ServiceCatalog.PortfolioProductAssociation, () =>
+            ServiceCatalog.PortfolioProductAssociationProvider(),
+          ),
+          flociDual(ServiceCatalog.PrincipalPortfolioAssociation, () =>
+            ServiceCatalog.PrincipalPortfolioAssociationProvider(),
+          ),
+          flociDual(ServiceCatalog.Product, () => ServiceCatalog.ProductProvider()),
+          flociDual(ServiceQuotas.ServiceQuotaIncreaseRequest, () =>
+            ServiceQuotas.ServiceQuotaIncreaseRequestProvider(),
+          ),
           S3Control.AccessPointProvider(),
           S3Control.AccessPointPolicyProvider(),
           S3Control.MultiRegionAccessPointProvider(),
           S3Control.ObjectLambdaAccessPointProvider(),
           S3Control.StorageLensConfigurationProvider(),
-          NetworkFirewall.RuleGroupProvider(),
-          NetworkFirewall.FirewallPolicyProvider(),
-          NetworkFirewall.FirewallProvider(),
-          NetworkFirewall.LoggingConfigurationProvider(),
-          CloudTrail.EventDataStoreProvider(),
-          CloudTrail.TrailProvider(),
+          flociDual(NetworkFirewall.RuleGroup, () => NetworkFirewall.RuleGroupProvider()),
+          flociDual(NetworkFirewall.FirewallPolicy, () => NetworkFirewall.FirewallPolicyProvider()),
+          flociDual(NetworkFirewall.Firewall, () => NetworkFirewall.FirewallProvider()),
+          flociDual(NetworkFirewall.LoggingConfiguration, () =>
+            NetworkFirewall.LoggingConfigurationProvider(),
+          ),
+          flociDual(CloudTrail.EventDataStore, () => CloudTrail.EventDataStoreProvider()),
+          flociDual(CloudTrail.Trail, () => CloudTrail.TrailProvider()),
           IVS.ChannelProvider(),
           IVS.PlaybackKeyPairProvider(),
           IVS.PlaybackRestrictionPolicyProvider(),
@@ -1968,10 +1895,13 @@ export const providers = () =>
     // at the stack level lets `Capability.execute(...)` Outputs (e.g.
     // `AWS.EC2.getAmi`) resolve during plan.
     Layer.provideMerge(EC2.GetAmiHttp),
-    Layer.provideMerge(Region.fromEnvironment),
-    Layer.provideMerge(Credentials.fromEnvironment),
-    Layer.provideMerge(Endpoint.fromEnvironment),
-    Layer.provideMerge(DefaultEnvironment),
+    // Fresh per call: these derive from the environment below, and shared
+    // (memoized) instances built for another environment in the same run
+    // would shadow an `AWSEnvironment` provided to this layer.
+    Layer.provideMerge(Layer.fresh(Region.fromEnvironment)),
+    Layer.provideMerge(Layer.fresh(Credentials.fromEnvironment)),
+    Layer.provideMerge(Layer.fresh(Endpoint.fromEnvironment)),
+    Layer.provideMerge(providedOrDefault()),
     Layer.provideMerge(AwsAuth),
     Layer.provideMerge(CredentialsStoreLive),
     // Apply a blanket retry policy to every AWS SDK call. Like distilled's

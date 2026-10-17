@@ -1,6 +1,5 @@
 import * as Effect from "effect/Effect";
-import * as Binding from "../../Binding.ts";
-import { isBindingHost } from "../Lambda/Function.ts";
+import * as AWSBindings from "../AWSBindings.ts";
 import type { Repository } from "./Repository.ts";
 
 /**
@@ -29,12 +28,7 @@ export interface RepositoryScopedRequest {
  * Registry-level operations (`ecr:GetAuthorizationToken`, which authorizes
  * only on `Resource: ["*"]`) stay bespoke in their own `{Op}Http.ts`.
  */
-export const makeEcrRepositoryHttpBinding = <
-  I extends RepositoryScopedRequest,
-  A,
-  E,
-  R,
->(options: {
+export const makeEcrRepositoryHttpBinding = <I extends RepositoryScopedRequest, A, E, R>(options: {
   /**
    * Short capability name used in the binding sid and runtime span, e.g.
    * `"DescribeImages"`.
@@ -46,35 +40,30 @@ export const makeEcrRepositoryHttpBinding = <
   iamActions: readonly string[];
 }) =>
   Effect.gen(function* () {
-    const op = yield* options.operation;
+    const op = yield* AWSBindings.withCredentials(options.operation);
 
     return Effect.fn(function* (repository: Repository) {
       const RepositoryName = yield* repository.repositoryName;
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        const host = yield* Binding.Host;
-        if (isBindingHost(host)) {
-          yield* host.bind`Allow(${host}, AWS.ECR.${options.capability}(${repository}))`(
+        yield* AWSBindings.bind`AWS.ECR.${options.capability}(${repository})`({
+          policyStatements: [
             {
-              policyStatements: [
-                {
-                  Effect: "Allow",
-                  Action: [...options.iamActions],
-                  Resource: [repository.repositoryArn],
-                },
-              ],
+              Effect: "Allow",
+              Action: [...options.iamActions],
+              Resource: [repository.repositoryArn],
             },
-          );
-        }
+          ],
+        });
       }
       // The request is optional at the impl level so contracts whose
       // remaining fields are all optional (DescribeImages, ListImages, …) can
       // declare `(request?: …)`; contracts with required fields keep the
       // parameter required and narrow this signature.
-      return Effect.fn(
-        `AWS.ECR.${options.capability}(${repository.LogicalId})`,
-      )(function* (request?: Omit<I, keyof RepositoryScopedRequest>) {
+      return Effect.fn(`AWS.ECR.${options.capability}(${repository.LogicalId})`)(function* (
+        request?: Omit<I, keyof RepositoryScopedRequest>,
+      ) {
         return yield* op({
-          ...(request ?? {}),
+          ...request,
           repositoryName: yield* RepositoryName,
         } as unknown as I);
       });

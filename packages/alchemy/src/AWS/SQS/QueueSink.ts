@@ -2,7 +2,7 @@ import type * as sqs from "@distilled.cloud/aws/sqs";
 import type * as Effect from "effect/Effect";
 import type * as Sink from "effect/Sink";
 import * as Binding from "../../Binding.ts";
-import type { BatchRetryExhaustedError } from "../internal/BatchedSink.ts";
+import type { BatchRetryExhaustedError } from "../../Util/BatchedSink.ts";
 import type { Queue } from "./Queue.ts";
 
 /**
@@ -10,14 +10,9 @@ import type { Queue } from "./Queue.ts";
  * which the sink assigns per API call. Callers stay in control of
  * `MessageBody`, `MessageGroupId`, `MessageDeduplicationId`, attributes, etc.
  */
-export interface QueueSinkEntry extends Omit<
-  sqs.SendMessageBatchRequestEntry,
-  "Id"
-> {}
+export interface QueueSinkEntry extends Omit<sqs.SendMessageBatchRequestEntry, "Id"> {}
 
-export type QueueSinkError =
-  | sqs.SendMessageBatchError
-  | BatchRetryExhaustedError<QueueSinkEntry>;
+export type QueueSinkError = sqs.SendMessageBatchError | BatchRetryExhaustedError<QueueSinkEntry>;
 
 /**
  * A batching sink over SQS `SendMessageBatch` (10 entries / 256 KiB per
@@ -64,9 +59,7 @@ export interface QueueSink extends Binding.Service<
   "AWS.SQS.QueueSink",
   (
     queue: Queue,
-  ) => Effect.Effect<
-    Sink.Sink<void, QueueSinkEntry, readonly QueueSinkEntry[], QueueSinkError>
-  >
+  ) => Effect.Effect<Sink.Sink<void, QueueSinkEntry, readonly QueueSinkEntry[], QueueSinkError>>
 > {}
 
 export const QueueSink = Binding.Service<QueueSink>("AWS.SQS.QueueSink");

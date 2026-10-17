@@ -47,7 +47,7 @@ import * as Lambda from "./Function.ts";
 export const ScheduleEventSource = Layer.effect(
   SchedulerScheduleEventSource,
   Effect.gen(function* () {
-    const host = yield* Lambda.Function;
+    const host = yield* Lambda.eventSourceHost("AWS.Lambda.ScheduleEventSource");
 
     return Effect.fn(function* <Req = never>(
       descriptor: ScheduleDescriptor,
@@ -55,18 +55,14 @@ export const ScheduleEventSource = Layer.effect(
     ) {
       // Stable route id — computed identically at deploy time (names the
       // backing Schedule + role) and at runtime (matches incoming events).
-      const routeId = yield* Effect.sync(() =>
-        createScheduleRouteId(descriptor, host),
-      );
+      const routeId = yield* Effect.sync(() => createScheduleRouteId(descriptor, host));
 
       // Deploy-time: create the backing Schedule + execution role targeting
       // this function. Skipped once running inside the deployed Function (the
       // global guard), where the only work is registering the runtime handler
       // below.
       if (!globalThis.__ALCHEMY_RUNTIME__) {
-        yield* createScheduleRoute(routeId, descriptor, host).pipe(
-          Effect.asVoid,
-        );
+        yield* createScheduleRoute(routeId, descriptor, host).pipe(Effect.asVoid);
       }
 
       yield* host.listen(
