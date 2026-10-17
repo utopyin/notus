@@ -32,6 +32,7 @@
         "@notus/accounts": "workspace:*",
         "@notus/cloudflare": "workspace:*",
         "@notus/compute": "workspace:*",
+        "@notus/compute-boat": "workspace:*",
         "@notus/compute-namespace": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/control": "workspace:*",
@@ -123,6 +124,14 @@
         "effect": "catalog:",
       },
     },
+    "domains/compute-boat": {
+      "name": "@notus/compute-boat",
+      "dependencies": {
+        "@notus/boat": "workspace:*",
+        "@notus/compute": "workspace:*",
+        "effect": "catalog:",
+      },
+    },
     "domains/compute-namespace": {
       "name": "@notus/compute-namespace",
       "dependencies": {
@@ -206,6 +215,12 @@
     },
     "entrypoints/operator": {
       "name": "@notus/operator",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+    },
+    "packages/boat": {
+      "name": "@notus/boat",
       "dependencies": {
         "effect": "catalog:",
       },
@@ -734,9 +749,13 @@
 
     "@notus/api": ["@notus/api@workspace:apps/api"],
 
+    "@notus/boat": ["@notus/boat@workspace:packages/boat"],
+
     "@notus/cloudflare": ["@notus/cloudflare@workspace:packages/cloudflare"],
 
     "@notus/compute": ["@notus/compute@workspace:packages/compute"],
+
+    "@notus/compute-boat": ["@notus/compute-boat@workspace:domains/compute-boat"],
 
     "@notus/compute-namespace": ["@notus/compute-namespace@workspace:domains/compute-namespace"],
 

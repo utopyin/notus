@@ -15,6 +15,7 @@
     "@notus/accounts": "workspace:*",
     "@notus/cloudflare": "workspace:*",
     "@notus/compute": "workspace:*",
+    "@notus/compute-boat": "workspace:*",
     "@notus/compute-namespace": "workspace:*",
     "@notus/contracts": "workspace:*",
     "@notus/control": "workspace:*",

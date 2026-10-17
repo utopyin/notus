@@ -192,7 +192,7 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
       control("end"),
       Effect.withSpan("Compute.Namespace.end"),
     ),
-  proveReplacement: (previousInstanceId) =>
+  proveReplacement: (_resource, previousInstanceId) =>
     descriptor.capabilities.ensure("replacement:proof").pipe(
       Effect.andThen(
         run(Instances.Service.pipe(Effect.flatMap((i) => i.destroyed(previousInstanceId)))).pipe(

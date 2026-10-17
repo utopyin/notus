@@ -86,6 +86,22 @@ Keep `USER devbox` in both images. Namespace's generated username metadata misha
 
 Register the derived image with the same canonical `capabilities.json` again, inspect effective metadata, and supply the startup session at Create as described above. OCI inheritance is not Namespace registration. Project-specific dependencies belong in the derived image, without credentials baked into layers.
 
+## Boat template
+
+Boat builds no images, so the Boat template is a named snapshot of a sandbox that ran [boat/recipe.sh](boat/recipe.sh). The recipe installs what the Dockerfile's runtime stage does, with the same download pins, on Boat's Ubuntu 24.04 AMD64 machine: the `devbox` user as UID 1001, Herdr, Bun, Codex, ripgrep, the supervisor bundle and its launcher. It also enables [boat/notus-devbox.service](boat/notus-devbox.service). The unit starts only once `/etc/notus/bootstrap.env` exists. Each launch's setup script writes that root-only file from the sandbox's `env`, because per-sandbox `env` does not reach systemd. After every resume the unit starts again by itself. There is no busy hook: nothing inside a Boat box holds off its auto-stop deadline.
+
+```sh
+bun run --cwd apps/devbox build
+id=$(boat new --type small --no-env --json | jq -r 'select(.event == "ready") | .id')
+boat scp apps/devbox/boat/recipe.sh apps/devbox/boat/notus-devbox.service \
+  apps/devbox/notus-devbox apps/devbox/dist/main.js "$id":notus/
+boat exec "$id" --timeout 0 -- sudo bash notus/recipe.sh
+boat snapshot "$id" notus-base
+boat delete "$id"
+```
+
+Add the snapshot's name on the Devbox page. Rebuild and save it under a new name whenever the supervisor or a pin changes; a saved name never changes underneath the boxes started from it.
+
 ## Validation evidence
 
 The final Dockerfile passed local Linux AMD64 readiness and shutdown checks under emulation, without network access. Independent tests cover native framing, duplicate ownership, child failure and SIGTERM/SIGINT/SIGHUP cleanup. Both base and derived images were published to the authorized Namespace workspace.

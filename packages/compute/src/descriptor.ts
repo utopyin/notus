@@ -2,7 +2,7 @@ import type { Capabilities } from "./capabilities";
 import type { Provider } from "./provider";
 
 /** A stable key the dashboard resolves to a brand mark. Not a component: the server imports this too. */
-export type ProviderIconKey = "namespace";
+export type ProviderIconKey = "namespace" | "boat";
 
 /**
  * Everything generic code needs to present a provider and decide about its boxes without knowing

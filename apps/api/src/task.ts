@@ -40,6 +40,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import * as Redacted from "effect/Redacted";
 import * as Broker from "./broker";
 import {
+  computeConfig,
   credentialKeyConfig,
   deploymentConfig,
   githubConfig,
@@ -63,6 +64,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const operator = yield* operatorConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
+    const computeProviders = yield* computeConfig.pipe(Effect.orDie);
     // Model requests leave this object only through the initiator's Connection object.
     const connections = yield* Connection;
     // Deliveries act for an installation, whose credential the shared database holds.
@@ -78,13 +80,25 @@ export class Task extends Cloudflare.DurableObject<Task>()(
       connections,
       shared,
       credentialKey,
+      computeProviders,
       context,
     };
   }).pipe(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
     // Alchemy runs this inner initialization with its RuntimeContext.
     Effect.map(
-      ({ host, config, runtime, operator, github, connections, shared, credentialKey, context }) =>
+      ({
+        host,
+        config,
+        runtime,
+        operator,
+        github,
+        connections,
+        shared,
+        credentialKey,
+        computeProviders,
+        context,
+      }) =>
         Effect.gen(function* () {
           const db = yield* Drizzle.DurableObject({ migrations });
           const database = Sqlite.layer(db);
@@ -121,7 +135,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Layer.merge(stepsLayer, commandsLayer),
               ),
             ).pipe(
-              Layer.provideMerge(RuntimeLayers.execution(runtime)),
+              Layer.provideMerge(RuntimeLayers.execution(runtime, computeProviders)),
               // A workspace's provider account and templates live in the shared database.
               Layer.provide(
                 Layer.merge(Templates.layer, Compute.credentials).pipe(

@@ -85,7 +85,7 @@ export const layerNoDeps = Layer.effect(
           if (observed.instanceId !== current.instanceId) return yield* failure("identity");
           const provider = yield* port(environment);
           const ended = yield* provider
-            .proveReplacement(previous.instanceId)
+            .proveReplacement(current, previous.instanceId)
             .pipe(Effect.mapError(() => failure("unproven")));
           return { instanceId: ended.instanceId, endedAt: ended.endedAt };
         },

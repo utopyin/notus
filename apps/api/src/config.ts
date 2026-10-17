@@ -1,4 +1,5 @@
 import { Failure as AuthenticationFailure } from "@notus/control/runtime/auth";
+import { Provider } from "@notus/compute/provider";
 import { Mode } from "@notus/executions/types";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -106,4 +107,20 @@ export type DashboardConfig = Effect.Success<typeof dashboardConfig>;
 
 export const webhookConfig = Effect.gen(function* () {
   return Option.getOrNull(yield* Config.option(Config.redacted("GITHUB_WEBHOOK_SECRET")));
+});
+
+/**
+ * Which devbox providers this deployment runs, comma-separated; Namespace alone by default.
+ * Deployment authority, not workspace data: a workspace still connects its own account.
+ */
+export const computeConfig = Effect.gen(function* () {
+  const listed = yield* Config.string("NOTUS_COMPUTE_PROVIDERS").pipe(
+    Config.withDefault("namespace"),
+  );
+  return yield* Schema.decodeUnknownEffect(Schema.Array(Provider))(
+    listed
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value !== ""),
+  );
 });

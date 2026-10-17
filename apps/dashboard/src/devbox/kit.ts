@@ -2,6 +2,7 @@ import type { ProviderDescriptor } from "@notus/compute/descriptor";
 import type { Provider } from "@notus/compute/provider";
 import type { FC } from "react";
 import { isObject, type Json } from "../lib/json";
+import { boatKit } from "./boat/kit";
 import { namespaceKit } from "./namespace/kit";
 
 /**
@@ -46,6 +47,7 @@ export const anyKit =
 /** Total over the vocabulary: a provider without a kit does not compile. */
 export const KITS: { readonly [P in Provider]: AnyKit } = {
   namespace: anyKit(namespaceKit),
+  boat: anyKit(boatKit),
 };
 
 export interface Change {

@@ -17,7 +17,7 @@ import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { Roles } from "@notus/workspaces/roles";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
-import { configurationOf, registered } from "./compute";
+import { configurationOf, offered } from "./compute";
 import * as Install from "./install";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -34,6 +34,7 @@ import { hostnames, zone } from "@notus/shared/hosts";
 import * as Callback from "./callback";
 import { authDatabase, makeAuth } from "./auth";
 import {
+  computeConfig,
   credentialKeyConfig,
   dashboardConfig,
   deploymentConfig,
@@ -60,6 +61,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
   Effect.gen(function* () {
     const config = yield* deploymentConfig;
     const callbackSettings = yield* runtimeConfig.pipe(Effect.orDie);
+    const computeProviders = yield* computeConfig.pipe(Effect.orDie);
+    const registered = offered(computeProviders);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const webhookSecret = yield* webhookConfig.pipe(Effect.orDie);
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
@@ -386,7 +389,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       );
     /** The checks of a provider this deployment runs; any other key is refused before storage. */
     const compute = (provider: string) => {
-      const configuration = configurationOf(provider);
+      const configuration = configurationOf(computeProviders, provider);
       return configuration
         ? Effect.succeed(configuration)
         : Effect.fail<DashboardFailure>({

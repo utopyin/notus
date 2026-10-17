@@ -6,7 +6,8 @@ import { Providers } from "@notus/executions/providers";
 import { Templates as WorkspaceTemplates } from "@notus/workspaces/templates";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { adapters } from "./compute";
+import type { Provider } from "@notus/compute/provider";
+import { adaptersOf } from "./compute";
 import type { RuntimeConfig } from "./config";
 
 export const authentication = (settings: RuntimeConfig | null) =>
@@ -27,7 +28,7 @@ export const authentication = (settings: RuntimeConfig | null) =>
  * deployment configuration is Notus's own authority; the caller provides the shared database's
  * template reads and sealed credentials.
  */
-export const execution = (settings: RuntimeConfig | null) => {
+export const execution = (settings: RuntimeConfig | null, providers: ReadonlyArray<Provider>) => {
   if (!settings) return Layer.merge(Auth.disabled, Devbox.disabled);
   const auth = authentication(settings);
   const authority = Layer.effect(
@@ -67,7 +68,7 @@ export const execution = (settings: RuntimeConfig | null) => {
     }),
   );
   // Which providers this deployment runs; a workspace naming another is refused.
-  const providers = Providers.layer(adapters).pipe(Layer.provide(templates));
-  const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, providers]));
+  const registry = Providers.layer(adaptersOf(providers)).pipe(Layer.provide(templates));
+  const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, registry]));
   return Layer.merge(auth, devbox);
 };

@@ -1,5 +1,11 @@
-import type { Configuration } from "@notus/compute/adapter";
+import type { Configuration, ProviderAdapter } from "@notus/compute/adapter";
+import type { ComputeCredentials } from "@notus/compute/credentials";
 import { Provider, PROVIDERS } from "@notus/compute/provider";
+import type { Templates } from "@notus/compute/templates";
+import {
+  adapter as boatAdapter,
+  configuration as boatConfiguration,
+} from "@notus/compute-boat/adapter";
 import {
   adapter as namespaceAdapter,
   configuration as namespaceConfiguration,
@@ -7,16 +13,25 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-/** The devbox providers this deployment runs. Adding one here registers it with the task host. */
-export const adapters = Effect.all([namespaceAdapter]);
-
-/** The same providers' credential-free checks, for the API's saves. Total over `Provider`. */
+/** Every adapter this build has. Total over `Provider`, so a new provider does not compile without one. */
+const adapters: {
+  readonly [P in Provider]: Effect.Effect<ProviderAdapter, never, ComputeCredentials | Templates>;
+} = { namespace: namespaceAdapter, boat: boatAdapter };
+/** The same providers' credential-free checks, for the API's saves. */
 const configurations: { readonly [P in Provider]: Configuration } = {
   namespace: namespaceConfiguration,
+  boat: boatConfiguration,
 };
-export const configurationOf = (provider: string): Configuration | null =>
-  Schema.is(Provider)(provider) ? configurations[provider] : null;
+
+/** The adapters a deployment runs (`NOTUS_COMPUTE_PROVIDERS`), registered with the task host. */
+export const adaptersOf = (enabled: ReadonlyArray<Provider>) =>
+  Effect.forEach(enabled, (provider) => adapters[provider]);
+/** A provider the deployment does not run is refused before storage, like an unknown key. */
+export const configurationOf = (
+  enabled: ReadonlyArray<Provider>,
+  provider: string,
+): Configuration | null =>
+  Schema.is(Provider)(provider) && enabled.includes(provider) ? configurations[provider] : null;
 /** What the dashboard offers, in the vocabulary's order. */
-export const registered: ReadonlyArray<Provider> = PROVIDERS.filter(
-  (provider) => configurations[provider] !== undefined,
-);
+export const offered = (enabled: ReadonlyArray<Provider>): ReadonlyArray<Provider> =>
+  PROVIDERS.filter((provider) => enabled.includes(provider));

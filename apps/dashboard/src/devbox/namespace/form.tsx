@@ -1,9 +1,8 @@
 import { IconPlus, IconX } from "@tabler/icons-react";
 import { architectures, environmentNames } from "@notus/namespace/restricted";
-import type { FC, ReactNode } from "react";
+import type { FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -12,35 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Field, Section } from "../field";
 import { shortValue, type Egress, type Fields } from "./fields";
-
-/** A labelled field; the hint sits under the control. */
-const Field: FC<{ id: string; label: string; hint?: string; children: ReactNode }> = ({
-  id,
-  label,
-  hint,
-  children,
-}) => (
-  <div className="flex flex-col gap-2">
-    <Label htmlFor={id}>{label}</Label>
-    {children}
-    {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
-  </div>
-);
-
-const Section: FC<{ title: string; description?: string; children: ReactNode }> = ({
-  title,
-  description,
-  children,
-}) => (
-  <section className="flex flex-col gap-4">
-    <div className="flex flex-col gap-1">
-      <h3 className="text-sm font-medium">{title}</h3>
-      {description ? <p className="text-muted-foreground text-xs">{description}</p> : null}
-    </div>
-    <div className="grid gap-4 sm:grid-cols-2">{children}</div>
-  </section>
-);
 
 /** Selects carry no empty value, so "provider default" is a value of its own. */
 const DEFAULT = "default";
@@ -122,7 +94,7 @@ export const NamespaceForm: FC<{
           </Field>
           {fields.imageRef && !imageApproved ? (
             <p className="text-muted-foreground mt-2 text-xs">
-              This image is no longer approved. Tasks keep starting from it until an approved one is
+              This image is no longer one of the workspace's. No task can start until another is
               selected.
             </p>
           ) : null}

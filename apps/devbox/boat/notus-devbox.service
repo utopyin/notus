@@ -1,0 +1,18 @@
+# The Notus supervisor on a Boat template. It starts once the launch's setup script has written
+# the bootstrap file, and again by itself after every resume. See docs/plans/compute.md.
+[Unit]
+Description=Notus devbox supervisor
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/notus/bootstrap.env
+
+[Service]
+User=devbox
+Group=devbox
+EnvironmentFile=/etc/notus/bootstrap.env
+ExecStart=/usr/local/bin/notus-devbox start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

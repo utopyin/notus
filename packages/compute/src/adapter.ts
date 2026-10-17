@@ -61,7 +61,9 @@ export interface DevboxPort {
     resource: Resource,
   ) => Effect.Effect<Observation, ComputeError | CapabilityNotSupportedError>;
   readonly end: (resource: Resource) => Effect.Effect<void, ComputeError>;
+  /** That the machine `previousInstanceId` names ended, now that `resource` runs on another. */
   readonly proveReplacement: (
+    resource: Resource,
     previousInstanceId: string,
   ) => Effect.Effect<Termination, ComputeError | CapabilityNotSupportedError>;
 }
