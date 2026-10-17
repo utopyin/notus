@@ -1,5 +1,6 @@
 import { App as GithubApp } from "@notus/github/app";
 import { GithubAdapter } from "@notus/platform-github/adapter";
+import type { InstallError } from "@notus/platform/installing";
 import { SlackAdapter } from "@notus/platform-slack/adapter";
 import { Platforms } from "@notus/platforms/registry";
 import * as Effect from "effect/Effect";
@@ -20,6 +21,10 @@ export const platformsLayer = (
     readonly webhookSecret: Redacted.Redacted<string> | null;
     readonly slack: DashboardConfig["slack"];
     readonly githubAppSlug: string | null;
+    /** The installing user's GitHub user token; only the host that completes installs has one. */
+    readonly githubInstaller:
+      | ((userId: string) => Effect.Effect<Redacted.Redacted<string> | null, InstallError>)
+      | null;
   },
 ) =>
   Platforms.layer(Effect.all([SlackAdapter.adapter, GithubAdapter.adapter])).pipe(
@@ -37,6 +42,7 @@ export const platformsLayer = (
       Layer.succeed(GithubAdapter.Configuration, {
         webhookSecret: install.webhookSecret,
         slug: install.githubAppSlug,
+        installer: install.githubInstaller,
       }),
       FetchHttpClient.layer,
     ]),

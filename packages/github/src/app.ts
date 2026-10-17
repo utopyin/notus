@@ -70,11 +70,25 @@ export interface Bound {
     input: { readonly kind: "issue-comment" | "review-comment"; readonly commentId: string },
   ) => Effect.Effect<void, AppError>;
 }
+/** A repository of an installation as one person reaches it through their user token. */
+export interface UserRepository {
+  readonly fullName: string;
+  /** Push or admin: what Notus's own tokens would do there on the person's behalf. */
+  readonly push: boolean;
+}
 /** The App itself; every repository operation happens through one of its installations. */
 export interface Interface {
   readonly forInstallation: (installationId: string) => Effect.Effect<Bound, AppError>;
   /** App JWT only: which account an installation belongs to. */
   readonly installation: (installationId: string) => Effect.Effect<Installation, AppError>;
+  /**
+   * With the person's own user token: the installation's repositories they reach, or null when
+   * GitHub gives them no access to the installation at all. Proves who may claim an installation.
+   */
+  readonly userRepositories: (
+    installationId: string,
+    userToken: Redacted.Redacted<string>,
+  ) => Effect.Effect<ReadonlyArray<UserRepository> | null, AppError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/github/App") {}
 
@@ -211,6 +225,55 @@ export const layerNoDeps = Layer.effect(
       Effect.scoped,
       Effect.timeoutOrElse({
         duration: "15 seconds",
+        orElse: () => Effect.fail(fail("token", "transport")),
+      }),
+    );
+    const UserRepositoriesResponse = Schema.Struct({
+      repositories: Schema.Array(
+        Schema.Struct({
+          full_name: Schema.NonEmptyString,
+          permissions: Schema.optionalKey(
+            Schema.Struct({
+              admin: Schema.optionalKey(Schema.Boolean),
+              push: Schema.optionalKey(Schema.Boolean),
+            }),
+          ),
+        }),
+      ),
+    });
+    const userRepositories = Effect.fn("GitHub.App.userRepositories")(
+      function* (installationId: string, userToken: Redacted.Redacted<string>) {
+        if (!/^\d{1,20}$/.test(installationId)) return yield* fail("token", "configuration");
+        const found: Array<UserRepository> = [];
+        // The same ten-page ceiling as the installation's own listing.
+        for (let page = 1; page <= 10; page++) {
+          const request = HttpClientRequest.get(
+            `${endpoint}/user/installations/${installationId}/repositories?per_page=100&page=${page}`,
+          ).pipe(headers, HttpClientRequest.bearerToken(Redacted.value(userToken)));
+          const response = yield* http
+            .execute(request)
+            .pipe(Effect.mapError(() => fail("token", "transport")));
+          // GitHub answers 403/404 when the person has no access to the installation.
+          if (response.status === 403 || response.status === 404) return null;
+          if (response.status !== 200) return yield* fail("token", "rejected", response.status);
+          const body = yield* response.json.pipe(
+            Effect.mapError(() => fail("token", "invalid-response")),
+          );
+          const decoded = yield* Schema.decodeUnknownEffect(UserRepositoriesResponse)(body).pipe(
+            Effect.mapError(() => fail("token", "invalid-response")),
+          );
+          for (const entry of decoded.repositories)
+            found.push({
+              fullName: entry.full_name,
+              push: entry.permissions?.admin === true || entry.permissions?.push === true,
+            });
+          if (decoded.repositories.length < 100) break;
+        }
+        return found;
+      },
+      Effect.scoped,
+      Effect.timeoutOrElse({
+        duration: "20 seconds",
         orElse: () => Effect.fail(fail("token", "transport")),
       }),
     );
@@ -525,6 +588,7 @@ export const layerNoDeps = Layer.effect(
           ? Effect.succeed(bind(installationId))
           : Effect.fail(fail("token", "configuration")),
       installation,
+      userRepositories,
     });
   }),
 );
@@ -535,6 +599,7 @@ export const disabled = Layer.succeed(
   Service.of({
     forInstallation: () => Effect.fail(fail("token", "configuration")),
     installation: () => Effect.fail(fail("token", "configuration")),
+    userRepositories: () => Effect.fail(fail("token", "configuration")),
   }),
 );
 export * as App from "./app";

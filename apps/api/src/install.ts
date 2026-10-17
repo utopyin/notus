@@ -66,7 +66,10 @@ export const complete = (
       .forPlatform(platform)
       .pipe(Effect.mapError(() => "unregistered" as const));
     const installed = yield* scope.installing
-      .complete({ state, redirectUri: redirectUriOf(dashboardOrigin, platform) }, query)
+      .complete(
+        { state, redirectUri: redirectUriOf(dashboardOrigin, platform), userId: intent.userId },
+        query,
+      )
       .pipe(
         Effect.mapError(
           (error) =>

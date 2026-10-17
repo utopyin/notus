@@ -21,6 +21,13 @@ export class Configuration extends Context.Service<
     readonly webhookSecret: Redacted.Redacted<string> | null;
     /** Absent when this deployment cannot install: the dashboard then offers no "Install GitHub App". */
     readonly slug: string | null;
+    /**
+     * The installing user's own GitHub user token, null when they never signed in with GitHub.
+     * Absent on hosts that never install.
+     */
+    readonly installer:
+      | ((userId: string) => Effect.Effect<Redacted.Redacted<string> | null, InstallError>)
+      | null;
   }
 >()("@notus/platform-github/Configuration") {}
 
@@ -53,6 +60,21 @@ const PullTarget = Schema.fromJsonString(
   Schema.Tuple([Webhooks.TargetKind, Schema.String.check(Schema.isPattern(/^\d{1,20}$/))]),
 );
 const writers = new Set<Role>(["admin", "maintain", "write"]);
+const installError = (error: AppError) =>
+  new InstallError({
+    platform: "github",
+    reason:
+      error.reason === "configuration"
+        ? "unconfigured"
+        : error.reason === "rejected"
+          ? "rejected"
+          : error.reason === "transport"
+            ? "transport"
+            : "invalid-response",
+    detail: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
+  });
+const refused = (detail: string) =>
+  new InstallError({ platform: "github", reason: "rejected", detail });
 
 /**
  * GitHub as a source. A repository is the scope, a pull request number the conversation, and a
@@ -126,32 +148,34 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
           : Effect.succeed({
               url: `https://github.com/apps/${configuration.slug}/installations/new?state=${encodeURIComponent(intent.state)}`,
             }),
-      complete: Effect.fn("GitHub.install")(function* (_intent, query) {
+      complete: Effect.fn("GitHub.install")(function* (intent, query) {
+        if (configuration.installer === null)
+          return yield* new InstallError({ platform: "github", reason: "unconfigured" });
+        // The setup URL's installation_id is whatever the browser carries, so it proves nothing.
         const installationId = query.get("installation_id");
         if (!installationId || !/^\d{1,20}$/.test(installationId))
-          return yield* new InstallError({
-            platform: "github",
-            reason: "rejected",
-            detail: "no-installation-id",
-          });
+          return yield* refused("no-installation-id");
         // The App JWT confirms the installation exists and names the account it belongs to.
-        const installation = yield* app.installation(installationId).pipe(
-          Effect.mapError(
-            (error) =>
-              new InstallError({
-                platform: "github",
-                reason:
-                  error.reason === "configuration"
-                    ? "unconfigured"
-                    : error.reason === "rejected"
-                      ? "rejected"
-                      : error.reason === "transport"
-                        ? "transport"
-                        : "invalid-response",
-                detail: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
-              }),
-          ),
+        const installation = yield* app
+          .installation(installationId)
+          .pipe(Effect.mapError(installError));
+        // What proves it is the installer's own: their GitHub user token reaches the installation,
+        // with push on every repository it covers, so claiming it grants nothing they lack.
+        const token = yield* configuration.installer(intent.userId);
+        if (token === null) return yield* refused("github-sign-in-required");
+        const reached = yield* app
+          .userRepositories(installation.id, token)
+          .pipe(Effect.mapError(installError));
+        if (reached === null) return yield* refused("not-your-installation");
+        const pushable = new Set(
+          reached.filter((entry) => entry.push).map((entry) => entry.fullName.toLowerCase()),
         );
+        const covered = yield* app.forInstallation(installation.id).pipe(
+          Effect.flatMap((bound) => bound.repositories),
+          Effect.mapError(installError),
+        );
+        if (covered.some((entry) => !pushable.has(entry.fullName.toLowerCase())))
+          return yield* refused("push-access-required");
         return { installationId: installation.id, label: installation.account, credential: {} };
       }),
     };

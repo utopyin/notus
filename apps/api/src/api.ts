@@ -2,6 +2,7 @@ import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
+import { InstallError } from "@notus/platform/installing";
 import { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
 import type { Actor } from "@notus/platform/source";
@@ -25,6 +26,7 @@ import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
@@ -75,10 +77,38 @@ export default class Api extends Cloudflare.Worker<Api>()(
     if (!runtime) return yield* Effect.die("Api initialization requires Alchemy RuntimeContext");
     // Every source goes through the registry: ingress, delivery, installs and the dashboard's scope lists.
     const d1 = Layer.effect(D1.Binding, binding.raw);
+    // An install's proof of GitHub ownership is the installer's own sign-in, refreshed under
+    // their Connection object's gate like every other use of it.
+    const githubInstaller =
+      dashboard.github === null
+        ? null
+        : (userId: string) =>
+            connections
+              .getByName(userId)
+              .githubLogin(userId, 60_000)
+              .pipe(
+                Effect.provideService(RuntimeContext, runtime),
+                Effect.flatMap((result) =>
+                  result.ok
+                    ? Effect.succeed(
+                        result.value === null ? null : Redacted.make(result.value.access),
+                      )
+                    : result.reason === "not-linked"
+                      ? Effect.succeed(null)
+                      : Effect.fail(
+                          new InstallError({
+                            platform: "github",
+                            reason: "rejected",
+                            detail: `github-sign-in ${result.reason}`,
+                          }),
+                        ),
+                ),
+              );
     const platforms = platformsLayer(config, github, {
       webhookSecret,
       slack: dashboard.slack,
       githubAppSlug: dashboard.githubAppSlug,
+      githubInstaller,
     }).pipe(
       Layer.provide(Credentials.layer.pipe(Layer.provide([d1, sealed]))),
       Layer.provide(Layer.succeed(RuntimeContext, runtime)),
@@ -550,6 +580,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const { url } = yield* scope.installing.begin({
               state: intent.nonce,
               redirectUri: Install.redirectUriOf(dashboard.origin, platform),
+              userId: me.userId,
             });
             return { url };
           }),

@@ -100,6 +100,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             webhookSecret: null,
             slack: null,
             githubAppSlug: null,
+            githubInstaller: null,
           }).pipe(
             Layer.provide(
               Credentials.layer.pipe(

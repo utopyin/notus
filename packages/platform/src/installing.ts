@@ -15,6 +15,8 @@ export interface InstallIntent {
   readonly state: string;
   /** The host's own completion route for this platform. */
   readonly redirectUri: string;
+  /** The Notus user installing; the host has checked the one completing is the one who began. */
+  readonly userId: string;
 }
 
 /** What an installation is once the platform confirmed it. The credential is the adapter's own shape. */

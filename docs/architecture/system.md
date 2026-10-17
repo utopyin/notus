@@ -913,7 +913,7 @@ sequenceDiagram
   A->>DW: GET /platforms/platform/install with the cookie
   DW->>W: dashboardCompleteInstall(cookie, platform, query)
   W->>WS: takeInstallIntent(nonce): only the user who began it completes it
-  W->>P: adapter completes: Slack oauth.v2.access, GitHub App JWT installation lookup
+  W->>P: adapter completes: Slack oauth.v2.access; GitHub App JWT lookup, then the installer's<br/>own user token must reach the installation with push on every repository it covers
   W->>WS: install: record installation and credential, refused if another workspace holds it
   W-->>A: 302 to the workspace Platforms page
   end
