@@ -61,8 +61,21 @@ Also observed:
 - An account without a plan or started trial answers `402 billing_required` on create, and `GET /limits` reports `canStart: false`.
 - The sandbox object also carries `stop`, `lastSnapshotAttemptAt`, `lastSnapshotStatus`, `environment` and `environmentVersion`, which the reference does not list.
 
+## Adapter check 2026-10-17
+
+`@notus/compute-boat` ran against Boat from a local script, with the workspace's credential and templates stubbed. A template `notus-base` was built first with [the recipe](../../apps/devbox/boat/recipe.sh) on a `small` sandbox: the machine was Ubuntu 24.04.4 x86_64, its user is `user` (UID 1000), UID and GID 1001 were free, and the recipe finished in about 20 s. The snapshot was ready 15 s after the save, and the build sandbox was deleted. The launch used an unreachable control URL, so the supervisor ran but could not enroll.
+
+- Launch from `notus-base` answered at once; a second launch with the same operation id returned the same sandbox.
+- `fetch` reported the boot id read through `POST /commands` about 2.5 s after launch; `wake` on the running box kept it.
+- The setup script wrote `/etc/notus/bootstrap.env` (root, mode 600, both keys). The unit was skipped at boot for the missing file, then started by the script.
+- `sleep` reached stopped. `wake` resumed the box in 2.8 s with a new boot id. A replacement proof for the previous boot id succeeded, and one for the current boot id was refused.
+- After the resume, the unit had started again by itself, at the new boot, with no restarts counted.
+- `end` deleted the box, and `fetch` then answered not found.
+
+Not covered: the supervisor's enrollment against a real control plane, and a deadline stop in the middle of a Notus command.
+
 ## Open questions
 
-- Whether the box-reported boot id can serve as the instance id: the box would report it at enrollment, and the control plane would accept a new one only after observing the sandbox `archived` since the last enrollment. That is a protocol change, decided in the [compute plan](../plans/compute.md).
+- The instance id is the boot id the adapter reads through `POST /commands`, Boat's own authenticated channel, rather than one the box reports through Notus. That needed no protocol change. It assumes what Boat documents and the probe showed: one machine per sandbox, and a new boot on every resume.
 - How the key behaves past 24 hours, and whether `ip` can repeat across resumes.
 - The supervisor's actual re-enrollment after resume, which needs the Boat adapter and a template built from the Notus base recipe.
