@@ -48,8 +48,8 @@ Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT
 ### Planning and execution
 
 - Each task targets one repository selected from the workspace's accessible repositories. Cross-repository tasks are outside the first version.
-- A workspace selects its devbox provider and stores its native configuration as opaque JSON. The provider package owns decoding, encoding, and validation; Notus does not translate a shared machine-configuration model into provider settings.
-- Provide a default Notus image containing Herdr and its supporting runtime. Teams can derive images with their own tools and use the provider's native configuration to select them. A default image is not a shared running devbox.
+- A workspace selects its devbox provider, connects its own account with that provider, and stores its native configuration as opaque JSON. Provider credentials, configuration and launch templates belong to the workspace, never to deployment configuration. The provider package owns decoding, encoding, and validation; Notus does not translate a shared machine-configuration model into provider settings.
+- Publish a Notus base recipe containing Herdr and its supporting runtime. A launch template is the provider's own artifact a box starts from, such as an image digest or a named snapshot. Workspace admins add the templates their workspace may launch; Notus ships no built-in template and audits none on a workspace's behalf. A default template is optional: the provider may infer one from the connected account, otherwise admins pick one. A template is not a shared running devbox.
 - The first end-to-end target is a dedicated disposable web-app repository with a runnable UI and build checks, not a production application.
 - The planner can ask repeated questions and revise its plan. Human approval binds the exact Markdown revision.
 - The review UI runs on the dev box behind an unguessable, task-scoped, expiring bearer link. Any holder can view and approve; forwarding the link grants those rights.
@@ -58,7 +58,7 @@ Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT
 - Reuse specialist sessions where possible, but persist findings and responses independently. Reviewers explicitly report when they have no findings. Terminal exit is not semantic completion.
 - Tools may wait for hours without repeated model calls, resuming on results or human input.
 - Initially impose no Notus-specific execution-time, specialist-count, workspace-capacity, or spend caps; respect provider/runtime limits. Keep one authoritative active attempt per task as a consistency invariant, not a usage limit.
-- Rely on Namespace auto-sleep during human waits, without a Notus-imposed response deadline. Sleeping must not cancel the task or discard pending questions/plans. Approval-link expiry is independent of the time allowed to respond.
+- During human waits, let a box sleep the way its provider allows: automatically where the provider sleeps idle boxes, on Notus's request where it can only stop on demand, and not at all where it can do neither. There is no Notus-imposed response deadline. Notus decides from the provider's declared capabilities, never from its name. Sleeping must not cancel the task or discard pending questions/plans. Approval-link expiry is independent of the time allowed to respond.
 - One Cloudflare Durable Object per task holds authoritative progress, routes structured input/output, and runs the operator loop: each model round and tool result is a persisted step, so waiting costs no model calls and survives restarts. The dev box runs specialists and repository work only through operator tools; it never hosts the operator or its credentials.
 - The operator's system prompt carries the task's current state, including whether a dev box exists, and the operator decides whether its task needs one. Readiness, wake-up and sleep are provider implementation details behind the tools, never part of the operator's contract; some providers keep boxes always on.
 
@@ -83,10 +83,10 @@ Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT
 
 ## Selected technology
 
-Effect v4, Bun workspaces/Turborepo, and Alchemy v2 with `alchemy.run.ts`; Cloudflare Workers, shared D1 for workspace/control data, and task Durable Objects; Drizzle with first-party Effect drivers/schema integration; Namespace dev boxes; Herdr sessions; Plannotator review; `@distilled.cloud/slack` for Slack Web API calls. Workspaces use ordinary SQL-backed services, not workspace Durable Objects. These choices are not proof of interoperability. See [research](docs/research/README.md).
+Effect v4, Bun workspaces/Turborepo, and Alchemy v2 with `alchemy.run.ts`; Cloudflare Workers, shared D1 for workspace/control data, and task Durable Objects; Drizzle with first-party Effect drivers/schema integration; dev boxes behind a provider contract, with Namespace first and Boat next; Herdr sessions; Plannotator review; `@distilled.cloud/slack` for Slack Web API calls. Workspaces use ordinary SQL-backed services, not workspace Durable Objects. These choices are not proof of interoperability. See [research](docs/research/README.md).
 
 ## Retention
 
-Only the initiator and workspace admins may explicitly close or reopen a task. Comments do not automatically reopen closed tasks. Retain task records and artifacts while open and for 90 days after explicit closure; reopening within that window cancels cleanup, and a later closure starts a new window. Handoff for human review does not start the clock. Saved model connections have a separate lifecycle; sleeping devboxes remain subject to Namespace's retention policy.
+Only the initiator and workspace admins may explicitly close or reopen a task. Comments do not automatically reopen closed tasks. Retain task records and artifacts while open and for 90 days after explicit closure; reopening within that window cancels cleanup, and a later closure starts a new window. Handoff for human review does not start the clock. Saved model connections have a separate lifecycle; sleeping devboxes remain subject to their provider's retention policy.
 
 Do not add a workflow editor, full tenant administration, every input adapter, or comprehensive autonomous recovery to the first prototype. Technical unknowns belong in the [validation plan](docs/research/validation-plan.md).
