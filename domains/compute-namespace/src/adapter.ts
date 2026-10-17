@@ -192,6 +192,8 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
       control("end"),
       Effect.withSpan("Compute.Namespace.end"),
     ),
+  // The box marks itself busy through its template's hook; there is no deadline to move.
+  hold: () => descriptor.capabilities.ensure("activity:lease"),
   proveReplacement: (_resource, previousInstanceId) =>
     descriptor.capabilities.ensure("replacement:proof").pipe(
       Effect.andThen(

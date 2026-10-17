@@ -30,6 +30,12 @@ export interface Interface {
     environment: Environment | null,
     resource: Resource,
   ) => Effect.Effect<Resource, DevboxFailure>;
+  /** Moves the provider's stop deadline for a working box; see `activity:lease`. */
+  readonly hold: (
+    environment: Environment,
+    resource: Resource,
+    seconds: number | null,
+  ) => Effect.Effect<void, DevboxFailure>;
   readonly verifyReplacement: (
     environment: Environment | null,
     previous: Enrollment,
@@ -73,6 +79,21 @@ export const layerNoDeps = Layer.effect(
     });
     return Service.of({
       fetch,
+      hold: Effect.fn("Devbox.hold")(function* (environment, resource, seconds) {
+        const provider = yield* port(environment);
+        yield* provider.hold(resource, environment.config, seconds).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning(
+              `devbox.hold_failed ${error._tag}${
+                Schema.is(ComputeError)(error) ? ` ${error.operation} ${error.outcome}` : ""
+              }`,
+            ),
+          ),
+          Effect.mapError((error) =>
+            refused(error) ? failure("unsupported-provider") : failure("unavailable"),
+          ),
+        );
+      }),
       verifyReplacement: Effect.fn("Devbox.verifyReplacement")(
         function* (environment, previous, current) {
           if (
@@ -176,6 +197,7 @@ export const disabled = Layer.succeed(
   Service.of({
     perform: () => Effect.succeed(ProvisioningResult.cases.Rejected.make({})),
     fetch: () => Effect.fail(failure("disabled")),
+    hold: () => Effect.fail(failure("disabled")),
     verifyReplacement: () => Effect.fail(failure("disabled")),
   }),
 );

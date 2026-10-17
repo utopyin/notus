@@ -18,6 +18,12 @@ export const Capability = Schema.Literals([
   "busy:signal",
   /** The provider can prove the previous machine ended before a new one enrolls on the resource. */
   "replacement:proof",
+  /**
+   * Notus can hold a working box awake for a bounded time by moving the provider's own stop
+   * deadline, and hand it back to the configured idle stop afterwards. The hold is renewed; a
+   * missed renewal lets the provider stop the box.
+   */
+  "activity:lease",
 ]);
 export type Capability = typeof Capability.Type;
 

@@ -16,6 +16,7 @@ import * as Authentication from "@notus/control/runtime/auth";
 import { Failure as RuntimeFailure } from "@notus/control/runtime/errors";
 import * as Protocol from "@notus/control/runtime/protocol";
 import * as Runtime from "@notus/control/runtime/server";
+import { Activity } from "@notus/executions/activity";
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { App as GithubApp } from "@notus/github/app";
@@ -151,6 +152,11 @@ export class Task extends Cloudflare.DurableObject<Task>()(
           const state = yield* State.Service.pipe(Effect.provideContext(services));
           const provisioning = yield* Provisioning.Service.pipe(Effect.provideContext(services));
           const devbox = yield* Devbox.Service.pipe(Effect.provideContext(services));
+          // Built once per object: what it holds lives as long as the object does.
+          const activity = yield* Activity.Service.pipe(
+            Effect.provide(Activity.layer),
+            Effect.provideContext(services),
+          );
           const steps = yield* Steps.Service.pipe(Effect.provideContext(services));
           const commands = yield* Commands.Service.pipe(Effect.provideContext(services));
           // Built lazily per claim; absent configuration fails the checkout, never the object.
@@ -399,8 +405,11 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 : selected === "operator"
                   ? yield* OperatorControl.nextWake(now).pipe(Effect.provideContext(services))
                   : yield* Control.nextWake(now).pipe(Effect.provideContext(services));
-            if (next === null) yield* host.storage.deleteAlarm();
-            else yield* host.storage.setAlarm(Math.max(now + 1, next));
+            // A working box's hold is renewed by this alarm too.
+            const held = selected === "operator" ? yield* activity.nextWake(now) : null;
+            const at = next === null ? held : held === null ? next : Math.min(next, held);
+            if (at === null) yield* host.storage.deleteAlarm();
+            else yield* host.storage.setAlarm(Math.max(now + 1, at));
           });
           const alarm = Effect.gen(function* () {
             yield* gate(
@@ -486,6 +495,15 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               }
             }
             if ((yield* mode) === "operator") {
+              yield* Effect.gen(function* () {
+                const due = yield* gate(
+                  Effect.gen(function* () {
+                    return yield* activity.due(yield* Clock.currentTimeMillis);
+                  }),
+                );
+                // Provider call outside the gate; a lost hold runs out by itself.
+                if (due !== null) yield* activity.perform(due, yield* Clock.currentTimeMillis);
+              }).pipe(Effect.catchCause(() => Effect.logError("task.activity_failed")));
               for (let index = 0; index < 2; index++) {
                 const claimed = yield* gate(
                   Effect.gen(function* () {
@@ -744,9 +762,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                     const reply = yield* gate(
                       Effect.gen(function* () {
                         const now = yield* Clock.currentTimeMillis;
-                        return yield* Runtime.poll(capability, now).pipe(
+                        const reply = yield* Runtime.poll(capability, now).pipe(
                           Effect.provideContext(services),
                         );
+                        // A command now runs on the box; the alarm holds it awake at once.
+                        if (reply.command !== null) yield* arm(now + 1);
+                        return reply;
                       }),
                     );
                     if (reply.command !== null) {

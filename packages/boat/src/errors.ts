@@ -1,6 +1,14 @@
 import * as Schema from "effect/Schema";
 
-export const Operation = Schema.Literals(["create", "get", "stop", "resume", "delete", "command"]);
+export const Operation = Schema.Literals([
+  "create",
+  "get",
+  "stop",
+  "resume",
+  "delete",
+  "command",
+  "update",
+]);
 export type Operation = typeof Operation.Type;
 
 /**

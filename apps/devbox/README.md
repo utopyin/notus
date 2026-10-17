@@ -88,7 +88,7 @@ Register the derived image with the same canonical `capabilities.json` again, in
 
 ## Boat template
 
-Boat builds no images, so the Boat template is a named snapshot of a sandbox that ran [boat/recipe.sh](boat/recipe.sh). The recipe installs what the Dockerfile's runtime stage does, with the same download pins, on Boat's Ubuntu 24.04 AMD64 machine: the `devbox` user as UID 1001, Herdr, Bun, Codex, ripgrep, the supervisor bundle and its launcher. It also enables [boat/notus-devbox.service](boat/notus-devbox.service). The unit starts only once `/etc/notus/bootstrap.env` exists. Each launch's setup script writes that root-only file from the sandbox's `env`, because per-sandbox `env` does not reach systemd. After every resume the unit starts again by itself. There is no busy hook: nothing inside a Boat box holds off its auto-stop deadline.
+Boat builds no images, so the Boat template is a named snapshot of a sandbox that ran [boat/recipe.sh](boat/recipe.sh). The recipe installs what the Dockerfile's runtime stage does, with the same download pins, on Boat's Ubuntu 24.04 AMD64 machine: the `devbox` user as UID 1001, Herdr, Bun, Codex, ripgrep, the supervisor bundle and its launcher. It also enables [boat/notus-devbox.service](boat/notus-devbox.service). The unit starts only once `/etc/notus/bootstrap.env` exists. Each launch's setup script writes that root-only file from the sandbox's `env`, because per-sandbox `env` does not reach systemd. After every resume the unit starts again by itself. There is no busy hook: nothing inside a Boat box holds off its auto-stop deadline. The control plane moves it instead while a command runs (`activity:lease`, see the [compute plan](../../docs/plans/compute.md)).
 
 ```sh
 bun run --cwd apps/devbox build

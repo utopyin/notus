@@ -61,6 +61,16 @@ export interface DevboxPort {
     resource: Resource,
   ) => Effect.Effect<Observation, ComputeError | CapabilityNotSupportedError>;
   readonly end: (resource: Resource) => Effect.Effect<void, ComputeError>;
+  /**
+   * While the box works, keeps it from stopping for at least `seconds`; with null, the work ended
+   * and the configuration's own idle stop applies from now. `config` is the configuration the box
+   * launched with. Never shortens a deadline the configuration does not set.
+   */
+  readonly hold: (
+    resource: Resource,
+    config: Schema.Json,
+    seconds: number | null,
+  ) => Effect.Effect<void, ConfigurationError | ComputeError | CapabilityNotSupportedError>;
   /** That the machine `previousInstanceId` names ended, now that `resource` runs on another. */
   readonly proveReplacement: (
     resource: Resource,

@@ -44,6 +44,8 @@ const Account = Schema.Struct({
   apiKey: Schema.String.check(Schema.isPattern(/^(?:boat|box)_[\x21-\x7e]{1,4096}$/)),
 });
 const timeoutMs = 15_000;
+/** Boat's auto-stop when the configuration sets none. */
+const boatDefaultStopSeconds = 3600;
 /** Linux's boot id, read through Boat's own API: the machine currently backing the sandbox. */
 const BootId = Schema.String.check(
   Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
@@ -267,6 +269,23 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
       boat((client) => client.remove(resource.id)).pipe(
         control("end"),
         Effect.withSpan("Compute.Boat.end"),
+      ),
+    // Boat's deadline counts from the last create, resume or change, and only ever runs down, so
+    // the configured auto-stop bounds what is left of it. Holding for at least that long never
+    // shortens it; handing back restarts the configured idle window from the end of the work.
+    hold: (resource, config, seconds) =>
+      descriptor.capabilities.ensure("activity:lease").pipe(
+        Effect.andThen(decodeNative(config)),
+        Effect.flatMap((native) => {
+          const stop =
+            native.autoStopSeconds === undefined ? boatDefaultStopSeconds : native.autoStopSeconds;
+          // Without auto-stop there is nothing to hold off.
+          if (stop === null) return Effect.void;
+          return boat((client) =>
+            client.setDeadline(resource.id, seconds === null ? stop : Math.max(stop, seconds)),
+          ).pipe(control("hold"));
+        }),
+        Effect.withSpan("Compute.Boat.hold"),
       ),
     proveReplacement: (resource, previousInstanceId) =>
       descriptor.capabilities.ensure("replacement:proof").pipe(

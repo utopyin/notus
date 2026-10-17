@@ -26,13 +26,14 @@ Depends on `effect` only, so the dashboard imports descriptors without pulling a
 
 Each one names a behavior Notus decides on. A provider's own concepts (blueprints, shapes, sites, sandbox sizes) stay in its native configuration.
 
-| Capability          | Meaning                                                                                       | Namespace       | Boat (from docs, unvalidated) |
-| ------------------- | --------------------------------------------------------------------------------------------- | --------------- | ----------------------------- |
-| `sleep:auto`        | The provider stops an idle box itself. Notus does nothing during waits.                       | yes, untested   | no (fixed auto-stop deadline) |
-| `sleep:request`     | Notus can stop a box and keep its disk for a later wake.                                      | yes (Stop)      | yes (stop and snapshot)       |
-| `wake:request`      | Notus can start a stopped box again on the same resource.                                     | yes (Activate)  | yes (resume)                  |
-| `busy:signal`       | The box can tell the provider it is busy, so a running command is never stopped as idle.      | yes (marker)    | yes (extend)                  |
-| `replacement:proof` | The provider proves the previous machine ended before a new one enrolls on the same resource. | yes (instances) | to check                      |
+| Capability          | Meaning                                                                                         | Namespace       | Boat (from docs, unvalidated) |
+| ------------------- | ----------------------------------------------------------------------------------------------- | --------------- | ----------------------------- |
+| `sleep:auto`        | The provider stops an idle box itself. Notus does nothing during waits.                         | yes, untested   | no (fixed auto-stop deadline) |
+| `sleep:request`     | Notus can stop a box and keep its disk for a later wake.                                        | yes (Stop)      | yes (stop and snapshot)       |
+| `wake:request`      | Notus can start a stopped box again on the same resource.                                       | yes (Activate)  | yes (resume)                  |
+| `busy:signal`       | The box can tell the provider it is busy, so a running command is never stopped as idle.        | yes (marker)    | no                            |
+| `replacement:proof` | The provider proves the previous machine ended before a new one enrolls on the same resource.   | yes (instances) | yes (boot id)                 |
+| `activity:lease`    | Notus holds a working box awake by moving the provider's stop deadline, renewed while it works. | no              | yes (deadline)                |
 
 Namespace's auto-sleep is still untested ([results](../research/devbox-results.md)), so its descriptor claims only what the code relies on today and the claim is recorded in research before it is used.
 
@@ -40,6 +41,7 @@ Callers decide from the descriptor, never from the provider name:
 
 - **Human wait begins.** `sleep:auto` → nothing. `sleep:request` → the task host asks the port to stop once the box is idle. Neither → the box stays up, which the provider's limits govern.
 - **Operator needs a box that stopped polling** (`entrypoints/control/src/operator.ts:233-237`). `wake:request` → `requestWake` as now. Otherwise → the provisioning state reports the box lost and the operator is told it has none.
+- **A runtime command is running.** `busy:signal` → the box's hook tells the provider. `activity:lease` → the task's alarm holds the box and renews the hold, then hands it back when the command ends (increment 6).
 - **Re-enrollment on a new machine.** `replacement:proof` → today's check. Otherwise → re-enrollment is refused. That path is decided in the Boat increment.
 
 An adapter still enforces its own capabilities with `ensure` before any I/O. The static check is a prefilter.
@@ -107,9 +109,11 @@ Every runtime command calls `/usr/local/libexec/notus/busy start|end <command id
 5. **Boat.** Implemented, and off by default. `@notus/boat` is the client: create, get, stop, resume, delete and a short command. `@notus/compute-boat` is the adapter, with the dashboard kit under `apps/dashboard/src/devbox/boat/` and the template recipe under `apps/devbox/boat/`. Research, the probe and the adapter's live check are in [Boat](../research/boat.md). What was decided along the way:
    - **Bootstrap.** The launch's setup script writes `/etc/notus/bootstrap.env`, because per-sandbox `env` does not reach systemd. The template's enabled `notus-devbox.service` reads that file, at launch and after every resume.
    - **Instance id.** The machine's boot id, which the adapter reads through Boat's own command API. A Boat sandbox runs one machine at a time and boots anew on every resume, so a different boot id on the same sandbox proves the previous machine ended. That is Boat's `replacement:proof`, and the enrollment protocol is unchanged. `proveReplacement` now takes the current resource as well.
-   - **Capabilities.** `sleep:request`, `wake:request` and `replacement:proof`. There is no `sleep:auto` and no `busy:signal`: Boat's auto-stop deadline (`autoStopSeconds` in the native configuration; Boat's own default is an hour) stops a box even mid-command. Stopping on human waits, and pushing the deadline out while a command runs, are still to do.
+   - **Capabilities.** `sleep:request`, `wake:request` and `replacement:proof`. There is no `sleep:auto` and no `busy:signal`: Boat's auto-stop deadline (`autoStopSeconds` in the native configuration; Boat's own default is an hour) stops a box even mid-command. Holding the deadline off while a command runs became `activity:lease` in increment 6; stopping on human waits is still to do.
    - **Recovery.** Boat takes no name at create, so a lost create is recovered only by Boat's idempotency key within 24 hours, and Devbox reports it as unproven.
    - **Rollout.** `NOTUS_COMPUTE_PROVIDERS` (default `namespace`) selects the adapters a deployment runs and the providers the dashboard offers. Boat stays off until a Notus box has enrolled on it against a deployed control plane.
+
+6. **Activity lease.** Implemented. A provider that declares `activity:lease` has its stop deadline moved by the control plane while the box works, since a Boat box cannot push its own deadline back and a key inside it would let the agent's code switch auto-stop off. The port's `hold(resource, config, seconds)` keeps a box from stopping for at least `seconds`, or with null hands it back to the configuration's idle stop from now. Boat sets the time left (`PATCH /sandboxes/{id}`) to the larger of the hold and the configured auto-stop, so it never shortens the deadline, and does nothing when auto-stop is off. `Activity` in executions decides from local state: the box works while a runtime command is claimed. The task's alarm holds it for 15 minutes, renews every 5, retries a failed call after 30 seconds and hands it back once no command is claimed. A poll that hands out a command wakes the alarm at once. A command's observation already does. What is held lives in the object's memory: after an eviction a running command is held again, and a forgotten hand-back runs out with its last hold. Boat keeps the last length it was given and applies it at the next resume, so a resume after a forgotten hand-back gets the hold's length once. Namespace refuses `hold`; its boxes mark themselves busy.
 
 The product context's provider-specific requirements were made provider-neutral with increment 1.
 

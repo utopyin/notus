@@ -20,7 +20,7 @@ States, from the `Sandbox` schema: `init`, `provisioning`, `provisioned`, `cloni
 
 - **No idle auto-sleep.** A sandbox stops at a fixed deadline, `ttlSeconds` after create or resume (default 3600, at most 2,592,000; `null` disables it). Only Boat's own agent prompts push the deadline. `PATCH /sandboxes/{id}` with `ttlSeconds` sets the remaining time.
 - **Stop and resume** exist. A stop removes the machine and keeps the disk; running processes end; enabled systemd services start again on resume, "the same as a server reboot".
-- **Busy signal.** Nothing inside the box tells Boat it is busy. Extending the deadline is an API call with a Boat key, which a `noEnv` sandbox does not hold.
+- **Busy signal.** Nothing inside the box tells Boat it is busy. Extending the deadline is an API call with a Boat key, which a `noEnv` sandbox does not hold. Notus makes that call from the control plane; see the [hold check](#hold-check-2026-10-17).
 - **Retention.** The disk of a stopped sandbox is kept 14 days, then deleted; resume then fails with `409 snapshot_data_expired`. Named snapshots never expire (10 free, then charged monthly).
 
 ## Bootstrap delivery
@@ -73,6 +73,16 @@ Also observed:
 - `end` deleted the box, and `fetch` then answered not found.
 
 Not covered: the supervisor's enrollment against a real control plane, and a deadline stop in the middle of a Notus command.
+
+## Hold check 2026-10-17
+
+The adapter's `hold` ran against one `small` sandbox from `notus-base`, launched with a 60-second auto-stop, then deleted. `archiveAfter` is the deadline and `ttlSeconds` the last length set.
+
+- A hold of 900 s moved the deadline from 60 s to 900 s left. With a configured auto-stop of 1800 s the same hold set 1800 s, never less.
+- Held, the box was still `idle` 90 s later with 810 s left, past its configured 60 s.
+- Handing back set 60 s left, and the idle box was `archived` 67 s later.
+- With auto-stop off, a hold made no call.
+- `PATCH` with `ttlSeconds` on an `archived` sandbox answered success, and `ttlSeconds` keeps the last value set.
 
 ## Open questions
 

@@ -22,6 +22,8 @@ export interface Interface {
   readonly stop: (id: string) => Effect.Effect<Sandbox, BoatError>;
   readonly resume: (id: string) => Effect.Effect<Sandbox, BoatError>;
   readonly remove: (id: string) => Effect.Effect<void, BoatError>;
+  /** Sets the time left before auto-stop, counted from now; null removes the deadline. */
+  readonly setDeadline: (id: string, ttlSeconds: number | null) => Effect.Effect<void, BoatError>;
   /** A short synchronous command on the running machine, as the sandbox user. */
   readonly command: (
     id: string,
@@ -89,7 +91,7 @@ export const layerNoDeps = Layer.effect(
     const call = Effect.fn("Boat.call")(
       function* (
         operation: Operation,
-        method: "GET" | "POST" | "DELETE",
+        method: "GET" | "POST" | "PATCH" | "DELETE",
         path: string,
         body: unknown,
         headers: Readonly<Record<string, string>>,
@@ -197,6 +199,13 @@ export const layerNoDeps = Layer.effect(
             call("delete", "DELETE", `/sandboxes/${sandboxId}`, undefined, {
               "X-Ascii-Confirm-Delete": sandboxId,
             }),
+          ),
+          Effect.asVoid,
+        ),
+      setDeadline: (value, ttlSeconds) =>
+        id("update", value).pipe(
+          Effect.flatMap((sandboxId) =>
+            call("update", "PATCH", `/sandboxes/${sandboxId}`, { ttlSeconds }, {}),
           ),
           Effect.asVoid,
         ),

@@ -37,6 +37,7 @@ import {
   Readiness,
   ReadinessReceipt,
   RepositoryRef,
+  type Resource,
   WakeReceipt,
 } from "./types";
 
@@ -137,6 +138,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     return s;
   });
   const current = active.pipe(Effect.map((s) => (s ? status(s, true) : null)));
+  const box = active.pipe(
+    Effect.map((s) =>
+      s?.environment && s.resource && s.phase !== "blocked"
+        ? { environment: s.environment, resource: s.resource }
+        : null,
+    ),
+  );
   const get = Effect.fn("Provisioning.get")(function* (attemptId: string) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(attemptId);
     const [row] = yield* db.select().from(attempts).where(eq(attempts.id, attemptId));
@@ -759,6 +767,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     selectRepository,
     get,
     current,
+    box,
     claim,
     record,
     requestWake,
@@ -813,6 +822,11 @@ export interface Interface {
     attemptId: string,
   ) => Effect.Effect<ProvisioningStatus | null, ProvisioningFailure>;
   readonly current: Effect.Effect<ProvisioningStatus | null, ProvisioningFailure>;
+  /** The active attempt's assigned box and the environment it launched with, unless blocked. */
+  readonly box: Effect.Effect<
+    { readonly environment: Environment; readonly resource: Resource } | null,
+    ProvisioningFailure
+  >;
   readonly claim: (now: number) => Effect.Effect<Claim | null, ProvisioningFailure>;
   readonly record: (
     claim: Claim,
@@ -877,6 +891,7 @@ export const layerNoDeps = Layer.effect(
       ),
       get: Effect.fn("Provisioning.getAtomic")((id) => atomic((q) => q.get(id))),
       current: atomic((q) => q.current),
+      box: atomic((q) => q.box),
       claim: Effect.fn("Provisioning.claimAtomic")((now) => atomic((q) => q.claim(now))),
       record: Effect.fn("Provisioning.recordAtomic")((claim, result, now) =>
         atomic((q) => q.record(claim, result, now)),

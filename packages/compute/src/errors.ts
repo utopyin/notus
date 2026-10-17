@@ -33,6 +33,15 @@ export class ConfigurationError extends Schema.TaggedError<ConfigurationError>()
  */
 export class ComputeError extends Schema.TaggedError<ComputeError>()("Compute.ComputeError", {
   provider: Provider,
-  operation: Schema.Literals(["launch", "recover", "fetch", "wake", "sleep", "end", "proof"]),
+  operation: Schema.Literals([
+    "launch",
+    "recover",
+    "fetch",
+    "wake",
+    "sleep",
+    "end",
+    "proof",
+    "hold",
+  ]),
   outcome: Schema.Literals(["notSent", "rejected", "notFound", "unknown"]),
 }) {}

@@ -100,7 +100,7 @@ export const BoatForm: FC<{
         <Field
           id="auto-stop"
           label="Auto-stop (minutes)"
-          hint="Boat stops the box this long after each start, even mid-command. Blank is Boat's hour; off never stops it, and Boat bills while it runs."
+          hint="Boat stops the box once it has been idle this long; Notus holds it awake while a command runs. Blank is Boat's hour; off never stops it, and Boat bills while it runs."
         >
           <Input
             id="auto-stop"
