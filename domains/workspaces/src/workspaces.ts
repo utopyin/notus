@@ -487,15 +487,29 @@ export const layerNoDeps = Layer.effect(
       const row = yield* workspace("acceptInvite", invite.workspaceId).pipe(
         storage("acceptInvite"),
       );
+      // One transaction: the claim on the invite decides, so of two concurrent accepts only the
+      // one whose update landed gains a membership.
       yield* store
         .batch([
-          sql`INSERT INTO workspace_memberships (key, workspaceId, userId, role, provenance)
-          VALUES (${key(invite.workspaceId, userId)}, ${invite.workspaceId}, ${userId}, ${invite.role}, 'invite')
-          ON CONFLICT DO NOTHING`,
           sql`UPDATE workspace_invites SET acceptedBy = ${userId}, acceptedAt = ${now}
-          WHERE id = ${invite.id} AND acceptedAt IS NULL`,
+          WHERE id = ${invite.id} AND acceptedAt IS NULL AND revokedAt IS NULL AND expiresAt >= ${now}`,
+          sql`INSERT INTO workspace_memberships (key, workspaceId, userId, role, provenance)
+          SELECT ${key(invite.workspaceId, userId)}, ${invite.workspaceId}, ${userId}, ${invite.role}, 'invite'
+          WHERE EXISTS (SELECT 1 FROM workspace_invites
+            WHERE id = ${invite.id} AND acceptedBy = ${userId} AND acceptedAt = ${now})
+          ON CONFLICT DO NOTHING`,
         ])
         .pipe(storage("acceptInvite"));
+      const claimed = yield* store.db
+        .select()
+        .from(invites)
+        .where(eq(invites.id, invite.id))
+        .pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InviteRow))),
+          storage("acceptInvite"),
+        );
+      if (claimed[0]?.acceptedBy !== userId || claimed[0]?.acceptedAt !== now)
+        return yield* fail("acceptInvite", "expired");
       return Workspace.make(row);
     });
 
