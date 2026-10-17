@@ -33,11 +33,11 @@
     "check:types": "turbo run check:types && tsc",
     "check": "bun run fix && bun run check:types",
     "prepare": "effect-tsgo patch --oxlint",
-    "deploy": "alchemy deploy --stage \"$USER\" --env-file .env.dev",
-    "deploy:production": "alchemy deploy --stage production --env-file .env.production",
-    "plan": "alchemy plan --stage \"$USER\" --env-file .env.dev",
-    "destroy": "alchemy destroy --stage \"$USER\" --env-file .env.dev",
-    "destroy:production": "alchemy destroy --stage production --env-file .env.production",
+    "deploy": "alchemy deploy --stage \"$USER\"",
+    "deploy:production": "alchemy deploy --stage production",
+    "plan": "alchemy plan --stage \"$USER\"",
+    "destroy": "alchemy destroy --stage \"$USER\"",
+    "destroy:production": "alchemy destroy --stage production",
     "login:chatgpt": "bun run scripts/chatgpt/login.ts"
   },
   "dependencies": {
@@ -63,7 +63,11 @@
     "@effect/sql-d1": "4.0.5",
     "@effect/sql-sqlite-do": "4.0.5",
     "@effect/vitest": "4.0.5",
-    "effect": "4.0.5"
+    "effect": "4.0.5",
+    "prosemirror-model": "1.25.12",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-transform": "1.12.1",
+    "prosemirror-view": "1.42.6"
   },
   "packageManager": "bun@1.4.2",
   "patchedDependencies": {
