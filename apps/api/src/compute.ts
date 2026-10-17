@@ -1,5 +1,5 @@
 import type { Configuration } from "@notus/compute/adapter";
-import { Provider } from "@notus/compute/provider";
+import { Provider, PROVIDERS } from "@notus/compute/provider";
 import {
   adapter as namespaceAdapter,
   configuration as namespaceConfiguration,
@@ -16,3 +16,7 @@ const configurations: { readonly [P in Provider]: Configuration } = {
 };
 export const configurationOf = (provider: string): Configuration | null =>
   Schema.is(Provider)(provider) ? configurations[provider] : null;
+/** What the dashboard offers, in the vocabulary's order. */
+export const registered: ReadonlyArray<Provider> = PROVIDERS.filter(
+  (provider) => configurations[provider] !== undefined,
+);

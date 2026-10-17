@@ -8,9 +8,12 @@ import type { Json } from "../lib/json";
 const api = () => Cloudflare.toRpcAsync<Api>(env.API);
 const cookie = () => getRequestHeader("cookie") ?? "";
 
-/** The workspace's devbox configuration and the templates its admins added for one provider. */
+/**
+ * The workspace's devbox configuration, its templates and its account for one provider: the one
+ * asked for, else the one the workspace runs on.
+ */
 export const getEnvironment = createServerFn({ method: "GET" })
-  .inputValidator((input: { workspaceId: string; provider: string }) => input)
+  .inputValidator((input: { workspaceId: string; provider: string | null }) => input)
   .handler(
     async ({ data }) => await api().dashboardEnvironment(cookie(), data.workspaceId, data.provider),
   );

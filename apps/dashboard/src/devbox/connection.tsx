@@ -1,26 +1,28 @@
-import { NAMESPACE_DESCRIPTOR } from "@notus/compute/descriptors/index";
+import type { ProviderDescriptor } from "@notus/compute/descriptor";
 import { useState, type FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Json } from "../../lib/json";
-import type { EnvironmentView } from "../../server/devbox";
+import type { Json } from "../lib/json";
+import type { EnvironmentView } from "../server/devbox";
 
 type Connection = NonNullable<EnvironmentView["connection"]>;
-const connection = NAMESPACE_DESCRIPTOR.connection;
 
 /**
- * The workspace's own Namespace tenant. Members see whether one is connected; admins paste a token
- * to connect or replace it. The token goes in once and is never shown again.
+ * The workspace's own account with one provider. Members see whether one is connected; admins
+ * paste its secret to connect or replace it. The secret goes in once and is never shown again.
  */
-export const NamespaceConnection: FC<{
+export const ComputeConnection: FC<{
+  descriptor: ProviderDescriptor;
+  credentialOf: (secret: string) => Json;
   connected: Connection | null;
   disabled: boolean;
   nameOf: (userId: string) => string;
   when: (millis: number) => string;
   onConnect: (credential: Json, label: string) => Promise<string | null>;
   onDisconnect: () => Promise<string | null>;
-}> = ({ connected, disabled, nameOf, when, onConnect, onDisconnect }) => {
+}> = ({ descriptor, credentialOf, connected, disabled, nameOf, when, onConnect, onDisconnect }) => {
+  const connection = descriptor.connection;
   const [token, setToken] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,7 +64,7 @@ export const NamespaceConnection: FC<{
             event.preventDefault();
             if (value === "") return;
             void run(
-              () => onConnect({ token: value }, label.trim()),
+              () => onConnect(credentialOf(value), label.trim()),
               () => {
                 setToken("");
                 setLabel("");
@@ -90,7 +92,7 @@ export const NamespaceConnection: FC<{
               id="compute-label"
               value={label}
               maxLength={80}
-              placeholder="Optional, such as the tenant"
+              placeholder="Optional, such as the account's name"
               onChange={(event) => setLabel(event.target.value)}
             />
           </div>

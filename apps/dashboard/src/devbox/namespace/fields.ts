@@ -209,38 +209,3 @@ export const shortValue = (value: string): string => {
   }
   return value;
 };
-
-/** Every leaf of the document, by path. Lists of strings stay one leaf so they diff as a whole. */
-const leaves = (value: Json | undefined, prefix: string, into: Map<string, string>) => {
-  if (Array.isArray(value)) {
-    if (value.every((item) => typeof item === "string")) into.set(prefix, value.join(", "));
-    else
-      value.forEach((item, index) =>
-        leaves(item, prefix ? `${prefix}.${index}` : `${index}`, into),
-      );
-  } else if (isObject(value)) {
-    for (const key of Object.keys(value).sort())
-      leaves(value[key], prefix ? `${prefix}.${key}` : key, into);
-  } else if (value !== undefined) {
-    into.set(prefix, typeof value === "string" ? shortValue(value) : JSON.stringify(value));
-  }
-};
-export interface Change {
-  readonly path: string;
-  readonly before: string | null;
-  readonly after: string | null;
-}
-/** What one document changed against the one before it. */
-export const changes = (
-  before: Json | undefined,
-  after: Json | undefined,
-): ReadonlyArray<Change> => {
-  const from = new Map<string, string>();
-  const to = new Map<string, string>();
-  leaves(before, "", from);
-  leaves(after, "", to);
-  const paths = [...new Set([...from.keys(), ...to.keys()])].sort();
-  return paths
-    .filter((path) => from.get(path) !== to.get(path))
-    .map((path) => ({ path, before: from.get(path) ?? null, after: to.get(path) ?? null }));
-};

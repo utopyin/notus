@@ -16,7 +16,7 @@ import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { Roles } from "@notus/workspaces/roles";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
-import { configurationOf } from "./compute";
+import { configurationOf, registered } from "./compute";
 import * as Install from "./install";
 import * as Clock from "effect/Clock";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -648,17 +648,23 @@ export default class Api extends Cloudflare.Worker<Api>()(
        * The workspace's devbox configuration, the templates its admins added and the provider
        * accounts it connected. Connections are status only: who connected which provider, when.
        */
-      dashboardEnvironment: (cookie: string, workspaceId: string, provider: string) =>
+      dashboardEnvironment: (cookie: string, workspaceId: string, requested: string | null) =>
         authorized(cookie, (me) =>
           Effect.gen(function* () {
-            const configuration = yield* compute(provider);
             const environments = yield* Environments.Service;
             const templates = yield* Templates.Service;
             const connections = yield* Compute.Service;
             const environment = yield* environments.view(workspaceId, me.userId);
+            // The page asked for one, or shows the provider the workspace runs on, or the first.
+            const provider =
+              requested ?? Option.getOrUndefined(environment)?.provider ?? registered[0] ?? "";
+            const configuration = yield* compute(provider);
             const own = yield* templates.list(workspaceId, me.userId);
             const mine = own.filter((template) => template.provider === provider);
             return {
+              provider,
+              /** Every provider this deployment runs; the page offers a choice when there are several. */
+              providers: registered,
               environment: Option.getOrNull(environment),
               approvedImages: mine.map((template) => template.ref),
               workspaceImages: own,

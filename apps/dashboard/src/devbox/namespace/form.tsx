@@ -65,10 +65,10 @@ const enforcementItems = [
  */
 export const NamespaceForm: FC<{
   fields: Fields;
-  approvedImages: ReadonlyArray<string>;
+  templates: ReadonlyArray<string>;
   disabled: boolean;
   onChange: (change: Partial<Fields>) => void;
-}> = ({ fields, approvedImages, disabled, onChange }) => {
+}> = ({ fields, templates: approvedImages, disabled, onChange }) => {
   // Only the workspace's images can be selected; a stored one that was removed still shows.
   const imageApproved = approvedImages.includes(fields.imageRef);
   const imageItems = [
