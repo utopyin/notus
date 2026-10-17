@@ -33,7 +33,7 @@ States, from the `Sandbox` schema: `init`, `provisioning`, `provisioned`, `cloni
 
 ## Machine identity
 
-The `Sandbox` schema has no field naming the machine that currently backs a sandbox. Candidates that change on resume, none documented as an identity: `url` ("Machine URL when assigned"), `ip`, `hydratedAt` ("when the last resume or fork finished copying files in"). Notus's enrollment protocol binds a box to a provider-reported instance id, and its replacement check needs proof that the previous instance ended. Without a documented identity, a Boat adapter cannot claim `replacement:proof`, and the instance id it reports is a candidate until a live probe shows it changes on every resume and never repeats.
+The `Sandbox` schema has no field naming the machine that currently backs a sandbox, and the [probe](#live-probe-2026-10-17) found none either: the API's stable fields stay the same across resumes, and the fields that change are addresses. Inside the box, the kernel boot id, `/etc/machine-id` and the hostname all change on every resume. Notus's enrollment protocol binds a box to a provider-reported instance id, and its replacement check needs proof that the previous instance ended. A Boat adapter therefore cannot claim `replacement:proof`, and needs another source of the instance id.
 
 ## Errors and limits
 
@@ -43,13 +43,26 @@ The `Sandbox` schema has no field naming the machine that currently backs a sand
 - Keys start with `boat_` (`box_` still works). A per-sandbox key works only on its sandbox.
 - Machine sizes `small`, `default`, `large`, `xlarge` (the last needs the $100 plan). EU only.
 
-## Questions for a live probe
+## Live probe 2026-10-17
 
-Each needs a Boat account and the user's go-ahead before anything is created.
+One `small` sandbox on a free-trial account (`noEnv: true`, `ttlSeconds: 1800`, a per-sandbox `env` value, and a setup script that installed and enabled a oneshot systemd unit logging boot id, machine id, hostname and that value). It went through create, two stop/resume cycles and an auto-stop deadline, then was deleted. The account listed no sandboxes afterwards. The probe script and its redacted log stayed outside the repository.
 
-1. Which field, if any, identifies the machine and changes on every resume.
-2. Whether `env` reaches an enabled systemd service, or the setup script must write an environment file.
-3. That the supervisor's unit restarts after resume and re-enrolls from its journal on disk.
-4. How long resume takes to `ready` (the Devbox call is bounded at 20 seconds).
-5. What `GET` reports for a sandbox that hit its `ttlSeconds` deadline mid-command, and whether the bootstrap credential in `env` stays readable after resume.
-6. That an idempotent create retried with the same key and body returns the same sandbox, and how the key behaves past 24 hours.
+1. **Identity.** `id`, `subdomain` and `url` (`https://<subdomain>.on.boat.dev`) stayed the same across both resumes, so `url` is the sandbox, not the machine. `ip` and `sshEndpoint` changed on each resume and are null while stopped; they are addresses, not documented as unique. `hydratedAt` stayed null through both resumes and was set only later. Inside the box, the boot id, `/etc/machine-id` (although `/etc` is in the snapshot) and the hostname (`box-node-<hex>`) were new on each resume.
+2. **Environment.** The per-sandbox `env` value reached the setup script and commands run through `POST /commands`, including after resume, but not the systemd unit: there it was unset, and `systemctl show-environment` did not carry it. The supervisor's unit needs an `EnvironmentFile` written by the setup script.
+3. **Restart.** The enabled unit ran again at each resume: one log line per boot, each with a new boot id, appended to the same file in `/home/user`. The supervisor journal on disk would survive the same way. Re-enrollment itself was not exercised.
+4. **Timing.** Create answered `202` in 0.17 s, and the sandbox was `idle` 1.1 s later. The setup script finished within about 7 s. Stop reached `archived` in 8.3 s the first time and 2.1 s the second. Resume answered `202` in 0.4 to 0.5 s with state `provisioned`, and was `idle` or `ready` 1.1 s later. All of this fits the Devbox call's 20-second bound.
+5. **Deadline.** With `ttlSeconds` patched to 60 and a detached `sleep 900` running, the sandbox was `archived` 62 s later with `error: null`, the same as an explicit stop. A running process does not hold the deadline off. `POST /commands` on a stopped sandbox answered `409 machine_not_running`.
+6. **Idempotency.** The same key and body returned the same sandbox (`202`, same id). The same key with another body answered `409 idempotency_key_reused`. Keys past 24 hours were not tested.
+
+Also observed:
+
+- `DELETE /sandboxes/{id}` requires the header `X-Ascii-Confirm-Delete: <sandbox id>`; without it, `409 delete_confirmation_required`. With it, `202 sandbox.deleting` with a deletion operation (`bdop_…`), and `GET` answered `404` five seconds later.
+- The default name is `Box <date>`, not `Sandbox <date>` as the reference shows.
+- An account without a plan or started trial answers `402 billing_required` on create, and `GET /limits` reports `canStart: false`.
+- The sandbox object also carries `stop`, `lastSnapshotAttemptAt`, `lastSnapshotStatus`, `environment` and `environmentVersion`, which the reference does not list.
+
+## Open questions
+
+- Whether the box-reported boot id can serve as the instance id: the box would report it at enrollment, and the control plane would accept a new one only after observing the sandbox `archived` since the last enrollment. That is a protocol change, decided in the [compute plan](../plans/compute.md).
+- How the key behaves past 24 hours, and whether `ip` can repeat across resumes.
+- The supervisor's actual re-enrollment after resume, which needs the Boat adapter and a template built from the Notus base recipe.
