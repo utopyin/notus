@@ -4,4 +4,5 @@
 !dist/
 !dist/main.js
 !notus-devbox
-!capabilities.json
+!namespace/capabilities.json
+!namespace/busy

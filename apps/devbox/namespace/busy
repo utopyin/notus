@@ -1,0 +1,15 @@
+#!/bin/sh
+# Namespace's busy signal: a box stays up while any file exists under /.namespace/tasks.
+# Called as `busy start|end <command id>` by notus-devbox around every runtime command.
+set -eu
+phase=${1:-}
+id=${2:-}
+case "$id" in
+  "" | *[!A-Za-z0-9_-]*) echo "busy: invalid command id" >&2; exit 2 ;;
+esac
+marker="/.namespace/tasks/notus-$id"
+case "$phase" in
+  start) mkdir -p /.namespace/tasks && : > "$marker" ;;
+  end) rm -f "$marker" ;;
+  *) echo "busy: expected start or end" >&2; exit 2 ;;
+esac

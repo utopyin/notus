@@ -4,7 +4,7 @@ This runtime starts Herdr and observes native readiness, either locally or throu
 
 ## Startup contract
 
-[capabilities.json](capabilities.json) defines the intended provider metadata and the canonical `notus` session command, `exec /usr/local/bin/notus-devbox start`. The deployed Namespace service drops this session during image registration, even through native `WireImage`. The successful live probe supplied the session through native Create's top-level `sessions` field instead. Inspect the stored configuration rather than assuming registration preserved it.
+[capabilities.json](namespace/capabilities.json) defines the intended provider metadata and the canonical `notus` session command, `exec /usr/local/bin/notus-devbox start`. The deployed Namespace service drops this session during image registration, even through native `WireImage`. The successful live probe supplied the session through native Create's top-level `sessions` field instead. Inspect the stored configuration rather than assuming registration preserved it.
 
 The image's Docker `CMD` supports local execution; it did not start the supervisor automatically in Namespace. The copy under `/usr/local/share/notus-devbox/` is a reference artifact, not automatic registration. `@notus/namespace` still rejects the reserved `notus` name in user configuration. Its separate `trustedLaunch` boundary supplies this session and the scoped callback bootstrap. The earlier published images predate that integration. The callback-enabled base has now passed isolated initial readiness and cold wake; see the [live automation evidence](../../docs/research/namespace.md#readiness-automation-probe-2026-09-13) and [provisioning plan](../../docs/plans/provisioning.md) for the remaining enablement gates.
 
@@ -59,7 +59,7 @@ bun install --frozen-lockfile
 bun run --cwd apps/devbox build:image
 ```
 
-The Dockerfile pins an Ubuntu AMD64 manifest and verifies the Herdr and Bun download checksums. Apt repositories remain mutable, so rebuilding is not guaranteed to produce identical bytes. Record and use the resulting OCI digest. The Dockerfile rejects other architectures even when a builder silently chooses its host default. Downloads are checksum-verified in a separate stage. Installed executables and the bundle are root-owned. `.dockerignore` admits only the Dockerfile, launcher, canonical capabilities and `dist/main.js`; no workspace-root context or `COPY . .` is used.
+The Dockerfile pins an Ubuntu AMD64 manifest and verifies the Herdr and Bun download checksums. Apt repositories remain mutable, so rebuilding is not guaranteed to produce identical bytes. Record and use the resulting OCI digest. The Dockerfile rejects other architectures even when a builder silently chooses its host default. Downloads are checksum-verified in a separate stage. Installed executables and the bundle are root-owned. `.dockerignore` admits only the Dockerfile, launcher, `dist/main.js` and the Namespace files under `namespace/` (canonical capabilities and the busy hook); no workspace-root context or `COPY . .` is used.
 
 [Dockerfile.derived](Dockerfile.derived) takes `ARG NOTUS_BASE_IMAGE` without a fabricated default:
 
@@ -80,7 +80,7 @@ docker build --platform=linux/amd64 -f apps/devbox/Dockerfile.dotfiles \
   -t notus-dotfiles:local apps/devbox
 ```
 
-The `devbox` login shell becomes zsh, which is where the Mise tools are on `PATH`. Register it with [capabilities.dotfiles.json](capabilities.dotfiles.json), the canonical capabilities with `"shell": "/usr/bin/zsh"`, so Namespace's own terminals and SSH sessions open zsh too; the base has no zsh, so the canonical file keeps bash. Read the registered image back, since registration has dropped the `shell` field before. Operator commands and Herdr terminals still run bash with the fixed environment described above, so they do not see those tools. Mise tools declared as `latest` resolve at build time; record the resulting OCI digest. Sign in on the live box with `dot init`.
+The `devbox` login shell becomes zsh, which is where the Mise tools are on `PATH`. Register it with [capabilities.dotfiles.json](namespace/capabilities.dotfiles.json), the canonical capabilities with `"shell": "/usr/bin/zsh"`, so Namespace's own terminals and SSH sessions open zsh too; the base has no zsh, so the canonical file keeps bash. Read the registered image back, since registration has dropped the `shell` field before. Operator commands and Herdr terminals still run bash with the fixed environment described above, so they do not see those tools. Mise tools declared as `latest` resolve at build time; record the resulting OCI digest. Sign in on the live box with `dot init`.
 
 Keep `USER devbox` in both images. Namespace's generated username metadata mishandles the numeric `1001:1001` form, despite its validity in Docker. The named form preserves UID/GID 1001 and fixed the observed container-creation failure.
 

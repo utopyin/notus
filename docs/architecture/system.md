@@ -677,7 +677,7 @@ sequenceDiagram
       T->>T: outside gate: agent login from agent:initiatorId, returned once
     end
     T-->>B: command id, spec, credential or null
-    B->>B: idle marker under /.namespace/tasks, bash as devbox, fixed env, timeout, 64 KiB cap
+    B->>B: busy hook start/end, bash as devbox, fixed env, timeout, 64 KiB cap
     B->>W: POST /runtime/observe commandId, result
     W->>T: runtimeObserve
     T->>T: gate: accept only if claimed under this epoch, advance

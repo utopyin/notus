@@ -41,7 +41,9 @@ COPY --from=downloads --chown=0:0 /downloads/codex-code-mode-host /usr/local/bin
 COPY --from=downloads --chown=0:0 /downloads/rg /usr/local/bin/rg
 COPY --chown=0:0 --chmod=0644 dist/main.js /usr/local/lib/notus-devbox/main.js
 COPY --chown=0:0 --chmod=0755 notus-devbox /usr/local/bin/notus-devbox
-COPY --chown=0:0 --chmod=0644 capabilities.json /usr/local/share/notus-devbox/capabilities.json
+COPY --chown=0:0 --chmod=0644 namespace/capabilities.json /usr/local/share/notus-devbox/capabilities.json
+# The provider's busy signal (docs/plans/compute.md); this base image is Namespace's template.
+COPY --chown=0:0 --chmod=0755 namespace/busy /usr/local/libexec/notus/busy
 ENV HOME=/home/devbox
 # Namespace uses this value as a username during Docker socket setup.
 USER devbox

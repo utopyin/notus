@@ -11,6 +11,8 @@ import { signalGroup } from "./host";
 import { Settings } from "./settings";
 
 const outputCap = 65_536;
+/** Where a provider's template puts its busy signal; see docs/plans/compute.md. */
+const busyHook = "/usr/local/libexec/notus/busy";
 
 /** Collect a stream into text, keeping only the first outputCap bytes and noting truncation. */
 const collect = (stream: Stream.Stream<Uint8Array, unknown>) =>
@@ -191,6 +193,32 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const settings = yield* Settings.Service;
+  // `busy start|end <command id>`, supplied by the provider's template; absent means nothing to do.
+  const busy = (phase: "start" | "end", id: string) =>
+    fs.exists(busyHook).pipe(
+      Effect.flatMap((present) =>
+        present
+          ? spawner
+              .exitCode(
+                ChildProcess.make(busyHook, [phase, id], {
+                  stdin: "ignore",
+                  stdout: "ignore",
+                  stderr: "ignore",
+                  extendEnv: false,
+                  env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
+                }),
+              )
+              .pipe(
+                Effect.timeout("5 seconds"),
+                Effect.flatMap((code) =>
+                  Number(code) === 0
+                    ? Effect.void
+                    : Effect.logWarning(`devbox.busy_signal_failed ${phase} ${Number(code)}`),
+                ),
+              )
+          : Effect.void,
+      ),
+    );
   const startedAt = yield* Clock.currentTimeMillis;
   const failure = (durationMs: number, stderr: string): CommandResult => ({
     exitCode: null,
@@ -227,14 +255,12 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         : gitEnv(asPerson ? null : command.credential);
   return yield* Effect.scoped(
     Effect.gen(function* () {
-      // Namespace keeps a box running while a file exists under /.namespace/tasks, so work on the
-      // box is never stopped as idle mid-command. Best effort: a missing directory only logs.
-      const marker = `/.namespace/tasks/notus-${command.id}`;
-      yield* fs.makeDirectory("/.namespace/tasks", { recursive: true }).pipe(
-        Effect.andThen(fs.writeFileString(marker, `${spec.kind}\n`)),
-        Effect.catch(() => Effect.logWarning("devbox.idle_marker_unavailable")),
+      // The provider's template tells it the box is busy, so work is never stopped as idle
+      // mid-command. Best effort: a template without the hook has nothing to tell.
+      yield* busy("start", command.id).pipe(
+        Effect.catch(() => Effect.logWarning("devbox.busy_signal_unavailable")),
       );
-      yield* Effect.addFinalizer(() => fs.remove(marker, { force: true }).pipe(Effect.ignore));
+      yield* Effect.addFinalizer(() => busy("end", command.id).pipe(Effect.ignore));
       const child = yield* spawner.spawn(
         ChildProcess.make("/bin/bash", ["-c", script], {
           cwd,
