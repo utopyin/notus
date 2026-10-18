@@ -22,6 +22,7 @@ import { Route as AuthSplatRouteImport } from './routes/auth.$'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as SlugPlatformsIndexRouteImport } from './routes/$slug.platforms.index'
 import { Route as SlugPlatformsPlatformRouteImport } from './routes/$slug.platforms.$platform'
+import { Route as SlugTasksTaskIdRouteImport } from './routes/$slug.tasks.$taskId'
 import { Route as PlatformsPlatformInstallRouteImport } from './routes/platforms.$platform.install'
 
 const IndexRoute = IndexRouteImport.update({
@@ -89,6 +90,11 @@ const SlugPlatformsPlatformRoute = SlugPlatformsPlatformRouteImport.update({
   path: '/platforms/$platform',
   getParentRoute: () => SlugRoute,
 } as any)
+const SlugTasksTaskIdRoute = SlugTasksTaskIdRouteImport.update({
+  id: '/tasks/$taskId',
+  path: '/tasks/$taskId',
+  getParentRoute: () => SlugRoute,
+} as any)
 const PlatformsPlatformInstallRoute =
   PlatformsPlatformInstallRouteImport.update({
     id: '/platforms/$platform/install',
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/tasks/$taskId': typeof SlugTasksTaskIdRoute
   '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/tasks/$taskId': typeof SlugTasksTaskIdRoute
   '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms': typeof SlugPlatformsIndexRoute
 }
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/$slug/': typeof SlugIndexRoute
   '/$slug/platforms/$platform': typeof SlugPlatformsPlatformRoute
+  '/$slug/tasks/$taskId': typeof SlugTasksTaskIdRoute
   '/platforms/$platform/install': typeof PlatformsPlatformInstallRoute
   '/$slug/platforms/': typeof SlugPlatformsIndexRoute
 }
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug/'
     | '/$slug/platforms/$platform'
+    | '/$slug/tasks/$taskId'
     | '/platforms/$platform/install'
     | '/$slug/platforms/'
   fileRoutesByTo: FileRoutesByTo
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug'
     | '/$slug/platforms/$platform'
+    | '/$slug/tasks/$taskId'
     | '/platforms/$platform/install'
     | '/$slug/platforms'
   id:
@@ -190,6 +201,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/$slug/'
     | '/$slug/platforms/$platform'
+    | '/$slug/tasks/$taskId'
     | '/platforms/$platform/install'
     | '/$slug/platforms/'
   fileRoutesById: FileRoutesById
@@ -298,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SlugPlatformsPlatformRouteImport
       parentRoute: typeof SlugRoute
     }
+    '/$slug/tasks/$taskId': {
+      id: '/$slug/tasks/$taskId'
+      path: '/tasks/$taskId'
+      fullPath: '/$slug/tasks/$taskId'
+      preLoaderRoute: typeof SlugTasksTaskIdRouteImport
+      parentRoute: typeof SlugRoute
+    }
     '/platforms/$platform/install': {
       id: '/platforms/$platform/install'
       path: '/platforms/$platform/install'
@@ -314,6 +333,7 @@ interface SlugRouteChildren {
   SlugSpecialistsRoute: typeof SlugSpecialistsRoute
   SlugIndexRoute: typeof SlugIndexRoute
   SlugPlatformsPlatformRoute: typeof SlugPlatformsPlatformRoute
+  SlugTasksTaskIdRoute: typeof SlugTasksTaskIdRoute
   SlugPlatformsIndexRoute: typeof SlugPlatformsIndexRoute
 }
 
@@ -323,6 +343,7 @@ const SlugRouteChildren: SlugRouteChildren = {
   SlugSpecialistsRoute: SlugSpecialistsRoute,
   SlugIndexRoute: SlugIndexRoute,
   SlugPlatformsPlatformRoute: SlugPlatformsPlatformRoute,
+  SlugTasksTaskIdRoute: SlugTasksTaskIdRoute,
   SlugPlatformsIndexRoute: SlugPlatformsIndexRoute,
 }
 

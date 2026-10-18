@@ -30,7 +30,7 @@ export const Route = createFileRoute("/$slug")({
 /**
  * The shell is mounted once here and the pages render into it, so navigating between them keeps
  * the sidebar (and its live pieces, like the workspace mark) in place. Each page declares its
- * header through `staticData.shell`; the overview leaves the title to the workspace itself.
+ * header through `staticData.shell`; a page without a title shows the workspace's.
  */
 function Layout() {
   const { me, view, current } = useWorkspace();

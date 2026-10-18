@@ -1,7 +1,7 @@
 import {
   IconCheck,
   IconDeviceDesktopFilled,
-  IconLayoutDashboardFilled,
+  IconLayoutListFilled,
   IconLogout,
   IconAppsFilled,
   IconBookFilled,
@@ -56,11 +56,11 @@ import { useWorkspaces } from "../workspaces-collection";
 
 type Current = Me["workspaces"][number];
 
-type Active = "overview" | "platforms" | "devbox" | "specialists" | "settings" | "account";
+type Active = "tasks" | "platforms" | "devbox" | "specialists" | "settings" | "account";
 
 /**
  * What a page under the workspace layout tells the shell about itself. No title means the
- * overview's (the workspace itself); `null` means the page draws its own header.
+ * workspace's own; `null` means the page draws its own header.
  */
 export type ShellPage = { active: Active; title?: string | null; description?: string };
 
@@ -169,12 +169,12 @@ export function AppShell(props: {
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       className="font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground focus-visible:text-sidebar-foreground data-[active=true]:text-sidebar-foreground [&>svg]:text-muted-foreground"
-                      tooltip="Overview"
-                      isActive={active === "overview"}
+                      tooltip="Tasks"
+                      isActive={active === "tasks"}
                       render={<Link to="/$slug" params={{ slug }} />}
                     >
-                      <IconLayoutDashboardFilled />
-                      <span>Overview</span>
+                      <IconLayoutListFilled />
+                      <span>Tasks</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
