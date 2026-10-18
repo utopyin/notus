@@ -3,6 +3,11 @@ import * as Schema from "effect/Schema";
 import * as Tool from "effect/ai/Tool";
 import * as Toolkit from "effect/ai/Toolkit";
 
+/*
+ * Every tool's failure schema is its outcome: control reports a failed call as the same shape with
+ * its error and isFailure set, and replaying it into the next round decodes against this schema.
+ */
+
 /** What the operator learns after asking for the task's dev box. */
 export const DevboxResult = Schema.Struct({
   phase: Schema.String,
@@ -20,6 +25,7 @@ export const CreateDevbox = Tool.make("create_devbox", {
     purpose: Schema.String.annotate({ description: "Why the task needs a dev box now." }),
   }),
   success: DevboxResult,
+  failure: DevboxResult,
 });
 
 /** Bounded, truncated output of one shell command on the task's dev box. */
@@ -48,6 +54,7 @@ export const RunCommand = Tool.make("run_command", {
     purpose: Schema.String.annotate({ description: "What this command is for." }),
   }),
   success: CommandOutcome,
+  failure: CommandOutcome,
 });
 
 /** Where the task's repository landed on the box. */
@@ -79,6 +86,7 @@ export const CheckoutRepository = Tool.make("checkout_repository", {
     ),
   }),
   success: CheckoutOutcome,
+  failure: CheckoutOutcome,
 });
 
 /** Where the task's branch went. */
@@ -101,6 +109,7 @@ export const PushBranch = Tool.make("push_branch", {
     "Push the checkout's commits to the branch <initiator username>/<slug> on GitHub. It does not commit: a specialist commits when your instructions tell it to, or you commit through git in run_command; a checkout with uncommitted changes is refused. Only branches under the initiator's username can be pushed; the default branch never. Pushing to the branch of a checked-out pull request updates that pull request. newCommit is false when the branch already had this commit, meaning nothing changed. Nothing is merged.",
   parameters: Schema.Struct({ slug: Slug }),
   success: PushOutcome,
+  failure: PushOutcome,
 });
 
 /** The opened pull request, or why none exists. */
@@ -124,6 +133,7 @@ export const CreatePullRequest = Tool.make("create_pull_request", {
     }),
   }),
   success: PullRequestOutcome,
+  failure: PullRequestOutcome,
 });
 
 /** Where the update landed, or why it did not. */
@@ -140,6 +150,7 @@ export const PostUpdate = Tool.make("post_update", {
     text: Schema.String.annotate({ description: "The message, plain text suitable for Slack." }),
   }),
   success: UpdateOutcome,
+  failure: UpdateOutcome,
 });
 
 /** What a specialist reported, or why the round produced no report. */
@@ -169,6 +180,7 @@ export const RunSpecialist = Tool.make("run_specialist", {
     }),
   }),
   success: SpecialistOutcome,
+  failure: SpecialistOutcome,
 });
 
 export const toolkit = Toolkit.make(
