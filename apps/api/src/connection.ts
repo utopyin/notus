@@ -36,109 +36,99 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
 
-    return { host, credentialKey, dashboard, shared, context };
-  }).pipe(
-    Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
-    // Alchemy runs this inner initialization with its RuntimeContext.
-    Effect.map(({ host, credentialKey, dashboard, shared, context }) =>
-      Effect.gen(function* () {
-        const db = yield* Drizzle.DurableObject({ migrations });
+    return Effect.gen(function* () {
+      const db = yield* Drizzle.DurableObject({ migrations });
 
-        // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
-        const githubLogins =
-          dashboard.github === null
-            ? null
-            : yield* Layer.build(
-                GithubLogins.layer.pipe(
-                  Layer.provide([
-                    D1.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
-                    FetchHttpClient.layer,
-                    Layer.succeed(OAuth.Configuration, {
-                      clientId: dashboard.github.clientId,
-                      clientSecret: dashboard.github.clientSecret,
-                    }),
-                  ]),
-                ),
-              ).pipe(Effect.orDie);
+      // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
+      const githubLogins =
+        dashboard.github === null
+          ? null
+          : yield* Layer.build(
+              GithubLogins.layer.pipe(
+                Layer.provide([
+                  D1.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
+                  FetchHttpClient.layer,
+                  Layer.succeed(OAuth.Configuration, {
+                    clientId: dashboard.github.clientId,
+                    clientSecret: dashboard.github.clientSecret,
+                  }),
+                ]),
+              ),
+            ).pipe(Effect.orDie);
 
-        const services = yield* Layer.build(
-          Connections.layer.pipe(
-            Layer.provide([
-              Sqlite.layer(db),
-              FetchHttpClient.layer,
-              cryptoLayer,
-              Sealed.layer(credentialKey),
-            ]),
+      const services = yield* Layer.build(
+        Connections.layer.pipe(
+          Layer.provide([
+            Sqlite.layer(db),
+            FetchHttpClient.layer,
+            cryptoLayer,
+            Sealed.layer(credentialKey),
+          ]),
+        ),
+      ).pipe(Effect.orDie);
+
+      const connections = yield* Connections.Service.pipe(Effect.provideContext(services));
+
+      // Serializes refresh and replay decisions. Provider forwarding runs outside it.
+      const gate = <A, E>(effect: Effect.Effect<A, E>) =>
+        Effect.gen(function* () {
+          const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
+          return yield* exit;
+        }).pipe(Effect.provideService(RuntimeContext, context));
+
+      const result = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        effect.pipe(
+          Effect.map((value) => ({ ok: true as const, value })),
+          Effect.catch((error) =>
+            Effect.succeed({
+              ok: false as const,
+              reason: Schema.is(ConnectionError)(error) ? error.reason : ("storage" as const),
+            }),
           ),
-        ).pipe(Effect.orDie);
+        );
 
-        const connections = yield* Connections.Service.pipe(Effect.provideContext(services));
-
-        // Serializes refresh and replay decisions. Provider forwarding runs outside it.
-        const gate = <A, E>(effect: Effect.Effect<A, E>) =>
-          Effect.gen(function* () {
-            const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
-            return yield* exit;
-          }).pipe(Effect.provideService(RuntimeContext, context));
-
-        const result = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-          effect.pipe(
-            Effect.map((value) => ({ ok: true as const, value })),
-            Effect.catch((error) =>
-              Effect.succeed({
-                ok: false as const,
-                reason: Schema.is(ConnectionError)(error) ? error.reason : ("storage" as const),
+      return {
+        status: (userId: string) => result(gate(connections.status(userId))),
+        /** An explicit link with material in hand: the harness, or a pasted API key. */
+        link: (userId: string, seed: Seed) =>
+          result(
+            gate(
+              userId === seed.userId
+                ? connections.link(seed)
+                : Effect.fail(new ConnectionError({ reason: "unauthorized" })),
+            ),
+          ),
+        revoke: (userId: string, provider: Provider) =>
+          result(
+            gate(
+              Effect.gen(function* () {
+                return yield* connections.revoke(userId, provider, yield* Clock.currentTimeMillis);
               }),
             ),
-          );
-
-        return {
-          status: (userId: string) => result(gate(connections.status(userId))),
-          /** An explicit link with material in hand: the harness, or a pasted API key. */
-          link: (userId: string, seed: Seed) =>
-            result(
-              gate(
-                userId === seed.userId
-                  ? connections.link(seed)
-                  : Effect.fail(new ConnectionError({ reason: "unauthorized" })),
-              ),
+          ),
+        beginDeviceLogin: (userId: string) => result(gate(connections.beginDeviceLogin(userId))),
+        pollDeviceLogin: (userId: string) => result(gate(connections.pollDeviceLogin(userId))),
+        /** The login goes to one dev box round, never to storage. */
+        agentLogin: (userId: string, minimumLifetimeMs: number) =>
+          result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
+        forward: (userId: string, operationId: string, request: ForwardRequest) =>
+          result(connections.forward(userId, operationId, request, gate)),
+        /**
+         * The user's GitHub sign-in as a login for their dev box, refreshed under this object's
+         * gate so concurrent tasks never spend the same refresh token twice. Never stored here.
+         */
+        githubLogin: (userId: string, minimumLifetimeMs: number) =>
+          result(
+            gate(
+              githubLogins === null
+                ? Effect.fail(new ConnectionError({ reason: "not-linked" }))
+                : GithubLogins.Service.pipe(
+                    Effect.flatMap((logins) => logins.login(userId, minimumLifetimeMs)),
+                    Effect.provideContext(githubLogins),
+                  ),
             ),
-          revoke: (userId: string, provider: Provider) =>
-            result(
-              gate(
-                Effect.gen(function* () {
-                  return yield* connections.revoke(
-                    userId,
-                    provider,
-                    yield* Clock.currentTimeMillis,
-                  );
-                }),
-              ),
-            ),
-          beginDeviceLogin: (userId: string) => result(gate(connections.beginDeviceLogin(userId))),
-          pollDeviceLogin: (userId: string) => result(gate(connections.pollDeviceLogin(userId))),
-          /** The login goes to one dev box round, never to storage. */
-          agentLogin: (userId: string, minimumLifetimeMs: number) =>
-            result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
-          forward: (userId: string, operationId: string, request: ForwardRequest) =>
-            result(connections.forward(userId, operationId, request, gate)),
-          /**
-           * The user's GitHub sign-in as a login for their dev box, refreshed under this object's
-           * gate so concurrent tasks never spend the same refresh token twice. Never stored here.
-           */
-          githubLogin: (userId: string, minimumLifetimeMs: number) =>
-            result(
-              gate(
-                githubLogins === null
-                  ? Effect.fail(new ConnectionError({ reason: "not-linked" }))
-                  : GithubLogins.Service.pipe(
-                      Effect.flatMap((logins) => logins.login(userId, minimumLifetimeMs)),
-                      Effect.provideContext(githubLogins),
-                    ),
-              ),
-            ),
-        };
-      }),
-    ),
-  ),
+          ),
+      };
+    });
+  }).pipe(Effect.provide(Cloudflare.D1.QueryDatabaseBinding)),
 ) {}

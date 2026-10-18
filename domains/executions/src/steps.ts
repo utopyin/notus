@@ -88,6 +88,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       updatedAt: now,
     });
   });
+
   const ensure = Effect.fn("Steps.ensure")(function* (invocationId: string, now: number) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(invocationId);
     yield* Schema.decodeEffect(Millis)(now);
@@ -106,6 +107,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 
     if (!existing) yield* insert(invocationId, 0, now, "pending", null);
   });
+
   const claim = Effect.fn("Steps.claim")(function* (now: number) {
     yield* Schema.decodeEffect(Millis)(now);
 
@@ -154,6 +156,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       priorParts,
     });
   });
+
   const record = Effect.fn("Steps.record")(function* (
     input: StepClaim,
     output: StepOutcome,
@@ -249,6 +252,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       }
     }
   });
+
   const waiting = Effect.fn("Steps.waiting")(function* (limit: number) {
     const rows = yield* db
       .select()
@@ -272,6 +276,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 
     return result;
   });
+
   /** Appends tool results to a waiting step and opens the next round. */
   const resolve = Effect.fn("Steps.resolve")(function* (
     id: string,
@@ -297,6 +302,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* insert(step.invocationId, step.index + 1, now, "failed", "step-limit");
     else yield* insert(step.invocationId, step.index + 1, now, "pending", null);
   });
+
   /** Invocations whose latest step is a final answer or a failure. */
   const settled = Effect.fn("Steps.settled")(function* (limit: number) {
     const rows = yield* db
@@ -349,6 +355,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 
     return times.length ? Math.min(...times) : null;
   }).pipe(Effect.withSpan("Steps.nextWake"));
+
   const snapshot = Effect.gen(function* () {
     return yield* Schema.decodeEffect(Schema.Array(Step))(
       yield* db.select().from(steps).orderBy(asc(steps.createdAt), asc(steps.index)),
@@ -377,7 +384,9 @@ export interface Interface {
   readonly nextWake: Effect.Effect<number | null, ExecutionError>;
   readonly snapshot: Effect.Effect<ReadonlyArray<Step>, ExecutionError>;
 }
+
 export class Service extends Context.Service<Service, Interface>()("@notus/executions/Steps") {}
+
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
