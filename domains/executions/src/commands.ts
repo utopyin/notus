@@ -1,4 +1,4 @@
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { TaskDb } from "@notus/db/task";
 import { and, asc, eq, lte, ne, or } from "drizzle-orm";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -7,7 +7,8 @@ import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Conflict, StorageFailure, type ExecutionError } from "./errors";
-import { CommandRow, attempts, commands, polls } from "./schema";
+import { attempts, commands, polls } from "@notus/db/schema/task";
+import { CommandRow } from "./rows";
 import { Command, CommandObservation, CommandSpec, Millis, executorOf } from "./types";
 
 // A control-plane action lease; expiry re-offers the action to the next alarm.
@@ -16,7 +17,7 @@ const controlLeaseMs = 60_000;
 export const Poll = Schema.Struct({ epoch: Millis, polledAt: Millis });
 export interface Poll extends Schema.Schema.Type<typeof Poll> {}
 
-const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
+const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
   const enqueue = Effect.fn("Commands.enqueue")(function* (
     stepId: string,
     callId: string,
@@ -34,7 +35,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .from(commands)
       .where(and(eq(commands.stepId, stepId), eq(commands.callId, callId)));
 
-    if (existing) return yield* Schema.decodeEffect(CommandRow)(existing);
+    if (existing) return yield* Schema.decodeUnknownEffect(CommandRow)(existing);
 
     const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (!attempt) return yield* new Conflict({ message: "No active attempt for command" });
@@ -93,7 +94,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .limit(1);
     if (!row) return null;
 
-    const command = yield* Schema.decodeEffect(CommandRow)(row);
+    const command = yield* Schema.decodeUnknownEffect(CommandRow)(row);
 
     yield* db
       .update(commands)
@@ -126,7 +127,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .limit(1);
     if (!row) return null;
 
-    const command = yield* Schema.decodeEffect(CommandRow)(row);
+    const command = yield* Schema.decodeUnknownEffect(CommandRow)(row);
 
     yield* db
       .update(commands)
@@ -146,7 +147,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [row] = yield* db.select().from(commands).where(eq(commands.id, id));
     if (!row) return yield* new Conflict({ message: "Unknown command" });
 
-    const command = yield* Schema.decodeEffect(CommandRow)(row);
+    const command = yield* Schema.decodeUnknownEffect(CommandRow)(row);
 
     if (command.status === "done") return;
 
@@ -170,7 +171,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [row] = yield* db.select().from(commands).where(eq(commands.id, observation.commandId));
     if (!row) return yield* new Conflict({ message: "Unknown command" });
 
-    const command = yield* Schema.decodeEffect(CommandRow)(row);
+    const command = yield* Schema.decodeUnknownEffect(CommandRow)(row);
 
     if (command.status === "done") {
       if (!Equal.equals(command.result, observation.result))
@@ -187,7 +188,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .set({ status: "done", result: observation.result, updatedAt: now })
       .where(eq(commands.id, command.id));
 
-    return yield* Schema.decodeEffect(CommandRow)({
+    return yield* Schema.decodeUnknownEffect(CommandRow)({
       ...row,
       status: "done",
       result: observation.result,
@@ -233,7 +234,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(and(stale, open, eq(commands.executor, "control")));
   });
   const ofStep = Effect.fn("Commands.ofStep")(function* (stepId: string) {
-    return yield* Schema.decodeEffect(Schema.Array(CommandRow))(
+    return yield* Schema.decodeUnknownEffect(Schema.Array(CommandRow))(
       yield* db.select().from(commands).where(eq(commands.stepId, stepId)),
     );
   });
@@ -243,7 +244,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     return row ? Poll.make({ epoch: row.epoch, polledAt: row.polledAt }) : null;
   }).pipe(Effect.withSpan("Commands.lastPoll"));
   const snapshot = Effect.gen(function* () {
-    return yield* Schema.decodeEffect(Schema.Array(CommandRow))(
+    return yield* Schema.decodeUnknownEffect(Schema.Array(CommandRow))(
       yield* db.select().from(commands).orderBy(asc(commands.createdAt)),
     );
   }).pipe(Effect.withSpan("Commands.snapshot"));
@@ -296,9 +297,9 @@ export class Service extends Context.Service<Service, Interface>()("@notus/execu
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* TaskDb.Service;
     const crypto = yield* Crypto.Crypto;
-    const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+    const queries = (tx: TaskDb.Queries) => within(tx, crypto);
 
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(

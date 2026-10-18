@@ -1,8 +1,8 @@
 # Task state integration
 
-`State` is exported from `@notus/tasks/state`. Supply `Sqlite.Service` and `State.Configuration` once per DO runtime. `State.layer` and `State.layerNoDeps` leave both requirements explicit. `State.configuration({ simulationDelayMs, claimTtlMs })` validates and supplies configuration.
+`State` is exported from `@notus/tasks/state`. Supply `TaskDb.Service` and `State.Configuration` once per DO runtime. `State.layer` and `State.layerNoDeps` leave both requirements explicit. `State.configuration({ simulationDelayMs, claimTtlMs })` validates and supplies configuration.
 
-Bind an existing no-relations Alchemy database with `Sqlite.layer(db)`, or use `Sqlite.nativeSqlite(storage)`, from `@notus/cloudflare/sqlite`. Do not use both for the same runtime. Migrations remain the application's responsibility. `@notus/tasks/schema` and `@notus/executions/schema` each export `tables` and their individual tables for migration aggregation.
+The tables, relations and migrations belong to `@notus/db`; `TaskDb.layer` opens and migrates the object's database. `@notus/tasks/rows` decodes stored rows, including JSON columns, into the task's own types.
 
 ## Commands
 

@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { OAuth } from "@notus/github/oauth";
 import { and, eq, inArray } from "drizzle-orm";
 import * as Clock from "effect/Clock";
@@ -10,7 +10,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import { ConnectionError } from "./errors";
-import { authAccounts as accounts, logins, users } from "./schema";
+import { authAccounts as accounts, logins, users } from "@notus/db/schema/shared";
 
 const AccountRow = Schema.Struct({
   id: Schema.String,
@@ -61,7 +61,7 @@ const millisOf = (iso: string | null) => {
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const shared = yield* D1.Service;
+    const shared = yield* SharedDb.Service;
     const http = yield* HttpClient.HttpClient;
     const oauth = yield* OAuth.Configuration;
 

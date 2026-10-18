@@ -37,6 +37,7 @@
         "@notus/compute-namespace": "workspace:*",
         "@notus/contracts": "workspace:*",
         "@notus/control": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/executions": "workspace:*",
         "@notus/github": "workspace:*",
         "@notus/openai": "workspace:*",
@@ -118,6 +119,7 @@
       "dependencies": {
         "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/github": "workspace:*",
         "@notus/openai": "workspace:*",
         "@notus/platform": "workspace:*",
@@ -144,9 +146,9 @@
     "domains/executions": {
       "name": "@notus/executions",
       "dependencies": {
-        "@notus/cloudflare": "workspace:*",
         "@notus/compute": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/platform": "workspace:*",
         "@notus/workspaces": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -179,8 +181,8 @@
     "domains/tasks": {
       "name": "@notus/tasks",
       "dependencies": {
-        "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/executions": "workspace:*",
         "@notus/platform": "workspace:*",
         "drizzle-orm": "catalog:",
@@ -193,6 +195,7 @@
         "@notus/cloudflare": "workspace:*",
         "@notus/compute": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/platform": "workspace:*",
         "drizzle-orm": "catalog:",
         "effect": "catalog:",
@@ -202,8 +205,8 @@
       "name": "@notus/control",
       "dependencies": {
         "@notus/accounts": "workspace:*",
-        "@notus/cloudflare": "workspace:*",
         "@notus/contracts": "workspace:*",
+        "@notus/db": "workspace:*",
         "@notus/executions": "workspace:*",
         "@notus/operator": "workspace:*",
         "@notus/platform": "workspace:*",
@@ -230,9 +233,6 @@
       "name": "@notus/cloudflare",
       "dependencies": {
         "@cloudflare/workers-types": "5.20261016.1",
-        "@effect/sql-d1": "catalog:",
-        "@effect/sql-sqlite-do": "catalog:",
-        "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
     },
@@ -245,6 +245,16 @@
     "packages/contracts": {
       "name": "@notus/contracts",
       "dependencies": {
+        "effect": "catalog:",
+      },
+    },
+    "packages/db": {
+      "name": "@notus/db",
+      "dependencies": {
+        "@cloudflare/workers-types": "5.20261016.1",
+        "@effect/sql-d1": "catalog:",
+        "alchemy": "catalog:",
+        "drizzle-orm": "catalog:",
         "effect": "catalog:",
       },
     },
@@ -766,6 +776,8 @@
     "@notus/control": ["@notus/control@workspace:entrypoints/control"],
 
     "@notus/dashboard": ["@notus/dashboard@workspace:apps/dashboard"],
+
+    "@notus/db": ["@notus/db@workspace:packages/db"],
 
     "@notus/devbox": ["@notus/devbox@workspace:apps/devbox"],
 

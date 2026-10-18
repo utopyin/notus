@@ -1,12 +1,11 @@
-import { D1 } from "@notus/cloudflare/d1";
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { SharedDb } from "@notus/db/shared";
+import { TaskDb } from "@notus/db/task";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { Inbox } from "@notus/control/inbox";
 import { Platforms } from "@notus/platforms/registry";
 import { Credentials } from "@notus/workspaces/credentials";
 import { Compute } from "@notus/workspaces/compute";
 import { Templates } from "@notus/workspaces/templates";
-import { SharedDatabase } from "./database";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import type { Admission } from "@notus/platform/source";
 import * as Control from "@notus/control/task";
@@ -29,7 +28,6 @@ import { Operator } from "@notus/operator/operator";
 import { State } from "@notus/tasks/state";
 import type { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Drizzle from "alchemy/Drizzle/Cloudflare";
 import { CurrentRuntimeContext } from "alchemy/RuntimeContext";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -53,7 +51,6 @@ import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import { platformsLayer } from "./platforms";
-import migrations from "./migrations/task/migrations";
 
 export class Task extends Cloudflare.DurableObject<Task>()(
   "Task",
@@ -72,13 +69,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     // Model requests leave this object only through the initiator's Connection object.
     const connections = yield* Connection;
     // Deliveries act for an installation, whose credential the shared database holds.
-    const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
+    const shared = Layer.succeed(SharedDb.Service, yield* SharedDb.Service);
     const context = yield* CurrentRuntimeContext;
     if (!context) return yield* Effect.die("Task initialization requires Alchemy RuntimeContext");
 
     return Effect.gen(function* () {
-      const db = yield* Drizzle.DurableObject({ migrations });
-      const database = Sqlite.layer(db);
+      const database = TaskDb.layer;
 
       const stateLayer = State.layer.pipe(Layer.provide([database, State.configuration(config)]));
 
@@ -94,18 +90,11 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         githubAppSlug: null,
         githubInstaller: null,
       }).pipe(
-        Layer.provide(
-          Credentials.layer.pipe(
-            Layer.provide([Layer.effect(D1.Binding, shared.raw), Sealed.layer(credentialKey)]),
-          ),
-        ),
+        Layer.provide(Credentials.layer.pipe(Layer.provide([shared, Sealed.layer(credentialKey)]))),
       );
 
       // Routes live in the shared database; the task moves one when it takes a conversation over.
-      const inboxLayer = Inbox.layer.pipe(
-        Layer.provide(sourcesLayer),
-        Layer.provide(Layer.effect(D1.Binding, shared.raw)),
-      );
+      const inboxLayer = Inbox.layer.pipe(Layer.provide(sourcesLayer), Layer.provide(shared));
 
       const services = yield* Layer.build(
         Layer.merge(
@@ -119,7 +108,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
           // A workspace's provider account and templates live in the shared database.
           Layer.provide(
             Layer.merge(Templates.layer, Compute.credentials).pipe(
-              Layer.provide([Layer.effect(D1.Binding, shared.raw), Sealed.layer(credentialKey)]),
+              Layer.provide([shared, Sealed.layer(credentialKey)]),
             ),
           ),
           Layer.provide(cryptoLayer),
@@ -991,5 +980,5 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         alarm: () => alarm,
       };
     });
-  }).pipe(Effect.provide(Cloudflare.D1.QueryDatabaseBinding)),
+  }).pipe(Effect.provide(SharedDb.layer)),
 ) {}

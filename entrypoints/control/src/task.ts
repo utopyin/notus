@@ -1,6 +1,6 @@
 import type { Admission } from "@notus/platform/source";
 import { Attempts } from "@notus/executions/attempts";
-import type { Outcome } from "@notus/executions/schema";
+import type { Outcome } from "@notus/executions/rows";
 import type { Observation } from "@notus/executions/types";
 import { Platforms } from "@notus/platforms/registry";
 import { State } from "@notus/tasks/state";

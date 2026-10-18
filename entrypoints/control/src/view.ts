@@ -1,7 +1,7 @@
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
-import type { CommandRow, Step } from "@notus/executions/schema";
+import type { CommandRow, Step } from "@notus/executions/rows";
 import { Steps } from "@notus/executions/steps";
 import { State } from "@notus/tasks/state";
 import * as Effect from "effect/Effect";

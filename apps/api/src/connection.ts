@@ -1,13 +1,12 @@
 import { Connections, type Seed } from "@notus/accounts/connections";
 import { ConnectionError } from "@notus/accounts/errors";
 import { GithubLogins } from "@notus/accounts/github-login";
-import { D1 } from "@notus/cloudflare/d1";
+import { ConnectionDb } from "@notus/db/connection";
+import { SharedDb } from "@notus/db/shared";
 import { Sealed } from "@notus/cloudflare/sealed";
-import { Sqlite } from "@notus/cloudflare/sqlite";
 import { OAuth } from "@notus/github/oauth";
 import type { ForwardRequest, Provider } from "@notus/openai/types";
 import * as Cloudflare from "alchemy/Cloudflare";
-import * as Drizzle from "alchemy/Drizzle/Cloudflare";
 import { CurrentRuntimeContext, RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -16,8 +15,6 @@ import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { credentialKeyConfig, dashboardConfig } from "./config";
 import { cryptoLayer } from "./crypto";
-import { SharedDatabase } from "./database";
-import migrations from "./migrations/connection/migrations";
 
 /**
  * One user's saved model logins, addressed by user ID. Only this object opens provider material.
@@ -30,15 +27,13 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
     // GitHub sign-ins and the users they act as both live in the shared database.
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
-    const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
+    const shared = Layer.succeed(SharedDb.Service, yield* SharedDb.Service);
     const context = yield* CurrentRuntimeContext;
 
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
 
     return Effect.gen(function* () {
-      const db = yield* Drizzle.DurableObject({ migrations });
-
       // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
       const githubLogins =
         dashboard.github === null
@@ -46,7 +41,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
           : yield* Layer.build(
               GithubLogins.layer.pipe(
                 Layer.provide([
-                  D1.layer.pipe(Layer.provide(Layer.effect(D1.Binding, shared.raw))),
+                  shared,
                   FetchHttpClient.layer,
                   Layer.succeed(OAuth.Configuration, {
                     clientId: dashboard.github.clientId,
@@ -59,7 +54,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
       const services = yield* Layer.build(
         Connections.layer.pipe(
           Layer.provide([
-            Sqlite.layer(db),
+            ConnectionDb.layer,
             FetchHttpClient.layer,
             cryptoLayer,
             Sealed.layer(credentialKey),
@@ -130,5 +125,5 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
           ),
       };
     });
-  }).pipe(Effect.provide(Cloudflare.D1.QueryDatabaseBinding)),
+  }).pipe(Effect.provide(SharedDb.layer)),
 ) {}

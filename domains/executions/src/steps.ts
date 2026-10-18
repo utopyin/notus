@@ -1,4 +1,4 @@
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { TaskDb } from "@notus/db/task";
 import { and, asc, eq, lte, or } from "drizzle-orm";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -6,7 +6,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Conflict, StorageFailure, type ExecutionError } from "./errors";
-import { Step, invocations, steps } from "./schema";
+import { invocations, steps } from "@notus/db/schema/task";
+import { Step } from "./rows";
 import { Millis } from "./types";
 
 // Operational bounds. The lease exceeds one bounded provider call. The step bound is a runaway
@@ -62,7 +63,7 @@ export const Settled = Schema.Struct({
 });
 export interface Settled extends Schema.Schema.Type<typeof Settled> {}
 
-const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
+const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
   const insert = Effect.fn("Steps.insert")(function* (
     invocationId: string,
     index: number,
@@ -124,7 +125,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .limit(1);
     if (!row) return null;
 
-    const step = yield* Schema.decodeEffect(Step)(row);
+    const step = yield* Schema.decodeUnknownEffect(Step)(row);
     const attempts = step.attempts + 1;
     const recoverAt = now + leaseMs;
 
@@ -142,7 +143,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const priorParts: Array<Schema.Json> = [];
 
     for (const earlier of prior) {
-      const decoded = yield* Schema.decodeEffect(Step)(earlier);
+      const decoded = yield* Schema.decodeUnknownEffect(Step)(earlier);
       if (decoded.index < step.index && decoded.parts !== null) priorParts.push(decoded.parts);
     }
 
@@ -169,7 +170,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [row] = yield* db.select().from(steps).where(eq(steps.id, claimed.id));
     if (!row) return yield* new Conflict({ message: "Unknown step" });
 
-    const step = yield* Schema.decodeEffect(Step)(row);
+    const step = yield* Schema.decodeUnknownEffect(Step)(row);
 
     // A lease that expired and was re-claimed belongs to the later claimant.
     if (
@@ -264,7 +265,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const result: Array<Waiting> = [];
 
     for (const row of rows) {
-      const step = yield* Schema.decodeEffect(Step)(row);
+      const step = yield* Schema.decodeUnknownEffect(Step)(row);
       const calls = yield* Schema.decodeUnknownEffect(Schema.Array(PendingCall))(step.calls ?? []);
       result.push({
         id: step.id,
@@ -288,7 +289,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const [row] = yield* db.select().from(steps).where(eq(steps.id, id));
     if (!row) return yield* new Conflict({ message: "Unknown step" });
 
-    const step = yield* Schema.decodeEffect(Step)(row);
+    const step = yield* Schema.decodeUnknownEffect(Step)(row);
 
     if (step.status !== "waiting") return yield* new Conflict({ message: "Step is not waiting" });
 
@@ -315,7 +316,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const result: Array<Settled> = [];
 
     for (const row of rows) {
-      const step = yield* Schema.decodeEffect(Step)(row);
+      const step = yield* Schema.decodeUnknownEffect(Step)(row);
 
       const siblings = yield* db
         .select({ id: steps.id })
@@ -357,7 +358,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   }).pipe(Effect.withSpan("Steps.nextWake"));
 
   const snapshot = Effect.gen(function* () {
-    return yield* Schema.decodeEffect(Schema.Array(Step))(
+    return yield* Schema.decodeUnknownEffect(Schema.Array(Step))(
       yield* db.select().from(steps).orderBy(asc(steps.createdAt), asc(steps.index)),
     );
   }).pipe(Effect.withSpan("Steps.snapshot"));
@@ -390,9 +391,9 @@ export class Service extends Context.Service<Service, Interface>()("@notus/execu
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* TaskDb.Service;
     const crypto = yield* Crypto.Crypto;
-    const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+    const queries = (tx: TaskDb.Queries) => within(tx, crypto);
 
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(

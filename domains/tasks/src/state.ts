@@ -1,4 +1,4 @@
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { TaskDb } from "@notus/db/task";
 import { Admission, Source, key } from "@notus/platform/source";
 import { digest } from "@notus/executions/types";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
@@ -10,20 +10,8 @@ import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Conflict, NotInitialized, StaleClaim, StorageFailure, type TaskError } from "./errors";
-import {
-  DeliveryRow,
-  EventRow,
-  InputRow,
-  ResponseRow,
-  SourceRow,
-  TaskRow,
-  deliveries,
-  events,
-  inputs,
-  responses,
-  sources,
-  tasks,
-} from "./schema";
+import { deliveries, events, inputs, responses, sources, tasks } from "@notus/db/schema/task";
+import { DeliveryRow, EventRow, InputRow, ResponseRow, SourceRow, TaskRow } from "./rows";
 import {
   AdmissionReceipt,
   DeliveryClaim,
@@ -82,12 +70,12 @@ export class Service extends Context.Service<Service, Interface>()("@notus/tasks
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* TaskDb.Service;
     const settings = yield* Schema.decodeEffect(Settings)(yield* Configuration);
     const crypto = yield* Crypto.Crypto;
 
     // Only local synchronous Effects may enter this callback: Drizzle uses transactionSync.
-    const atomic = <A, E>(operation: string, run: (tx: Sqlite.Queries) => Effect.Effect<A, E>) =>
+    const atomic = <A, E>(operation: string, run: (tx: TaskDb.Queries) => Effect.Effect<A, E>) =>
       db
         .transaction((tx) => run(tx))
         .pipe(
@@ -105,7 +93,7 @@ export const layerNoDeps = Layer.effect(
         );
 
     const recordWithin = Effect.fn("State.recordWithin")(function* (
-      tx: Sqlite.Queries,
+      tx: TaskDb.Queries,
       outcome: ResponseInput,
       now: number,
     ) {
@@ -223,7 +211,7 @@ export const layerNoDeps = Layer.effect(
               },
             });
           } else {
-            const task = yield* Schema.decodeEffect(TaskRow)(stored);
+            const task = yield* Schema.decodeUnknownEffect(TaskRow)(stored);
 
             if (task.id !== reservation.taskId || task.closedAt !== null) {
               return yield* new Conflict({
@@ -273,7 +261,7 @@ export const layerNoDeps = Layer.effect(
           const existing = matches[0];
 
           if (existing) {
-            const saved = yield* Schema.decodeEffect(InputRow)(existing);
+            const saved = yield* Schema.decodeUnknownEffect(InputRow)(existing);
             const { eventId: _savedEvent, startIntent: savedStart, ...savedPayload } = saved.input;
             const { eventId: _event, startIntent, ...payload } = input;
 
@@ -330,7 +318,7 @@ export const layerNoDeps = Layer.effect(
           const [stored] = yield* tx.select().from(tasks).limit(1);
           if (!stored) return yield* new NotInitialized({ taskId: "unknown" });
 
-          const task = yield* Schema.decodeEffect(TaskRow)(stored);
+          const task = yield* Schema.decodeUnknownEffect(TaskRow)(stored);
 
           if (task.closedAt !== null) return yield* new Conflict({ message: "Task is closed" });
           if (Equal.equals(task.reservation.source, source)) return task.originSourceId;
@@ -455,7 +443,7 @@ export const layerNoDeps = Layer.effect(
             .limit(batchSize);
 
           for (const raw of due) {
-            const delivery = yield* Schema.decodeEffect(DeliveryRow)(raw);
+            const delivery = yield* Schema.decodeUnknownEffect(DeliveryRow)(raw);
 
             const [rawInput] = yield* tx
               .select()
@@ -463,7 +451,7 @@ export const layerNoDeps = Layer.effect(
               .where(eq(inputs.id, delivery.inputId));
             if (!rawInput) return yield* new Conflict({ message: "Delivery has no input" });
 
-            const input = yield* Schema.decodeEffect(InputRow)(rawInput);
+            const input = yield* Schema.decodeUnknownEffect(InputRow)(rawInput);
 
             if (delivery.kind === "reaction" && input.obligation === "fulfilled") {
               yield* tx
@@ -531,7 +519,7 @@ export const layerNoDeps = Layer.effect(
             .where(eq(deliveries.id, claim.deliveryId));
           if (!raw) return yield* new StaleClaim({ deliveryId: claim.deliveryId });
 
-          const delivery = yield* Schema.decodeEffect(DeliveryRow)(raw);
+          const delivery = yield* Schema.decodeUnknownEffect(DeliveryRow)(raw);
 
           if (
             delivery.claimId !== claim.claimId ||
@@ -546,7 +534,7 @@ export const layerNoDeps = Layer.effect(
           const [rawInput] = yield* tx.select().from(inputs).where(eq(inputs.id, delivery.inputId));
           if (!rawInput) return yield* new Conflict({ message: "Delivery has no input" });
 
-          const input = yield* Schema.decodeEffect(InputRow)(rawInput);
+          const input = yield* Schema.decodeUnknownEffect(InputRow)(rawInput);
 
           if (
             claim.sourceId !== input.sourceId ||
@@ -679,7 +667,7 @@ export const layerNoDeps = Layer.effect(
       Effect.fnUntraced(function* (tx) {
         const [task] = yield* tx.select().from(tasks).limit(1);
 
-        return yield* Schema.decodeEffect(Snapshot)({
+        return yield* Schema.decodeUnknownEffect(Snapshot)({
           task: task ?? null,
           sources: yield* tx.select().from(sources),
           inputs: yield* tx.select().from(inputs),

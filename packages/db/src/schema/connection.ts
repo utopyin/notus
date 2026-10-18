@@ -1,7 +1,5 @@
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
-import { createSelectSchema } from "drizzle-orm/effect-schema";
-import * as Schema from "effect/Schema";
-
+import { defineRelations } from "drizzle-orm";
 /**
  * One Connection Durable Object stores one user's saved model logins, at most one per provider:
  * a ChatGPT subscription for the operator and for Codex on the dev box, a platform API key for the
@@ -46,11 +44,4 @@ export const forwards = sqliteTable("account_forwards", {
   createdAt: integer().notNull(),
 });
 
-export const ConnectionRow = createSelectSchema(connections);
-export interface ConnectionRow extends Schema.Schema.Type<typeof ConnectionRow> {}
-export const DeviceLoginRow = createSelectSchema(deviceLogins);
-export interface DeviceLoginRow extends Schema.Schema.Type<typeof DeviceLoginRow> {}
-export const ForwardRow = createSelectSchema(forwards);
-export interface ForwardRow extends Schema.Schema.Type<typeof ForwardRow> {}
-
-export const tables = { connections, deviceLogins, forwards };
+export const relations = defineRelations({ connections, deviceLogins, forwards });

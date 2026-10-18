@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
@@ -13,7 +13,14 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { WorkspaceError } from "./errors";
 import { defaultRoleStatements } from "./roles";
-import { installIntents, installations, invites, memberships, scopes, workspaces } from "./schema";
+import {
+  installIntents,
+  installations,
+  invites,
+  memberships,
+  scopes,
+  workspaces,
+} from "@notus/db/schema/shared";
 import {
   Installation,
   InstallIntent,
@@ -167,7 +174,7 @@ export interface ScopeInput {
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
     const crypto = yield* Crypto.Crypto;
     const sealed = yield* Sealed.Service;
 
@@ -752,5 +759,5 @@ export const layerNoDeps = Layer.effect(
     });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Workspaces from "./workspaces";

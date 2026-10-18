@@ -1,8 +1,10 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
+import * as Drizzle from "alchemy/Drizzle";
 import { Stack } from "alchemy/Stack";
 import { Stage } from "alchemy/Stage";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import Api from "./apps/api/src/api";
 import { hostnames, zone } from "@notus/shared/hosts";
 
@@ -24,7 +26,10 @@ export type DashboardEnv = Cloudflare.InferEnv<typeof Dashboard>;
 
 export default Alchemy.Stack(
   "Notus",
-  { providers: Cloudflare.providers(), state: Cloudflare.state() },
+  {
+    providers: Layer.mergeAll(Cloudflare.providers(), Drizzle.providers()),
+    state: Cloudflare.state(),
+  },
   Effect.gen(function* () {
     // Two kinds of stage: a developer's own, named after $USER, and "production". Every stage
     // gets its own Worker, D1 database, Durable Objects and notus.run hostnames.

@@ -9,8 +9,8 @@
     "check:types": "tsc --noEmit"
   },
   "dependencies": {
-    "@notus/cloudflare": "workspace:*",
     "@notus/contracts": "workspace:*",
+    "@notus/db": "workspace:*",
     "@notus/executions": "workspace:*",
     "@notus/platform": "workspace:*",
     "drizzle-orm": "catalog:",

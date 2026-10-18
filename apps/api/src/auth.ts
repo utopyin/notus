@@ -8,13 +8,13 @@ import {
 } from "better-auth/plugins/generic-oauth";
 import * as Redacted from "effect/Redacted";
 import type { DashboardConfig } from "./config";
-import { SharedDatabase } from "./database";
+import { SharedDb } from "@notus/db/shared";
 
 /**
  * Better Auth's tables live in the shared database, defined and migrated with the rest of the
  * account domain (`auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications`).
  */
-export const authDatabase = CloudflareD1(SharedDatabase);
+export const authDatabase = CloudflareD1(SharedDb.Database);
 
 const slackUserInfo = "https://slack.com/api/openid.connect.userInfo";
 const teamClaim = "https://slack.com/team_id";

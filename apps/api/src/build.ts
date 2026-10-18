@@ -1,6 +1,6 @@
 import type { BuildStep } from "@notus/compute/adapter";
 import { Provider } from "@notus/compute/provider";
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { Providers } from "@notus/executions/providers";
 import { Compute } from "@notus/workspaces/compute";
@@ -12,7 +12,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { computeConfig, credentialKeyConfig } from "./config";
-import { SharedDatabase } from "./database";
 import { registry } from "./runtime";
 
 /** What a build of the Notus template in one workspace's account last did. */
@@ -75,16 +74,16 @@ export class Build extends Cloudflare.DurableObject<Build>()(
     const host = yield* Cloudflare.DurableObjectState;
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
     const computeProviders = yield* computeConfig.pipe(Effect.orDie);
-    const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
+    const shared = Layer.succeed(SharedDb.Service, yield* SharedDb.Service);
 
     return { host, credentialKey, computeProviders, shared };
   }).pipe(
-    Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
+    Effect.provide(SharedDb.layer),
     Effect.map(({ host, credentialKey, computeProviders, shared }) =>
       Effect.gen(function* () {
         // The workspace's account and templates live in the shared database.
         const workspace = Layer.merge(Templates.layer, Compute.credentials).pipe(
-          Layer.provide([Layer.effect(D1.Binding, shared.raw), Sealed.layer(credentialKey)]),
+          Layer.provide([shared, Sealed.layer(credentialKey)]),
         );
 
         const services = yield* Layer.build(

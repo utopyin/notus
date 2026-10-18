@@ -1,6 +1,6 @@
 import { Identities } from "@notus/accounts/identities";
 import { RepositoryRef } from "@notus/executions/types";
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import type { InstallationRef } from "@notus/platform/ids";
 import { Platforms } from "@notus/platforms/registry";
 import {
@@ -21,7 +21,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Conflict, IntakeError, Unauthorized } from "./errors";
-import { envelopes, messages, routes } from "./schema";
+import { envelopes, messages, routes } from "@notus/db/schema/shared";
 import {
   DrainResult,
   EnvelopeRow,
@@ -87,7 +87,7 @@ const precedes = (left: string, right: string) =>
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
     const crypto = yield* Crypto.Crypto;
     const identities = yield* Identities.Service;
     const access = yield* Access.Service;
@@ -500,8 +500,5 @@ export const layerNoDeps = Layer.effect(
   }),
 );
 
-export const layer = layerNoDeps.pipe(
-  Layer.provide([Identities.layerNoDeps, Access.layerNoDeps]),
-  Layer.provide(D1.layer),
-);
+export const layer = layerNoDeps.pipe(Layer.provide([Identities.layerNoDeps, Access.layerNoDeps]));
 export * as Inbox from "./inbox";

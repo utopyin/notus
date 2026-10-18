@@ -1,4 +1,4 @@
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { TaskDb } from "@notus/db/task";
 import { and, asc, eq, lte, or } from "drizzle-orm";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -7,11 +7,12 @@ import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { Conflict, StaleAttempt, StorageFailure, type ExecutionError } from "./errors";
-import { Attempt, Invocation, Outcome, attempts, invocations, outcomes } from "./schema";
+import { attempts, invocations, outcomes } from "@notus/db/schema/task";
+import { Attempt, Invocation, Outcome } from "./rows";
 import { Millis, Mode, Observation, digest } from "./types";
 
 /** Execution-owned transactions contain no external effects. */
-const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
+const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
   const ensure = Effect.fn("Attempts.ensure")(function* (taskId: string, now: number, mode: Mode) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(taskId);
     yield* Schema.decodeEffect(Millis)(now);
@@ -192,7 +193,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         return yield* new Conflict({ message: "Conflicting outcome replay" });
       }
 
-      return yield* Schema.decodeEffect(Outcome)(row);
+      return yield* Schema.decodeUnknownEffect(Outcome)(row);
     }
 
     const outcome: Outcome = {
@@ -216,7 +217,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     return (yield* db.select({ id: invocations.inputId }).from(invocations)).map((row) => row.id);
   }).pipe(Effect.withSpan("Attempts.scheduledInputIds"));
   const accepted = Effect.gen(function* () {
-    return yield* Schema.decodeEffect(Schema.Array(Outcome))(
+    return yield* Schema.decodeUnknownEffect(Schema.Array(Outcome))(
       yield* db.select().from(outcomes).orderBy(asc(outcomes.acceptedAt), asc(outcomes.id)),
     );
   }).pipe(Effect.withSpan("Attempts.accepted"));
@@ -309,9 +310,9 @@ export class Service extends Context.Service<Service, Interface>()("@notus/execu
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* TaskDb.Service;
     const crypto = yield* Crypto.Crypto;
-    const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+    const queries = (tx: TaskDb.Queries) => within(tx, crypto);
 
     // Every service operation owns its transaction; Control repairs cross-owner handoffs.
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>

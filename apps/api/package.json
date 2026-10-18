@@ -19,6 +19,7 @@
     "@notus/compute-namespace": "workspace:*",
     "@notus/contracts": "workspace:*",
     "@notus/control": "workspace:*",
+    "@notus/db": "workspace:*",
     "@notus/executions": "workspace:*",
     "@notus/github": "workspace:*",
     "@notus/openai": "workspace:*",

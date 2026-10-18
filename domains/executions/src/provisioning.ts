@@ -1,4 +1,4 @@
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { TaskDb } from "@notus/db/task";
 import { descriptorOf } from "@notus/compute/descriptors/index";
 import * as Json from "@notus/contracts/json";
 import { and, asc, desc, eq, or } from "drizzle-orm";
@@ -16,12 +16,12 @@ import {
   enrollments,
   environments,
   provisioning,
-  ProvisioningState,
   readiness,
   repositories,
   wakes,
   instructions as instructionRows,
-} from "./schema";
+} from "@notus/db/schema/task";
+import { ProvisioningState } from "./rows";
 import { Environment, ResolvedInstructions } from "@notus/workspaces/types";
 import {
   Bootstrap,
@@ -102,7 +102,7 @@ const blocked = (
     updatedAt: now,
   });
 
-const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
+const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
   const save = Effect.fn("Provisioning.save")(function* (s: ProvisioningState) {
     yield* Schema.decodeEffect(ProvisioningState)(s);
 
@@ -114,7 +114,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   const load = Effect.fn("Provisioning.load")(function* (id: string) {
     const [row] = yield* db.select().from(provisioning).where(eq(provisioning.attemptId, id));
     if (!row) return yield* fail("not-found");
-    return yield* Schema.decodeEffect(ProvisioningState)(row.state);
+    return yield* Schema.decodeUnknownEffect(ProvisioningState)(row.state);
   });
 
   const active = Effect.gen(function* () {
@@ -185,7 +185,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
 
-    if (existing) return yield* Schema.decodeEffect(Environment)(existing.environment);
+    if (existing) return yield* Schema.decodeUnknownEffect(Environment)(existing.environment);
     if (input === null) return null;
 
     const environment = yield* decodeInput(Environment, input);
@@ -197,7 +197,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 
   const captured = Effect.gen(function* () {
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
-    return existing ? yield* Schema.decodeEffect(Environment)(existing.environment) : null;
+    return existing ? yield* Schema.decodeUnknownEffect(Environment)(existing.environment) : null;
   }).pipe(Effect.withSpan("Provisioning.captured"));
 
   const Candidates = Schema.Array(RepositoryRef);
@@ -209,7 +209,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
 
-    if (existing) return yield* Schema.decodeEffect(Candidates)(existing.candidates);
+    if (existing) return yield* Schema.decodeUnknownEffect(Candidates)(existing.candidates);
 
     const candidates = yield* decodeInput(Candidates, input);
 
@@ -226,13 +226,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
 
   const candidates = Effect.gen(function* () {
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
-    return existing ? yield* Schema.decodeEffect(Candidates)(existing.candidates) : [];
+    return existing ? yield* Schema.decodeUnknownEffect(Candidates)(existing.candidates) : [];
   }).pipe(Effect.withSpan("Provisioning.candidates"));
   const repository = Effect.gen(function* () {
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
 
     return existing?.repository
-      ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository)
+      ? yield* Schema.decodeUnknownEffect(RepositoryRef)(existing.repository)
       : null;
   }).pipe(Effect.withSpan("Provisioning.repository"));
 
@@ -247,7 +247,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .from(instructionRows)
       .where(eq(instructionRows.singleton, 1));
 
-    if (existing) return yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions);
+    if (existing)
+      return yield* Schema.decodeUnknownEffect(ResolvedInstructions)(existing.instructions);
 
     const captured = yield* decodeInput(ResolvedInstructions, input);
 
@@ -265,7 +266,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(eq(instructionRows.singleton, 1));
 
     return existing
-      ? yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions)
+      ? yield* Schema.decodeUnknownEffect(ResolvedInstructions)(existing.instructions)
       : ResolvedInstructions.make({ roles: [] });
   }).pipe(Effect.withSpan("Provisioning.instructions"));
 
@@ -562,7 +563,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             .from(enrollments)
             .where(eq(enrollments.attemptId, s.bootstrap.attemptId));
 
-          const previous = yield* Schema.decodeEffect(Schema.Array(Enrollment))(
+          const previous = yield* Schema.decodeUnknownEffect(Schema.Array(Enrollment))(
             history.map((row) => row.request),
           );
 
@@ -653,7 +654,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(wakes).where(eq(wakes.inputId, inputId));
 
-    if (existing) return yield* Schema.decodeEffect(WakeReceipt)(existing.receipt);
+    if (existing) return yield* Schema.decodeUnknownEffect(WakeReceipt)(existing.receipt);
 
     let s = yield* requireActive;
 
@@ -726,9 +727,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const replay = rows[0];
 
     if (replay) {
-      const original = yield* Schema.decodeEffect(EnrollmentIdentity)(replay.request);
+      const original = yield* Schema.decodeUnknownEffect(EnrollmentIdentity)(replay.request);
       if (rows.length !== 1 || !Equal.equals(original, request)) return yield* fail("conflict");
-      return yield* Schema.decodeEffect(EpochGrant)(replay.grant);
+      return yield* Schema.decodeUnknownEffect(EpochGrant)(replay.grant);
     }
 
     return null;
@@ -767,7 +768,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .from(enrollments)
       .where(eq(enrollments.attemptId, s.bootstrap.attemptId));
 
-    const prior = yield* Schema.decodeEffect(Schema.Array(Enrollment))(
+    const prior = yield* Schema.decodeUnknownEffect(Schema.Array(Enrollment))(
       history.map((row) => row.request),
     );
 
@@ -841,7 +842,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const replay = rows[0];
 
     if (replay) {
-      const receipt = yield* Schema.decodeEffect(ReadinessReceipt)(replay.receipt);
+      const receipt = yield* Schema.decodeUnknownEffect(ReadinessReceipt)(replay.receipt);
 
       if (rows.length !== 1 || !Equal.equals(receipt.observation, observation))
         return yield* fail("conflict");
@@ -906,7 +907,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const due: Array<Retirement> = [];
 
     for (const row of rows) {
-      const s = yield* Schema.decodeEffect(ProvisioningState)(row.state);
+      const s = yield* Schema.decodeUnknownEffect(ProvisioningState)(row.state);
 
       if (s.environment && s.resource && (s.retiredAt ?? null) === null)
         due.push({
@@ -1063,7 +1064,7 @@ export class Service extends Context.Service<Service, Interface>()(
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* TaskDb.Service;
     const crypto = yield* Crypto.Crypto;
 
     const atomic = <A, E>(run: (operations: ReturnType<typeof within>) => Effect.Effect<A, E>) =>

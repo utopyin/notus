@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import type { TemplateSet } from "@notus/compute/templates";
 import { key } from "@notus/platform/source";
 import { and, asc, eq, sql } from "drizzle-orm";
@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { TemplateError } from "./errors";
-import { memberships, templates } from "./schema";
+import { memberships, templates } from "@notus/db/schema/shared";
 import { WorkspaceTemplate } from "./types";
 
 /**
@@ -73,7 +73,7 @@ const fail = (operation: Operation, reason: TemplateError["reason"]) =>
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
 
     const storage =
       (operation: Operation) =>
@@ -236,5 +236,5 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ approved, list, add, remove, setDefault });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Templates from "./templates";

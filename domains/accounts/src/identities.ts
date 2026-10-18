@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Actor, key } from "@notus/platform/source";
 import { eq, inArray, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { IdentityError } from "./errors";
-import { identities, logins, users } from "./schema";
+import { identities, logins, users } from "@notus/db/schema/shared";
 import { Login, Profile } from "./types";
 
 export interface Interface {
@@ -34,7 +34,7 @@ const Row = createSelectSchema(identities);
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
 
     const resolve = Effect.fn("Identities.resolve")(
       function* (value: Actor) {
@@ -148,5 +148,5 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ resolve, adopt, githubLogin, profiles });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Identities from "./identities";

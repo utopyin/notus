@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
-import { envelopes, messages, routes } from "./schema";
+import { envelopes, messages, routes } from "@notus/db/schema/shared";
 
 export const Receipt = Schema.Struct({
   eventKey: Schema.String,

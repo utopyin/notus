@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import type { InstallationRef } from "@notus/platform/ids";
 import { key, Source } from "@notus/platform/source";
 import { and, eq } from "drizzle-orm";
@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { AccessError, Denied } from "./errors";
-import { installations, memberships, scopes } from "./schema";
+import { installations, memberships, scopes } from "@notus/db/schema/shared";
 import { StartGrant } from "./types";
 
 export interface Interface {
@@ -41,7 +41,7 @@ const MemberRow = createSelectSchema(memberships);
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
 
     const workspaceOf = Effect.fn("Access.workspaceOf")(
       function* (ref: InstallationRef) {
@@ -117,5 +117,5 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ workspaceOf, repositories, authorizeSource, authorizeStart });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Access from "./access";

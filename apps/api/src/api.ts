@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
 import type { Profile } from "@notus/accounts/types";
@@ -49,7 +49,6 @@ import { platformsLayer } from "./platforms";
 import { Connection } from "./connection";
 import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
-import { SharedDatabase } from "./database";
 import { Task } from "./task";
 import { Build } from "./build";
 
@@ -76,15 +75,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const tasks = yield* Task;
     const connections = yield* Connection;
     const builds = yield* Build;
-    const database = yield* SharedDatabase;
-    const binding = yield* Cloudflare.D1.QueryDatabase(database);
     const execution = yield* Cloudflare.WorkerExecutionContext;
     // Alchemy supplies this during initialization, not in event contexts.
     const runtime = yield* CurrentRuntimeContext;
     if (!runtime) return yield* Effect.die("Api initialization requires Alchemy RuntimeContext");
 
     // Every source goes through the registry: ingress, delivery, installs and the dashboard's scope lists.
-    const d1 = Layer.effect(D1.Binding, binding.raw);
+    const d1 = Layer.succeed(SharedDb.Service, yield* SharedDb.Service);
 
     // An install's proof of GitHub ownership is the installer's own sign-in, refreshed under
     // their Connection object's gate like every other use of it.
@@ -1124,11 +1121,5 @@ export default class Api extends Cloudflare.Worker<Api>()(
           }),
         ),
     };
-  }).pipe(
-    Effect.provide([
-      Cloudflare.D1.QueryDatabaseBinding,
-      Cloudflare.Workers.CronEventSourceLive,
-      authDatabase,
-    ]),
-  ),
+  }).pipe(Effect.provide([SharedDb.layer, Cloudflare.Workers.CronEventSourceLive, authDatabase])),
 ) {}

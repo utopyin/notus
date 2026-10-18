@@ -39,12 +39,12 @@ This deliberately departs from "a domain owns a concept end to end" for persiste
 
 ### One composed Layer per host, provided once
 
-| Host          | Composition owner                 | Infra the app provides                                           |
-| ------------- | --------------------------------- | ---------------------------------------------------------------- |
-| Api Worker    | `@notus/control/hosts/api`        | `SharedDb.layer`, sealing key, config, DO namespaces             |
+| Host          | Composition owner                 | Infra the app provides                                            |
+| ------------- | --------------------------------- | ----------------------------------------------------------------- |
+| Api Worker    | `@notus/control/hosts/api`        | `SharedDb.layer`, sealing key, config, DO namespaces              |
 | Task DO       | `@notus/control/hosts/task`       | `TaskDb.layer`, `SharedDb.layer`, sealing key, config, Connection |
-| Connection DO | `@notus/control/hosts/connection` | `ConnectionDb.layer`, `SharedDb.layer`, sealing key, config      |
-| Build DO      | `@notus/control/hosts/build`      | `SharedDb.layer`, sealing key, config                            |
+| Connection DO | `@notus/control/hosts/connection` | `ConnectionDb.layer`, `SharedDb.layer`, sealing key, config       |
+| Build DO      | `@notus/control/hosts/build`      | `SharedDb.layer`, sealing key, config                             |
 
 Each entrypoint host module exports a `Service` whose interface is the RPC surface the host serves, plus a `layerNoDeps` whose remaining requirements are only infra tags. The app file then becomes declaration plus one provide:
 

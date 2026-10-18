@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { snapshot as snapshotJson } from "@notus/contracts/json";
 import { key } from "@notus/platform/source";
 import { desc, eq, sql } from "drizzle-orm";
@@ -9,7 +9,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { EnvironmentError } from "./errors";
-import { environmentRevisions, environments, memberships } from "./schema";
+import { environmentRevisions, environments, memberships } from "@notus/db/schema/shared";
 import { Environment, EnvironmentRevision } from "./types";
 
 /**
@@ -103,7 +103,7 @@ const snapshotRevision = (value: EnvironmentRevision): EnvironmentRevision => {
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
 
     const storage =
       (operation: Operation) =>
@@ -249,5 +249,5 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ get, set, view, history, save });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Environments from "./environments";

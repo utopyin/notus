@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { CredentialError, InstallationCredentials } from "@notus/platform/credentials";
 import type { InstallationRef } from "@notus/platform/ids";
@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { installations } from "./schema";
+import { installations } from "@notus/db/schema/shared";
 
 const credentialJson = Schema.fromJsonString(Schema.Json);
 
@@ -19,7 +19,7 @@ const credentialJson = Schema.fromJsonString(Schema.Json);
 export const layerNoDeps = Layer.effect(
   InstallationCredentials,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
     const sealed = yield* Sealed.Service;
 
     const get = Effect.fn("Credentials.get")(
@@ -48,5 +48,5 @@ export const layerNoDeps = Layer.effect(
     return InstallationCredentials.of({ get, put });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Credentials from "./credentials";

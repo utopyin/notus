@@ -1,5 +1,5 @@
 import { Sealed } from "@notus/cloudflare/sealed";
-import { Sqlite } from "@notus/cloudflare/sqlite";
+import { ConnectionDb } from "@notus/db/connection";
 import { Backend } from "@notus/openai/backend";
 import { Device } from "@notus/openai/device";
 import { OAuth } from "@notus/openai/oauth";
@@ -22,14 +22,8 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as HttpClient from "effect/http/HttpClient";
 import { ConnectionError } from "./errors";
-import {
-  ConnectionRow,
-  DeviceLoginRow,
-  ForwardRow,
-  connections,
-  deviceLogins,
-  forwards,
-} from "./connection";
+import { connections, deviceLogins, forwards } from "@notus/db/schema/connection";
+import { ConnectionRow, DeviceLoginRow, ForwardRow } from "./rows";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
@@ -135,7 +129,7 @@ export class Service extends Context.Service<Service, Interface>()("@notus/accou
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const db = yield* Sqlite.Service;
+    const db = yield* ConnectionDb.Service;
     const http = yield* HttpClient.HttpClient;
     const sealed = yield* Sealed.Service;
     const crypto = yield* Crypto.Crypto;

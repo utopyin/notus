@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { Sealed } from "@notus/cloudflare/sealed";
 import { ComputeCredentials } from "@notus/compute/credentials";
 import { ConnectionError } from "@notus/compute/errors";
@@ -11,7 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { ComputeConnectionError } from "./errors";
-import { computeConnections, memberships } from "./schema";
+import { computeConnections, memberships } from "@notus/db/schema/shared";
 import { ComputeConnection } from "./types";
 
 /**
@@ -68,7 +68,7 @@ const fail = (operation: Operation, reason: ComputeConnectionError["reason"]) =>
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
     const sealed = yield* Sealed.Service;
 
     const storage =
@@ -210,7 +210,7 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ list, connect, disconnect, authorizeBuild });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 
 /**
  * The task host's side: the adapter's JSON, opened with the deployment's key. Host-trusted and
@@ -219,7 +219,7 @@ export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
 export const credentialsNoDeps = Layer.effect(
   ComputeCredentials,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
     const sealed = yield* Sealed.Service;
 
     return ComputeCredentials.of({
@@ -242,5 +242,5 @@ export const credentialsNoDeps = Layer.effect(
     });
   }),
 );
-export const credentials = credentialsNoDeps.pipe(Layer.provide(D1.layer));
+export const credentials = credentialsNoDeps;
 export * as Compute from "./compute";

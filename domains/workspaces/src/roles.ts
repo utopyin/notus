@@ -1,4 +1,4 @@
-import { D1 } from "@notus/cloudflare/d1";
+import { SharedDb } from "@notus/db/shared";
 import { key } from "@notus/platform/source";
 import { desc, eq, sql } from "drizzle-orm";
 import { createSelectSchema } from "drizzle-orm/effect-schema";
@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { defaultRoles } from "./defaults";
 import { WorkspaceError } from "./errors";
-import { memberships, roleRevisions, roles } from "./schema";
+import { memberships, roleRevisions, roles } from "@notus/db/schema/shared";
 import {
   ResolvedInstructions,
   RoleBody,
@@ -77,7 +77,7 @@ export const defaultRoleStatements = (workspaceId: string, actorId: string, now:
 export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
-    const store = yield* D1.Service;
+    const store = yield* SharedDb.Service;
 
     const storage =
       (operation: string) =>
@@ -236,5 +236,5 @@ export const layerNoDeps = Layer.effect(
     return Service.of({ list, history, save, remove, resolve });
   }),
 );
-export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));
+export const layer = layerNoDeps;
 export * as Roles from "./roles";
