@@ -1,9 +1,16 @@
 {
   "format_on_save": "on",
   "lsp": {
+    "oxlint": {
+      "initialization_options": {
+        "settings": {
+          "disableNestedConfig": true
+        }
+      }
+    },
     "effect-tsgo": {
       "settings": {
-        "package_version": "0.24.2"
+        "package_version": "0.53.4"
       }
     }
   },
