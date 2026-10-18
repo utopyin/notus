@@ -558,6 +558,29 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 if (due !== null) yield* activity.perform(due, yield* Clock.currentTimeMillis);
               }).pipe(Effect.catchCause(() => Effect.logError("task.activity_failed")));
 
+              yield* Effect.gen(function* () {
+                // A replaced attempt's box is ended at the provider, outside the gate.
+                const [retiring] = yield* gate(provisioning.retirements);
+                if (retiring === undefined) return;
+
+                const ended = yield* devbox.end(retiring.environment, retiring.resource).pipe(
+                  Effect.as(true),
+                  Effect.orElseSucceed(() => false),
+                );
+
+                yield* Effect.logInfo(`task.retire ${retiring.resource.id} ended=${ended}`);
+
+                yield* gate(
+                  Effect.gen(function* () {
+                    yield* provisioning.retired(
+                      retiring.attemptId,
+                      ended,
+                      yield* Clock.currentTimeMillis,
+                    );
+                  }),
+                );
+              }).pipe(Effect.catchCause(() => Effect.logError("task.retire_failed")));
+
               for (let index = 0; index < 2; index++) {
                 const claimed = yield* gate(
                   Effect.gen(function* () {
