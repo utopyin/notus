@@ -27,7 +27,6 @@
     "@notus/shared": "workspace:*",
     "@notus/tasks": "workspace:*",
     "@notus/workspaces": "workspace:*",
-    "alchemy": "catalog:",
     "drizzle-orm": "catalog:",
     "effect": "catalog:"
   }

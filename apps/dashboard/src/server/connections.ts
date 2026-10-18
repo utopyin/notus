@@ -1,32 +1,26 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader } from "@tanstack/react-start/server";
-import * as Cloudflare from "alchemy/Cloudflare";
-import type Api from "../../../api/src/api";
-import { env } from "../env";
-
-const cookie = () => getRequestHeader("cookie") ?? "";
-const api = () => Cloudflare.toRpcAsync<Api>(env.API);
+import { call } from "./api";
 
 export type ModelProvider = "openai-chatgpt" | "openai-api";
 
 /** The signed-in user's model connections: status projections, never material. */
 export const getConnections = createServerFn({ method: "GET" }).handler(async () => {
-  const result = await api().dashboardConnections(cookie());
+  const result = await call((api) => api.connections({}));
   return result.ok ? result.value : [];
 });
 export type Connection = Awaited<ReturnType<typeof getConnections>>[number];
 
 /** Starts "Sign in with ChatGPT" by device code: a code to type at the verification page. */
 export const beginChatGpt = createServerFn({ method: "POST" }).handler(
-  async () => await api().dashboardBeginChatGpt(cookie()),
+  async () => await call((api) => api.beginChatGpt({})),
 );
 /** One poll of the issuer; the login is linked once the person finished. */
 export const pollChatGpt = createServerFn({ method: "POST" }).handler(
-  async () => await api().dashboardPollChatGpt(cookie()),
+  async () => await call((api) => api.pollChatGpt({})),
 );
 export const linkApiKey = createServerFn({ method: "POST" })
   .validator((input: { key: string }) => input)
-  .handler(async ({ data }) => await api().dashboardLinkApiKey(cookie(), data.key));
+  .handler(async ({ data }) => await call((api) => api.linkApiKey(data)));
 export const revokeConnection = createServerFn({ method: "POST" })
   .validator((input: { provider: ModelProvider }) => input)
-  .handler(async ({ data }) => await api().dashboardRevokeConnection(cookie(), data.provider));
+  .handler(async ({ data }) => await call((api) => api.revokeConnection(data)));

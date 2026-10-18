@@ -24,6 +24,9 @@ import * as HttpClient from "effect/http/HttpClient";
 import { ConnectionError } from "./errors";
 import { connections, deviceLogins, forwards } from "@notus/db/schema/connection";
 import { ConnectionRow, DeviceLoginRow, ForwardRow } from "./rows";
+import { ConnectionStatus, DeviceLogin } from "./types";
+
+export { ConnectionStatus, DeviceLogin } from "./types";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
@@ -43,34 +46,6 @@ export const Seed = Schema.Union([
   }),
 ]);
 export type Seed = typeof Seed.Type;
-export const ConnectionStatus = Schema.Struct({
-  userId: Schema.NonEmptyString,
-  provider: Provider,
-  linked: Schema.Boolean,
-  accountId: Schema.NullOr(Schema.NonEmptyString),
-  expiresAt: Schema.NullOr(Millis),
-  linkedAt: Schema.NullOr(Millis),
-  rotatedAt: Schema.NullOr(Millis),
-  revokedAt: Schema.NullOr(Millis),
-  /** Hash of the explicit seed that supplied the material; never the material itself. */
-  seedFingerprint: Schema.NullOr(Schema.NonEmptyString),
-});
-export interface ConnectionStatus extends Schema.Schema.Type<typeof ConnectionStatus> {}
-/** Where a device-code sign-in stands; the code and page are what the person needs to finish it. */
-export const DeviceLogin = Schema.Union([
-  Schema.Struct({
-    state: Schema.Literal("pending"),
-    userCode: Schema.NonEmptyString,
-    verificationUrl: Schema.NonEmptyString,
-    expiresAt: Millis,
-    /** Seconds until the next poll makes sense. */
-    interval: Schema.Int,
-  }),
-  Schema.Struct({ state: Schema.Literal("linked"), connection: ConnectionStatus }),
-  Schema.Struct({ state: Schema.Literal("expired") }),
-  Schema.Struct({ state: Schema.Literal("none") }),
-]);
-export type DeviceLogin = typeof DeviceLogin.Type;
 export const AgentLogin = Schema.Struct({
   access: Schema.NonEmptyString,
   idToken: Schema.NonEmptyString,

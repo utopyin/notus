@@ -1,111 +1,100 @@
-import type { Conflict, IntakeError, Unauthorized } from "./errors";
-import type { InstallationRef } from "@notus/platform/ids";
-import type { Platform } from "@notus/platform/platform";
+import { Platform } from "@notus/platform/platform";
+import { conversationKeyOf } from "@notus/platform/source";
 import { Platforms } from "@notus/platforms/registry";
-import { conversationKeyOf, type Input, type Source } from "@notus/platform/source";
-import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
-
-/** A dependency failed; the delivery could not be recorded and the platform is told so with 503. */
-export class IngressFailure extends Schema.TaggedError<IngressFailure>()("Ingress.Failure", {}) {}
-
-/** What a confirmed attachment supplies; the route adds its own conversation key and source. */
-
-export interface Dependencies {
-  /** The workspace an installation belongs to; null means nobody asked for its events. */
-  readonly workspaceOf: (ref: InstallationRef) => Effect.Effect<string | null, IngressFailure>;
-  /** Whether the workspace covers the scope; checked before the adapter spends a provider call. */
-  readonly covers: (workspaceId: string, source: Source) => Effect.Effect<boolean, IngressFailure>;
-  readonly routeOf: (
-    conversationKey: string,
-  ) => Effect.Effect<{ readonly taskId: string } | undefined, IngressFailure>;
-  readonly admit: (
-    input: Input,
-  ) => Effect.Effect<unknown, Conflict | IntakeError | Unauthorized | IngressFailure>;
-  /** Starts a drain beyond this delivery; it runs on the request's platform lifetime. */
-  readonly kick: Effect.Effect<void, IngressFailure, RuntimeContext>;
-}
+import { Drain } from "./drain";
+import { Inbox } from "./inbox";
 
 const ok = () => HttpServerResponse.empty({ status: 200 });
+const notFound = () => HttpServerResponse.empty({ status: 404 });
 
 const ignored = (reason: string) =>
   Effect.logInfo(`ingress.ignored ${reason}`).pipe(Effect.as(ok()));
 
 /**
- * One ingress for every platform: the adapter verifies and normalizes, this route resolves the
- * workspace, lets the adapter rule on the actor, attaches a conversation a task confirms it opened,
- * and admits the input. Nothing here knows what a channel or a pull request is.
+ * Every platform's deliveries, at `POST /<platform>/events`, authenticated by the platform's own
+ * signature. The adapter verifies and normalizes; this route resolves the workspace, lets the
+ * adapter rule on the actor, and admits the input. Nothing here knows what a channel or a pull
+ * request is. A conversation is routed by the task that opened it or checked it out.
  */
-export const handler = (platform: Platform, dependencies: Dependencies) =>
+export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const platforms = yield* Platforms.Service;
-    const request = yield* HttpServerRequest.HttpServerRequest;
+    const inbox = yield* Inbox.Service;
+    const drain = yield* Drain.Service;
 
-    if (request.method !== "POST") return HttpServerResponse.empty({ status: 404 });
+    const receive = Effect.gen(function* () {
+      const { platform } = yield* HttpRouter.params;
 
-    const scope = yield* platforms.forPlatform(platform);
-    const body = new Uint8Array(yield* request.arrayBuffer);
+      if (!Schema.is(Platform)(platform)) return notFound();
 
-    const normalized = yield* scope.ingress.receive({
-      body,
-      header: (name) => request.headers[name] ?? null,
-    });
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const scope = yield* platforms.forPlatform(platform);
+      const body = new Uint8Array(yield* request.arrayBuffer);
 
-    if (normalized.type === "acknowledge") return yield* HttpServerResponse.json(normalized.body);
-    if (normalized.type === "ignored") return yield* ignored(normalized.reason);
+      const normalized = yield* scope.ingress.receive({
+        body,
+        header: (name) => request.headers[name] ?? null,
+      });
 
-    const { received } = normalized;
-    const source = received.target.source;
-    const workspaceId = yield* dependencies.workspaceOf(source);
-    if (workspaceId === null) return yield* ignored("foreign-installation");
-    if (!(yield* dependencies.covers(workspaceId, source))) return yield* ignored("scope");
+      if (normalized.type === "acknowledge") return yield* HttpServerResponse.json(normalized.body);
+      if (normalized.type === "ignored") return yield* ignored(normalized.reason);
 
-    const port = yield* platforms.forInstallation(source);
+      const { received } = normalized;
+      const source = received.target.source;
+      const workspaceId = yield* inbox.workspaceOf(source);
+      if (workspaceId === null) return yield* ignored("foreign-installation");
+      if (!(yield* inbox.covers(workspaceId, source))) return yield* ignored("scope");
 
-    if (!(yield* port.identity.mayParticipate(received.actor, source.scope)))
-      return yield* ignored("actor");
+      const port = yield* platforms.forInstallation(source);
 
-    // A conversation is routed by the task that opened it or checked it out; nothing routes here.
-    const conversationKey = conversationKeyOf(workspaceId, source);
+      if (!(yield* port.identity.mayParticipate(received.actor, source.scope)))
+        return yield* ignored("actor");
 
-    yield* dependencies.admit({
-      workspaceId,
-      // The inbox recomputes identity keys server-side; these placeholders are never trusted.
-      inputId: "pending",
-      messageKey: "pending",
-      conversationKey,
-      eventId: received.eventId,
-      actor: received.actor,
-      target: received.target,
-      text: received.text,
-      occurredAt: received.occurredAt,
-      startIntent: received.startIntent,
-      root: received.root,
-    });
+      yield* inbox.admit({
+        workspaceId,
+        // The inbox recomputes identity keys server-side; these placeholders are never trusted.
+        inputId: "pending",
+        messageKey: "pending",
+        conversationKey: conversationKeyOf(workspaceId, source),
+        eventId: received.eventId,
+        actor: received.actor,
+        target: received.target,
+        text: received.text,
+        occurredAt: received.occurredAt,
+        startIntent: received.startIntent,
+        root: received.root,
+      });
 
-    // Durable admission already succeeded. A failed best-effort kick must not turn
-    // acknowledgement into failure; the independent cron will recover it.
-    yield* dependencies.kick.pipe(Effect.catchCause(() => Effect.logWarning("inbox.kick_failed")));
+      // Admission is durable already. The pass runs once the platform has its answer; the
+      // schedule recovers whatever it misses.
+      yield* Effect.addFinalizer(() => drain.run);
 
-    return ok();
-  }).pipe(
-    Effect.catchTags({
-      "Sources.IngressError": (error) =>
-        Effect.succeed(
-          HttpServerResponse.empty({
-            status: error.reason === "signature" ? 401 : error.reason === "envelope" ? 400 : 404,
-          }),
+      return ok();
+    }).pipe(
+      Effect.catchTags({
+        "Sources.IngressError": (error) =>
+          Effect.succeed(
+            HttpServerResponse.empty({
+              status: error.reason === "signature" ? 401 : error.reason === "envelope" ? 400 : 404,
+            }),
+          ),
+        "Sources.PlatformNotRegistered": () => Effect.succeed(notFound()),
+        "Sources.InstallationNotFound": () => ignored("unknown-installation"),
+        // Not this workspace's channel or repository, or a starter without authority: acknowledged, dropped.
+        "Control.Unauthorized": (error) => ignored(error.reason),
+      }),
+      Effect.catch(() =>
+        Effect.logError("ingress.failed").pipe(
+          Effect.as(HttpServerResponse.empty({ status: 503 })),
         ),
-      "Sources.PlatformNotRegistered": () =>
-        Effect.succeed(HttpServerResponse.empty({ status: 404 })),
-      "Sources.InstallationNotFound": () => ignored("unknown-installation"),
-      // Not this workspace's channel or repository, or a starter without authority: acknowledged, dropped.
-      "Control.Unauthorized": (error) => ignored(error.reason),
-    }),
-    Effect.catch(() =>
-      Effect.logError("ingress.failed").pipe(Effect.as(HttpServerResponse.empty({ status: 503 }))),
-    ),
-  );
+      ),
+    );
+
+    yield* router.add("POST", "/:platform/events", receive);
+  }),
+);

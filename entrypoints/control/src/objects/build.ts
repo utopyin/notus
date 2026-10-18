@@ -3,13 +3,16 @@ import { Provider } from "@notus/compute/provider";
 import { Providers } from "@notus/executions/providers";
 import { Compute } from "@notus/workspaces/compute";
 import { Templates } from "@notus/workspaces/templates";
-import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { Sealed } from "@notus/cloudflare/sealed";
+import { SharedDb } from "@notus/db/shared";
+import { computeConfig, credentialKeyConfig } from "../config";
+import type { BuildView } from "../dashboard/types";
 import { registry } from "../devbox";
 import { Durable } from "./durable";
 
@@ -33,15 +36,6 @@ const Record = Schema.Struct({
 });
 
 type Record = typeof Record.Type;
-
-/** What the dashboard sees of a build. */
-export interface BuildView {
-  readonly status: Record["status"];
-  readonly startedAt: number;
-  readonly finishedAt: number | null;
-  readonly ref: string | null;
-  readonly reason: string | null;
-}
 
 const key = "build";
 /** A build that has not finished by then is abandoned and its machine removed. */
@@ -70,7 +64,7 @@ const viewOf = (record: Record): BuildView => ({
 // A type, not an interface: object RPC shapes need its implicit index signature.
 export type Interface = {
   /** The last build, or null when this workspace never built one with this provider. */
-  readonly status: () => Effect.Effect<BuildView | null, never, RuntimeContext>;
+  readonly status: () => Effect.Effect<BuildView | null>;
   /**
    * Starts a build unless one is running, which it reports instead; null for input no build can
    * have. The caller checked that `actorId` is an admin of a workspace connected to `provider`.
@@ -79,21 +73,18 @@ export type Interface = {
     workspaceId: string,
     provider: string,
     actorId: string,
-  ) => Effect.Effect<BuildView | null, never, RuntimeContext>;
-  readonly alarm: () => Effect.Effect<void, never, RuntimeContext>;
+  ) => Effect.Effect<BuildView | null>;
+  readonly alarm: () => Effect.Effect<void>;
 };
 
-/**
- * Methods run inside an object or Worker handler, which supplies the runtime context.
- *
- * @effect-expect-leaking RuntimeContext
- */
 // oxlint-disable-next-line effecttsgo/lazy-effect -- object RPC members are calls on the stub.
-export class Service extends Context.Service<Service, Interface>()("@notus/control/hosts/Build") {}
+export class Service extends Context.Service<Service, Interface>()(
+  "@notus/control/objects/Build",
+) {}
 
 /** A build's object by `workspaceId:provider`; the app resolves it to the object's stub. */
 export class Remote extends Context.Service<Remote, (key: string) => Interface>()(
-  "@notus/control/hosts/Build/Remote",
+  "@notus/control/objects/Build/Remote",
 ) {}
 
 export const layerNoDeps = Layer.effect(
@@ -275,13 +266,24 @@ export const layerNoDeps = Layer.effect(
 );
 
 /**
- * The deployment's providers over the workspace's own account and templates. Leaves the shared
- * database, sealing key, recipe and object host to the app.
+ * Construction: reads the deployment's providers and sealing key, and takes the shared database
+ * (the workspace's account and templates). The result builds one object; it leaves the recipe and
+ * the object's durable state to the app.
  */
-export const layer = (enabled: ReadonlyArray<Provider>) =>
-  layerNoDeps.pipe(
-    Layer.provide(registry(enabled)),
+export const make = Effect.gen(function* () {
+  const providers = yield* computeConfig;
+  const key = yield* credentialKeyConfig;
+  const shared = yield* SharedDb.Service;
+
+  const object = layerNoDeps.pipe(
+    Layer.provide(registry(providers)),
     Layer.provide(Layer.merge(Templates.layer, Compute.credentials)),
+    Layer.provide([Layer.succeed(SharedDb.Service, shared), Sealed.layer(key)]),
+    // A malformed sealing key or a provider registered twice is a deployment defect.
+    Layer.orDie,
   );
 
-export * as BuildHost from "./build";
+  return Effect.service(Service).pipe(Effect.provide(object));
+});
+
+export * as BuildObject from "./build";

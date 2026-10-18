@@ -1,23 +1,19 @@
-import {
-  type AgentLogin,
-  Connections,
-  type ConnectionStatus,
-  type DeviceLogin,
-  type Seed,
-} from "@notus/accounts/connections";
+import { type AgentLogin, Connections, type Seed } from "@notus/accounts/connections";
 import { ConnectionError } from "@notus/accounts/errors";
 import { type GithubLogin, GithubLogins } from "@notus/accounts/github-login";
+import type { ConnectionStatus, DeviceLogin } from "@notus/accounts/types";
+import { Sealed } from "@notus/cloudflare/sealed";
+import { SharedDb } from "@notus/db/shared";
 import { OAuth } from "@notus/github/oauth";
 import type { ForwardRequest, ForwardResponse, Provider } from "@notus/openai/types";
-import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import type * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as FetchHttpClient from "effect/http/FetchHttpClient";
+import { credentialKeyConfig, dashboardConfig } from "../config";
 import { cryptoLayer } from "../crypto";
 import { Durable } from "./durable";
 
@@ -26,7 +22,7 @@ export type Result<A> =
   | { readonly ok: true; readonly value: A }
   | { readonly ok: false; readonly reason: ConnectionError["reason"] };
 
-type Call<A> = Effect.Effect<Result<A>, never, RuntimeContext>;
+type Call<A> = Effect.Effect<Result<A>>;
 
 /**
  * One user's saved model logins, addressed by user ID. Only this object opens provider material.
@@ -54,18 +50,14 @@ export type Interface = {
   readonly githubLogin: (userId: string, minimumLifetimeMs: number) => Call<GithubLogin | null>;
 };
 
-/**
- * Methods run inside an object or Worker handler, which supplies the runtime context.
- *
- * @effect-expect-leaking RuntimeContext
- */
+// oxlint-disable-next-line effecttsgo/lazy-effect -- object RPC members are calls on the stub.
 export class Service extends Context.Service<Service, Interface>()(
-  "@notus/control/hosts/Connection",
+  "@notus/control/objects/Connection",
 ) {}
 
-/** Another user's Connection object, by user ID; the app resolves it to the object's stub. */
+/** A user's Connection object, by user ID; the app resolves it to the object's stub. */
 export class Remote extends Context.Service<Remote, (userId: string) => Interface>()(
-  "@notus/control/hosts/Connection/Remote",
+  "@notus/control/objects/Connection/Remote",
 ) {}
 
 const result = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -113,7 +105,7 @@ export const layerNoDeps = Layer.effect(
       agentLogin: (userId, minimumLifetimeMs) =>
         result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
       forward: (userId, operationId, request) =>
-        result(connections.forward<RuntimeContext>(userId, operationId, request, gate)),
+        result(connections.forward<never>(userId, operationId, request, gate)),
       githubLogin: (userId, minimumLifetimeMs) =>
         result(
           gate(
@@ -126,34 +118,45 @@ export const layerNoDeps = Layer.effect(
   }),
 );
 
-/** The GitHub App's OAuth client, when the deployment signs users in with GitHub. */
-export interface Settings {
-  readonly github: {
-    readonly clientId: string;
-    readonly clientSecret: Redacted.Redacted<string>;
-  } | null;
-}
-
 /**
- * Leaves the object's own database, the shared database (GitHub sign-ins and the users they act
- * as), the sealing key and the object host to the app.
+ * Construction: reads the sealing key and the GitHub App's OAuth client, and takes the shared
+ * database (GitHub sign-ins and the users they act as). The result builds one object; it leaves
+ * the object's own database and its durable state to the app.
  */
-export const layer = (settings: Settings) => {
-  const connections = Connections.layer.pipe(Layer.provide([FetchHttpClient.layer, cryptoLayer]));
+export const make = Effect.gen(function* () {
+  const key = yield* credentialKeyConfig;
+  const github = (yield* dashboardConfig).github;
+  const shared = yield* SharedDb.Service;
 
-  if (settings.github === null) return layerNoDeps.pipe(Layer.provide(connections));
-
-  const githubLogins = GithubLogins.layer.pipe(
-    Layer.provide([
-      FetchHttpClient.layer,
-      Layer.succeed(OAuth.Configuration, {
-        clientId: settings.github.clientId,
-        clientSecret: settings.github.clientSecret,
-      }),
-    ]),
+  const infra = Layer.mergeAll(
+    Layer.succeed(SharedDb.Service, shared),
+    Sealed.layer(key),
+    FetchHttpClient.layer,
+    cryptoLayer,
   );
 
-  return layerNoDeps.pipe(Layer.provide([connections, githubLogins]));
-};
+  const logins =
+    github === null
+      ? []
+      : [
+          GithubLogins.layer.pipe(
+            Layer.provide(
+              Layer.succeed(OAuth.Configuration, {
+                clientId: github.clientId,
+                clientSecret: github.clientSecret,
+              }),
+            ),
+          ),
+        ];
 
-export * as ConnectionHost from "./connection";
+  const object = layerNoDeps.pipe(
+    Layer.provide([Connections.layer, ...logins]),
+    Layer.provide(infra),
+    // A malformed sealing key is a deployment defect.
+    Layer.orDie,
+  );
+
+  return Effect.service(Service).pipe(Effect.provide(object));
+});
+
+export * as ConnectionObject from "./connection";

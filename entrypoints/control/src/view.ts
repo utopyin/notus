@@ -16,7 +16,7 @@ import type {
   TaskStatus,
   TaskSummary,
   TurnView,
-} from "./types";
+} from "./dashboard/types";
 
 const record = (value: Schema.Json | undefined): { readonly [key: string]: Schema.Json } | null =>
   typeof value === "object" && value !== null && !Array.isArray(value)

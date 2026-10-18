@@ -33,7 +33,9 @@ export const runtimeConfig = Effect.gen(function* () {
   const decoded = yield* Schema.decodeEffect(
     Schema.fromJsonString(Schema.Record(Schema.String, Schema.NonEmptyString)),
   )(Redacted.value(encodedKeys)).pipe(
+    // A malformed key set is a deployment defect, not a missing setting.
     Effect.mapError(() => new AuthenticationFailure({ reason: "configuration" })),
+    Effect.orDie,
   );
 
   return {
@@ -126,10 +128,11 @@ export const computeConfig = Effect.gen(function* () {
     Config.withDefault("namespace"),
   );
 
+  // An unknown provider is a deployment defect, not a missing setting.
   return yield* Schema.decodeUnknownEffect(Schema.Array(Provider))(
     listed
       .split(",")
       .map((value) => value.trim())
       .filter((value) => value !== ""),
-  );
+  ).pipe(Effect.orDie);
 });

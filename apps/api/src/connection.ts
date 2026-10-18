@@ -1,6 +1,4 @@
-import { credentialKeyConfig, dashboardConfig } from "@notus/control/config";
-import { ConnectionHost } from "@notus/control/hosts/connection";
-import { Sealed } from "@notus/cloudflare/sealed";
+import { ConnectionObject } from "@notus/control/objects/connection";
 import { ConnectionDb } from "@notus/db/connection";
 import { SharedDb } from "@notus/db/shared";
 import * as Cloudflare from "alchemy/Cloudflare";
@@ -15,22 +13,13 @@ import * as Durable from "./durable";
 export class Connection extends Cloudflare.DurableObject<Connection>()(
   "Connection",
   Effect.gen(function* () {
-    const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
-    // GitHub sign-ins and the users they act as both live in the shared database.
-    const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
-    const shared = yield* SharedDb.Service;
-
-    const host = ConnectionHost.layer({ github: dashboard.github }).pipe(
-      Layer.provide([
-        ConnectionDb.layer,
-        Durable.layer,
-        Layer.succeed(SharedDb.Service, shared),
-        Sealed.layer(credentialKey),
-      ]),
-      // A malformed sealing key is a deployment defect.
-      Layer.orDie,
-    );
-
-    return ConnectionHost.Service.pipe(Effect.provide(host));
-  }).pipe(Effect.provide(SharedDb.layer)),
+    const object = yield* ConnectionObject.make;
+    return object.pipe(Effect.provide([ConnectionDb.layer, Durable.layer]));
+  }).pipe(Effect.provide(SharedDb.layer), Effect.orDie),
 ) {}
+
+/** The namespace, for the Worker and the objects that call a user's Connection. */
+export const remote = Layer.effect(
+  ConnectionObject.Remote,
+  Effect.map(Connection, (objects) => (userId) => objects.getByName(userId)),
+);

@@ -1,7 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import * as Cloudflare from "alchemy/Cloudflare/Bridge";
-import type Api from "@notus/api/api";
-import { env } from "../env";
+import { call } from "../server/api";
 
 /**
  * Where the API bounces a platform's install redirect, so it reaches the API again with this
@@ -11,11 +9,10 @@ export const Route = createFileRoute("/platforms/$platform/install")({
   server: {
     handlers: {
       GET: async ({ request, params }) => {
-        const api = Cloudflare.toRpcAsync<Api>(env.API);
-        const result = await api.dashboardCompleteInstall(
+        const result = await call(
+          (api) =>
+            api.completeInstall({ platform: params.platform, search: new URL(request.url).search }),
           request.headers.get("cookie") ?? "",
-          params.platform,
-          new URL(request.url).search,
         );
         const location = result.ok
           ? result.value.location

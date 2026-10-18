@@ -1,12 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader } from "@tanstack/react-start/server";
-import * as Cloudflare from "alchemy/Cloudflare/Bridge";
-import type Api from "@notus/api/api";
-import { env } from "../env";
 import type { Json } from "../lib/json";
-
-const api = () => Cloudflare.toRpcAsync<Api>(env.API);
-const cookie = () => getRequestHeader("cookie") ?? "";
+import { call } from "./api";
 
 /**
  * The workspace's devbox configuration, its templates and its account for one provider: the one
@@ -14,9 +8,7 @@ const cookie = () => getRequestHeader("cookie") ?? "";
  */
 export const getEnvironment = createServerFn({ method: "GET" })
   .validator((input: { workspaceId: string; provider: string | null }) => input)
-  .handler(
-    async ({ data }) => await api().dashboardEnvironment(cookie(), data.workspaceId, data.provider),
-  );
+  .handler(async ({ data }) => await call((api) => api.environment(data)));
 export type EnvironmentView = Extract<
   Awaited<ReturnType<typeof getEnvironment>>,
   { ok: true }
@@ -24,7 +16,7 @@ export type EnvironmentView = Extract<
 
 export const environmentHistory = createServerFn({ method: "GET" })
   .validator((input: { workspaceId: string }) => input)
-  .handler(async ({ data }) => await api().dashboardEnvironmentHistory(cookie(), data.workspaceId));
+  .handler(async ({ data }) => await call((api) => api.environmentHistory(data)));
 export type EnvironmentRevision = Extract<
   Awaited<ReturnType<typeof environmentHistory>>,
   { ok: true }
@@ -33,69 +25,36 @@ export type EnvironmentRevision = Extract<
 /** The provider's policy validates the document before it is stored; a refusal carries its message. */
 export const saveEnvironment = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string; config: Json }) => input)
-  .handler(
-    async ({ data }) =>
-      await api().dashboardSaveEnvironment(cookie(), data.workspaceId, data.provider, data.config),
-  );
+  .handler(async ({ data }) => await call((api) => api.saveEnvironment(data)));
 
 /** An admin approves a template of the workspace's own by the provider's reference. */
 export const addImage = createServerFn({ method: "POST" })
   .validator(
     (input: { workspaceId: string; provider: string; ref: string; label: string }) => input,
   )
-  .handler(
-    async ({ data }) =>
-      await api().dashboardAddImage(
-        cookie(),
-        data.workspaceId,
-        data.provider,
-        data.ref,
-        data.label,
-      ),
-  );
+  .handler(async ({ data }) => await call((api) => api.addImage(data)));
 
 export const removeImage = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string; ref: string }) => input)
-  .handler(
-    async ({ data }) =>
-      await api().dashboardRemoveImage(cookie(), data.workspaceId, data.provider, data.ref),
-  );
+  .handler(async ({ data }) => await call((api) => api.removeImage(data)));
 
 /** Null clears the workspace's default for the provider. */
 export const setDefaultImage = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string; ref: string | null }) => input)
-  .handler(
-    async ({ data }) =>
-      await api().dashboardSetDefaultImage(cookie(), data.workspaceId, data.provider, data.ref),
-  );
+  .handler(async ({ data }) => await call((api) => api.setDefaultImage(data)));
 
 /** An admin connects the workspace's own provider account; the response never carries the credential. */
 export const connectCompute = createServerFn({ method: "POST" })
   .validator(
     (input: { workspaceId: string; provider: string; credential: Json; label: string }) => input,
   )
-  .handler(
-    async ({ data }) =>
-      await api().dashboardConnectCompute(
-        cookie(),
-        data.workspaceId,
-        data.provider,
-        data.credential,
-        data.label,
-      ),
-  );
+  .handler(async ({ data }) => await call((api) => api.connectCompute(data)));
 
 export const disconnectCompute = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string }) => input)
-  .handler(
-    async ({ data }) =>
-      await api().dashboardDisconnectCompute(cookie(), data.workspaceId, data.provider),
-  );
+  .handler(async ({ data }) => await call((api) => api.disconnectCompute(data)));
 
 /** An admin builds the Notus template again in the workspace's account; a running build is reported. */
 export const buildTemplate = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string }) => input)
-  .handler(
-    async ({ data }) =>
-      await api().dashboardBuildTemplate(cookie(), data.workspaceId, data.provider),
-  );
+  .handler(async ({ data }) => await call((api) => api.buildTemplate(data)));

@@ -1,15 +1,13 @@
 import type { ConnectionError } from "@notus/accounts/errors";
 import { Model } from "@notus/openai/model";
-import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientError from "effect/http/HttpClientError";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import type { OperatorConfig } from "./config";
-import { ConnectionHost } from "./hosts/connection";
+import { ConnectionObject } from "./objects/connection";
 
 /** Which user's connection and which durable operation a model request belongs to. */
 export const Operation = Context.Reference<{
@@ -34,7 +32,7 @@ const statuses: Record<ConnectionError["reason"], number> = {
  * HttpClient whose only transport is the initiator's Connection object. Requests carry no
  * credentials; the object adds them and replays an identical operation without a second charge.
  */
-export const client = (remote: (userId: string) => ConnectionHost.Interface) =>
+export const client = (remote: (userId: string) => ConnectionObject.Interface) =>
   HttpClient.make((request, url) =>
     Effect.gen(function* () {
       const transport = (description: string) =>
@@ -44,11 +42,6 @@ export const client = (remote: (userId: string) => ConnectionHost.Interface) =>
 
       const operation = yield* Operation;
       if (operation === null) return yield* transport("model request outside an operation");
-
-      // Model rounds run inside an object's handler, which carries the runtime context.
-      const runtime = yield* Effect.serviceOption(RuntimeContext);
-
-      if (Option.isNone(runtime)) return yield* transport("model request outside a handler");
 
       const body = request.body;
 
@@ -67,10 +60,7 @@ export const client = (remote: (userId: string) => ConnectionHost.Interface) =>
           contentType: body.contentType,
           body: text,
         })
-        .pipe(
-          Effect.provideService(RuntimeContext, runtime.value),
-          Effect.mapError(() => transport("connection unavailable")),
-        );
+        .pipe(Effect.mapError(() => transport("connection unavailable")));
       const response = result.ok
         ? new Response(result.value.body, {
             status: result.value.status,
@@ -97,5 +87,5 @@ export const client = (remote: (userId: string) => ConnectionHost.Interface) =>
 /** The operator's model, whose only transport is the initiator's Connection object. */
 export const languageModel = (options: OperatorConfig) =>
   Model.languageModel(options).pipe(
-    Layer.provide(Layer.effect(HttpClient.HttpClient, Effect.map(ConnectionHost.Remote, client))),
+    Layer.provide(Layer.effect(HttpClient.HttpClient, Effect.map(ConnectionObject.Remote, client))),
   );

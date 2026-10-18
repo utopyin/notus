@@ -1,3 +1,4 @@
+import { TaskObject } from "../objects/task";
 import * as Auth from "./auth";
 import { Failure } from "./errors";
 import * as Protocol from "./protocol";
@@ -6,155 +7,160 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
 const statuses = { invalid: 400, unauthorized: 403, pending: 425, conflict: 409, unavailable: 503 };
 const invalid = () => new Failure({ reason: "invalid" });
 
-export const handler = <E, R>(
-  forward: (
-    capability: Auth.Capability,
-    request: Protocol.Request,
-  ) => Effect.Effect<Protocol.RpcReply, E, R>,
-) =>
+const paths = [
+  "/runtime/assignment",
+  "/runtime/enroll",
+  "/runtime/ready",
+  "/runtime/poll",
+  "/runtime/observe",
+  "/runtime/login",
+];
+
+/**
+ * The dev box's calls, at `POST /runtime/<call>`, authenticated by the capability its bearer
+ * token carries. The capability names the task; its object rechecks every fence.
+ */
+export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = new URL(request.url, "https://notus.invalid");
-
-    if (
-      request.method !== "POST" ||
-      url.search ||
-      ![
-        "/runtime/assignment",
-        "/runtime/enroll",
-        "/runtime/ready",
-        "/runtime/poll",
-        "/runtime/observe",
-        "/runtime/login",
-      ].includes(url.pathname)
-    )
-      return HttpServerResponse.empty({ status: 404 });
-
-    const header = request.headers.authorization ?? "";
-
-    if (header.length > 6207 || !/^Bearer [a-zA-Z0-9_.-]+$/.test(header))
-      return HttpServerResponse.empty({ status: 401 });
-
     const authentication = yield* Auth.Service;
-    const capability = yield* authentication.verify(
-      Redacted.make(header.slice(7)),
-      yield* Clock.currentTimeMillis,
-    );
+    const tasks = yield* TaskObject.Remote;
 
-    if (request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json")
-      return yield* invalid();
+    const call = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const url = new URL(request.url, "https://notus.invalid");
 
-    let length = 0;
-    const chunks: Uint8Array[] = [];
+      if (url.search || !paths.includes(url.pathname))
+        return HttpServerResponse.empty({ status: 404 });
 
-    yield* request.stream.pipe(
-      Stream.runForEach((chunk) =>
-        Effect.gen(function* () {
-          length += chunk.byteLength;
-          if (length > 256 * 1024) return yield* invalid();
-          chunks.push(chunk);
-        }),
-      ),
-    );
+      const header = request.headers.authorization ?? "";
 
-    const text = yield* Effect.try({
-      try: () => {
-        const bytes = new Uint8Array(length);
-        let offset = 0;
+      if (header.length > 6207 || !/^Bearer [a-zA-Z0-9_.-]+$/.test(header))
+        return HttpServerResponse.empty({ status: 401 });
 
-        for (const chunk of chunks) {
-          bytes.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
+      const capability = yield* authentication.verify(
+        Redacted.make(header.slice(7)),
+        yield* Clock.currentTimeMillis,
+      );
 
-        return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-      },
-      catch: invalid,
-    });
+      if (
+        request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !== "application/json"
+      )
+        return yield* invalid();
 
-    let command: Protocol.Request;
+      let length = 0;
+      const chunks: Uint8Array[] = [];
 
-    if (url.pathname === "/runtime/assignment") {
-      yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Never)))(
-        text,
-        {
-          onExcessProperty: "error",
+      yield* request.stream.pipe(
+        Stream.runForEach((chunk) =>
+          Effect.gen(function* () {
+            length += chunk.byteLength;
+            if (length > 256 * 1024) return yield* invalid();
+            chunks.push(chunk);
+          }),
+        ),
+      );
+
+      const text = yield* Effect.try({
+        try: () => {
+          const bytes = new Uint8Array(length);
+          let offset = 0;
+
+          for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+
+          return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
         },
-      ).pipe(Effect.mapError(invalid));
+        catch: invalid,
+      });
 
-      command = Protocol.Request.cases.Assignment.make({});
-    } else if (url.pathname === "/runtime/enroll") {
-      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.EnrollmentRequest))(
-        text,
-        { onExcessProperty: "error" },
-      ).pipe(Effect.mapError(invalid));
+      let command: Protocol.Request;
 
-      command = Protocol.Request.cases.Enroll.make({ request: body });
-    } else if (url.pathname === "/runtime/poll") {
-      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.PollRequest))(text, {
-        onExcessProperty: "error",
-      }).pipe(Effect.mapError(invalid));
+      if (url.pathname === "/runtime/assignment") {
+        yield* Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Record(Schema.String, Schema.Never)),
+        )(text, {
+          onExcessProperty: "error",
+        }).pipe(Effect.mapError(invalid));
 
-      command = Protocol.Request.cases.Poll.make({ request: body });
-    } else if (url.pathname === "/runtime/observe") {
-      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ObserveRequest))(
-        text,
-        { onExcessProperty: "error" },
-      ).pipe(Effect.mapError(invalid));
+        command = Protocol.Request.cases.Assignment.make({});
+      } else if (url.pathname === "/runtime/enroll") {
+        const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.EnrollmentRequest))(
+          text,
+          { onExcessProperty: "error" },
+        ).pipe(Effect.mapError(invalid));
 
-      command = Protocol.Request.cases.Observe.make({ request: body });
-    } else if (url.pathname === "/runtime/login") {
-      yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Never)))(
-        text,
-        { onExcessProperty: "error" },
-      ).pipe(Effect.mapError(invalid));
+        command = Protocol.Request.cases.Enroll.make({ request: body });
+      } else if (url.pathname === "/runtime/poll") {
+        const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.PollRequest))(text, {
+          onExcessProperty: "error",
+        }).pipe(Effect.mapError(invalid));
 
-      command = Protocol.Request.cases.Login.make({});
-    } else {
-      const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ReadinessRequest))(
-        text,
-        { onExcessProperty: "error" },
-      ).pipe(Effect.mapError(invalid));
+        command = Protocol.Request.cases.Poll.make({ request: body });
+      } else if (url.pathname === "/runtime/observe") {
+        const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ObserveRequest))(
+          text,
+          { onExcessProperty: "error" },
+        ).pipe(Effect.mapError(invalid));
 
-      command = Protocol.Request.cases.Ready.make({ request: body });
-    }
+        command = Protocol.Request.cases.Observe.make({ request: body });
+      } else if (url.pathname === "/runtime/login") {
+        yield* Schema.decodeEffect(
+          Schema.fromJsonString(Schema.Record(Schema.String, Schema.Never)),
+        )(text, { onExcessProperty: "error" }).pipe(Effect.mapError(invalid));
 
-    const runtimeBound =
-      command._tag === "Ready" ||
-      command._tag === "Poll" ||
-      command._tag === "Observe" ||
-      command._tag === "Login";
+        command = Protocol.Request.cases.Login.make({});
+      } else {
+        const body = yield* Schema.decodeEffect(Schema.fromJsonString(Protocol.ReadinessRequest))(
+          text,
+          { onExcessProperty: "error" },
+        ).pipe(Effect.mapError(invalid));
 
-    if (runtimeBound !== (capability._tag === "Readiness"))
-      return HttpServerResponse.empty({ status: 403 });
+        command = Protocol.Request.cases.Ready.make({ request: body });
+      }
 
-    const result = yield* forward(capability, command);
+      const runtimeBound =
+        command._tag === "Ready" ||
+        command._tag === "Poll" ||
+        command._tag === "Observe" ||
+        command._tag === "Login";
 
-    if (!result.ok) return HttpServerResponse.empty({ status: statuses[result.reason] });
+      if (runtimeBound !== (capability._tag === "Readiness"))
+        return HttpServerResponse.empty({ status: 403 });
 
-    return yield* HttpServerResponse.json(result.value, {
-      headers: { "cache-control": "no-store" },
-    });
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: "25 seconds",
-      orElse: () => Effect.succeed(HttpServerResponse.empty({ status: 503 })),
-    }),
-    Effect.catch((error) =>
-      Effect.succeed(
-        HttpServerResponse.empty({
-          status: Schema.is(Auth.Failure)(error)
-            ? 401
-            : Schema.is(Failure)(error)
-              ? statuses[error.reason]
-              : 503,
-        }),
+      const result = yield* tasks(capability.bootstrap.taskId).runtime(capability, command);
+
+      if (!result.ok) return HttpServerResponse.empty({ status: statuses[result.reason] });
+
+      return yield* HttpServerResponse.json(result.value, {
+        headers: { "cache-control": "no-store" },
+      });
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: "25 seconds",
+        orElse: () => Effect.succeed(HttpServerResponse.empty({ status: 503 })),
+      }),
+      Effect.catch((error) =>
+        Effect.succeed(
+          HttpServerResponse.empty({
+            status: Schema.is(Auth.Failure)(error)
+              ? 401
+              : Schema.is(Failure)(error)
+                ? statuses[error.reason]
+                : 503,
+          }),
+        ),
       ),
-    ),
-  );
+    );
+
+    yield* router.add("POST", "/runtime/:call", call);
+  }),
+);

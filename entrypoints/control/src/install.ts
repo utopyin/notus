@@ -2,9 +2,11 @@ import { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
 import { apiOriginOf } from "@notus/shared/hosts";
 import { Workspaces } from "@notus/workspaces/workspaces";
+import { dashboardConfig } from "./config";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as HttpRouter from "effect/http/HttpRouter";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 
@@ -16,21 +18,31 @@ const redirect = (location: string) =>
   HttpServerResponse.empty({ status: 302, headers: { location } });
 
 /**
- * The platform's redirect after an administrator installed it, on this Worker's public origin.
- * The session cookie lives on the dashboard's origin, so the request moves there unchanged; the
- * dashboard hands it back with the cookie through `complete`.
+ * The platform's redirect after an administrator installed it, at `GET /platforms/<platform>/install`
+ * on this Worker's public origin. The session cookie lives on the dashboard's origin, so the request
+ * moves there unchanged; the dashboard hands it back with the cookie through `complete`.
  */
-export const bounce = (dashboardOrigin: string) =>
+export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
-    const request = yield* HttpServerRequest.HttpServerRequest;
-    const url = new URL(request.url, "https://notus.invalid");
-    const platform = /^\/platforms\/([a-z]+)\/install$/.exec(url.pathname)?.[1];
+    const origin = (yield* dashboardConfig).origin;
 
-    if (request.method !== "GET" || platform === undefined || !Schema.is(Platform)(platform))
-      return HttpServerResponse.empty({ status: 404 });
+    yield* router.add(
+      "GET",
+      "/platforms/:platform/install",
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest;
+        const { platform } = yield* HttpRouter.params;
 
-    return redirect(`${dashboardOrigin}/platforms/${platform}/install${url.search}`);
-  });
+        if (origin === null || !Schema.is(Platform)(platform))
+          return HttpServerResponse.empty({ status: 404 });
+
+        const search = new URL(request.url, "https://notus.invalid").search;
+
+        return redirect(`${origin}/platforms/${platform}/install${search}`);
+      }),
+    );
+  }),
+);
 
 /**
  * Completes an install for the signed-in user. The nonce names the intent, which only the user
