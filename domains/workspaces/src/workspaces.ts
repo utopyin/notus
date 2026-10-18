@@ -57,6 +57,8 @@ export interface Interface {
     workspaceId: string,
     userId: string,
   ) => Effect.Effect<WorkspaceView, WorkspaceError>;
+  /** The user's role in the workspace; forbidden when they are not a member. */
+  readonly role: (workspaceId: string, userId: string) => Effect.Effect<Role, WorkspaceError>;
   readonly setRole: (
     workspaceId: string,
     actorId: string,
@@ -309,6 +311,10 @@ export const layerNoDeps = Layer.effect(
           storage("listMine"),
         );
       return rows;
+    });
+
+    const role = Effect.fn("Workspaces.role")(function* (workspaceId: string, userId: string) {
+      return yield* roleOf("role", workspaceId, userId).pipe(storage("role"));
     });
 
     const view = Effect.fn("Workspaces.view")(function* (workspaceId: string, userId: string) {
@@ -673,6 +679,7 @@ export const layerNoDeps = Layer.effect(
       viewBySlug,
       listMine,
       view,
+      role,
       setRole,
       removeMember,
       createInvite,
