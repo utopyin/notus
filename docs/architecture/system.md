@@ -64,7 +64,7 @@ flowchart LR
   end
   subgraph cf["Cloudflare: one Alchemy stage"]
     dash["Dashboard Worker<br/>TanStack Start"]
-    worker["Api Worker<br/>events, auth, installs,<br/>runtime, cron, RPC"]
+    worker["Api Worker<br/>events, auth, installs,<br/>runtime, cron, dashboard RPC"]
     d1[("Shared D1<br/>workspaces, installations,<br/>identities, sign-ins, inbox, routes")]
     task["Task Durable Object<br/>one per task"]
     conn["Connection Durable Objects<br/>userId and agent:userId"]
@@ -80,7 +80,7 @@ flowchart LR
   human -->|"PR comments and reviews"| github
   github -->|"POST /github/events"| worker
   admin -->|"browser"| dash
-  dash -->|"service binding: /auth/* and RPC"| worker
+  dash -->|"service binding: /auth/* and /rpc"| worker
   worker <--> d1
   worker -->|"DO RPC"| task
   task -->|"read installation credentials"| d1
@@ -105,12 +105,12 @@ Imports only point downward or sideways. Arrows are real `@notus/*` imports in `
 flowchart TB
   root["alchemy.run.ts<br/>Api and Dashboard resources"]
   subgraph t4["Tier 4 apps: startup, bindings, configuration"]
-    api["apps/api<br/>Worker and DO declarations, Better Auth,<br/>platform adapters for the host ports"]
+    api["apps/api<br/>Worker and DO declarations, Better Auth,<br/>platform adapters for the ports"]
     dashboard["apps/dashboard<br/>TanStack Start, shadcn, TanStack DB"]
     devbox["apps/devbox<br/>Bun supervisor, Docker image"]
   end
   subgraph t3["Tier 3 entrypoints: cross-domain use cases"]
-    control["@notus/control<br/>hosts (Api, Task, Connection, Build),<br/>inbox, use cases, ingress, broker,<br/>runtime auth, protocol, server, client"]
+    control["@notus/control<br/>Api routes, dashboard RPC, objects (Task,<br/>Connection, Build), inbox, use cases, ingress,<br/>broker, runtime auth, protocol, server, client"]
     operator["@notus/operator<br/>prompt, tools, one model round"]
   end
   subgraph t2["Tier 2 domains: product decisions"]
@@ -154,7 +154,7 @@ flowchart TB
   namespacep --> contracts
 ```
 
-`@notus/platform` depends on `effect` only, so descriptors can be imported anywhere. `@notus/slack` and `@notus/github` know nothing about Notus. Only the two adapter domains import them for sources, and entrypoints only see `@notus/platforms`. The dashboard imports the API's type for its RPC client, never its code.
+`@notus/platform` depends on `effect` only, so descriptors can be imported anywhere. `@notus/slack` and `@notus/github` know nothing about Notus. Only the two adapter domains import them for sources, and entrypoints only see `@notus/platforms`. The dashboard imports the RPC contract, `@notus/control/dashboard/rpcs`, which holds schemas only.
 
 ## 3. Hosts, responsibilities and secrets
 
@@ -172,7 +172,7 @@ flowchart TB
     w2["Durable inbox admit, cron drain every minute"]
     w3["/runtime/* routed by verified capability"]
     w4["/auth/* Better Auth, /platforms/:platform/install callbacks"]
-    w5["dashboard RPC: every call resolves the session itself"]
+    w5["/rpc Effect RPC for the dashboard: every call resolves the session itself"]
     wsn["Holds: Slack signing secret and OAuth client, GitHub webhook secret,<br/>GitHub OAuth client and App key, runtime HMAC keys, Better Auth secret"]
   end
   subgraph taskdo["Task Durable Object: one per task ID"]
@@ -412,17 +412,17 @@ flowchart TB
 
 Entry points that are not the alarm:
 
-| Method               | Called by                  | Gate work                                                        | Outside the gate                                        |
-| -------------------- | -------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------- |
-| `admit`              | Inbox drain                | Record input on its origin or attached source, schedule the turn | None                                                    |
-| `prepareEnvironment` | Inbox drain                | Capture environment and repository once                          | None                                                    |
-| `attachConversation` | Ingress route              | Confirm a completed PR action for this exact source, attach it   | None                                                    |
-| `runtimeAssignment`  | Box, Enrollment capability | Read the assigned resource and instance                          | None                                                    |
-| `runtimeEnroll`      | Box, Enrollment capability | Replay check, then commit the epoch grant                        | Namespace Fetch to verify the instance, signing replies |
-| `runtimeReady`       | Box, Readiness capability  | Accept readiness, advance                                        | Namespace Fetch                                         |
-| `runtimePoll`        | Box, Readiness capability  | One command claim per second, up to `waitMs`                     | Mint a GitHub token, or fetch a Codex login for a round |
-| `runtimeObserve`     | Box, Readiness capability  | Record the result under the epoch, advance                       | None                                                    |
-| `snapshot`           | Binding RPC only           | Read everything except secrets                                   | None                                                    |
+| Method               | Called by                                  | Gate work                                                        | Outside the gate                                        |
+| -------------------- | ------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------- |
+| `admit`              | Inbox drain                                | Record input on its origin or attached source, schedule the turn | None                                                    |
+| `prepareEnvironment` | Inbox drain                                | Capture environment and repository once                          | None                                                    |
+| `attachConversation` | Ingress route                              | Confirm a completed PR action for this exact source, attach it   | None                                                    |
+| `runtime` Assignment | Box, Enrollment capability                 | Read the assigned resource and instance                          | None                                                    |
+| `runtime` Enroll     | Box, Enrollment capability                 | Replay check, then commit the epoch grant                        | Namespace Fetch to verify the instance, signing replies |
+| `runtime` Ready      | Box, Readiness capability                  | Accept readiness, advance                                        | Namespace Fetch                                         |
+| `runtime` Poll       | Box, Readiness capability                  | One command claim per second, up to `waitMs`                     | Mint a GitHub token, or fetch a Codex login for a round |
+| `runtime` Observe    | Box, Readiness capability                  | Record the result under the epoch, advance                       | None                                                    |
+| `snapshot`           | Nothing; the Worker exposes no route to it | Read everything except secrets                                   | None                                                    |
 
 ## 8. Operator turns, steps and the model broker
 
@@ -870,7 +870,7 @@ An answer whose send may have succeeded is never retried automatically, so a con
 
 ## 16. Dashboard: sign-in, workspaces and installs
 
-The dashboard holds no data and no secrets. Every server function forwards the browser's cookie to an API RPC method. The API resolves the Better Auth session itself and authorizes against workspace membership and role.
+The dashboard holds no data and no secrets. Every server function calls the API's Effect RPC at `/rpc` through the service binding, with the browser's cookie on the request. The API's session middleware resolves the Better Auth session itself, and each handler authorizes against workspace membership and role.
 
 ```mermaid
 sequenceDiagram
@@ -893,11 +893,11 @@ sequenceDiagram
   rect rgb(240, 250, 240)
   Note over A,WS: Any dashboard call
   A->>DW: page load or mutation
-  DW->>W: RPC dashboardX(cookie, ...)
+  DW->>W: POST /rpc with the cookie
   W->>BA: getSession, listUserAccounts
   W->>Id: adopt: map the auth user to a canonical user,<br/>adopting an existing user that owns a verified identity
   W->>WS: authorize by membership and role, then act
-  W-->>DW: ok with a projection, or a reason string
+  W-->>DW: a projection, or a DashboardError with its reason
   end
 
   rect rgb(255, 248, 235)

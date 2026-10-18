@@ -69,16 +69,21 @@ Tables hold storage shapes. JSON columns are untyped in the schema; the owning d
 
 Shared migrations are generated on deploy by Alchemy's `Drizzle.Schema`. Durable Object migrations are generated with `packages/db/drizzle.<store>.ts` and committed, because an object captures its SQL when its Worker is built.
 
-## Hosts
+## Runtimes
 
-Each host (a Worker or Durable Object class) is composed in `@notus/control/hosts/<host>`. A host module exports a `Service` whose interface is the host's RPC surface and a `layer(settings)` assembling the domains it uses. Its remaining requirements are infra only: stores, the sealing key, and ports for the platform the app runs on (`Durable`, `Sessions`, `Background`, and `Remote` tags for other objects).
+Entrypoints are neutral about where they run: no Alchemy, Worker or object types. The app declares each runtime, binds its resources, and provides the control plane's layers once.
 
-The app reads configuration in the construction phase, provides the infra layers and the host layer once, and returns the host's service:
+- **The API is HTTP.** `@notus/control/api` exports `layer`, its services, and `routes`, one `HttpRouter` layer per surface. Each surface owns its transport and authority: Effect RPC for the dashboard at `/rpc`, authenticated by session middleware; platform ingress, by the platform's signature; the dev box callback, by its capability; the install bounce, by nothing. The app serves `HttpRouter.toHttpEffect(routes)` as its `fetch` and schedules `Drain`.
+- **A client imports a contract.** An RPC group and its wire schemas live in modules that import schemas only, so a client's bundle never carries server code.
+- **An object is a two-phase constructor.** `@notus/control/objects/<object>` exports its `Service` (the object's RPC shape), a `Remote` tag addressing other instances, and `make`. Construction reads configuration and takes what outlives the instance, such as the shared store; it returns the instance's effect, which requires only the object's own store, durable state and recipe. The app's object class yields `make` and provides those.
+- **Ports carry no platform types.** `Durable`, `Sessions` and the `Remote` tags are neutral. The app's adapters run platform calls through `within`, in the execution that called them.
 
+Composition:
+
+- Dependencies are services in Context, never records of functions passed to a handler. A layer reads the configuration it needs, in the construction phase, where Alchemy binds what is read.
 - No `Layer.build` or `Effect.provideContext` in `apps/` or `entrypoints/`. A service resolves its dependencies at layer construction; use cases that read services are themselves services.
-- Construction holds nothing disposable. Request-scoped resources, such as D1 clients, are acquired per execution by the layer that owns them.
-- Handler methods require only `RuntimeContext`, which the platform supplies to every handler. A port may require it; it is never captured during construction and provided later.
-- A binding is declared in the construction phase. A Durable Object takes the shared store from its construction phase into its instance layer.
+- Construction holds nothing disposable. Request-scoped resources, such as D1 clients and RPC servers, are acquired per execution. Work after the response is a finalizer on the request's scope.
+- A binding is declared in the construction phase. A Durable Object takes the shared store from its construction phase into its instance.
 
 ## Import isolation
 
