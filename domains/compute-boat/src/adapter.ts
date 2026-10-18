@@ -1,4 +1,6 @@
 import type {
+  Build,
+  BuildStep,
   Configuration,
   DevboxPort,
   Observation,
@@ -9,11 +11,12 @@ import type {
 import { ComputeCredentials } from "@notus/compute/credentials";
 import { BOAT_DESCRIPTOR } from "@notus/compute/descriptors/index";
 import { ComputeError, ConfigurationError, ConnectionError } from "@notus/compute/errors";
+import { Recipe, type RecipeFile } from "@notus/compute/recipe";
 import { Templates, type TemplateSet } from "@notus/compute/templates";
 import { Config } from "@notus/boat/config";
 import type { BoatError } from "@notus/boat/errors";
 import { Boat } from "@notus/boat/service";
-import { MachineType, type Sandbox, TemplateName } from "@notus/boat/types";
+import { MachineType, type Sandbox, SandboxId, TemplateName } from "@notus/boat/types";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -64,6 +67,27 @@ printf 'NOTUS_CONTROL_URL=%s\\nNOTUS_BOOTSTRAP_TOKEN=%s\\n' "$NOTUS_CONTROL_URL"
   | sudo sh -c 'umask 077; cat > /etc/notus/bootstrap.env'
 sudo systemctl restart notus-devbox.service
 `;
+
+/** The snapshot a build saves; a rebuild replaces it once the new one is ready. */
+const builtName = "notus-base";
+/** Where the recipe's files go on the build machine; Boat writes only under the user's home. */
+const recipeDir = "/home/user/notus";
+/** A build machine Notus loses track of stops by itself. */
+const buildStopSeconds = 1800;
+/** The recipe took about 20 s in the live check; apt and the downloads can take longer. */
+const recipeSeconds = 540;
+/**
+ * Runs the recipe as root with its output kept off the response, then removes the recipe's own
+ * files so the snapshot carries only what it installed. A retried step whose first run is still
+ * going waits for it on the lock instead of racing it for apt.
+ */
+const installCommand = `sudo flock /tmp/notus-recipe.lock bash ${recipeDir}/recipe.sh >/tmp/notus-recipe.log 2>&1 && rm -rf ${recipeDir}`;
+/** Where a build stands between steps; the host stores it unread. */
+const Progress = Schema.Struct({
+  step: Schema.Literals(["boot", "install", "save", "saving"]),
+  sandboxId: SandboxId,
+});
+type Progress = typeof Progress.Type;
 
 /** The admins' pick, or the workspace's only snapshot. */
 const defaultOf = (templates: TemplateSet) =>
@@ -146,7 +170,12 @@ const control =
 
 type Run = <A, E>(effect: Effect.Effect<A, E, Boat.Service>) => Effect.Effect<A, E>;
 
-const port = (workspaceId: string, templates: Templates["Service"], run: Run): DevboxPort => {
+const port = (
+  workspaceId: string,
+  templates: Templates["Service"],
+  files: ReadonlyArray<RecipeFile>,
+  run: Run,
+): DevboxPort => {
   const boat = <A>(f: (client: Boat.Interface) => Effect.Effect<A, BoatError>) =>
     run(Boat.Service.pipe(Effect.flatMap(f)));
   /** The machine's boot id, or null while none runs or it does not answer yet. */
@@ -185,6 +214,81 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
         yield* Effect.sleep("1 second");
       }
       return yield* boat((client) => client.get(id)).pipe(control(operation));
+    });
+  /** A plain Boat machine, keyed by the build, with nothing of the account's on it. */
+  const buildMachine = (input: Build) => ({
+    idempotencyKey: input.operationId,
+    type: "small" as const,
+    ttlSeconds: buildStopSeconds,
+  });
+  /** The host stores progress unread, so anything else is a defect of this adapter. */
+  const progressOf = (input: Build) =>
+    input.progress === null
+      ? Effect.succeed(null)
+      : Schema.decodeUnknownEffect(Progress)(input.progress).pipe(Effect.orDie);
+  const next = (progress: Progress, afterMs: number): BuildStep => ({
+    _tag: "Continue",
+    progress,
+    afterMs,
+  });
+  const removeBuildMachine = (sandboxId: string) =>
+    boat((client) => client.remove(sandboxId)).pipe(
+      Effect.catchIf(
+        (error) => error.outcome === "notFound",
+        () => Effect.void,
+      ),
+      control("build"),
+    );
+  /** Removes the build machine, then reports why the build cannot go on. */
+  const abandon = (sandboxId: string, reason: string) =>
+    removeBuildMachine(sandboxId).pipe(Effect.as<BuildStep>({ _tag: "Failed", reason }));
+  const buildStep = (input: Build) =>
+    Effect.gen(function* () {
+      const progress = yield* progressOf(input);
+      if (progress === null) {
+        const sandbox = yield* boat((client) => client.create(buildMachine(input))).pipe(
+          control("build"),
+        );
+        return next({ step: "boot", sandboxId: sandbox.id }, 1000);
+      }
+      const { sandboxId } = progress;
+      switch (progress.step) {
+        case "boot": {
+          const sandbox = yield* boat((client) => client.get(sandboxId)).pipe(control("build"));
+          if (live(sandbox.state)) return next({ step: "install", sandboxId }, 0);
+          if (sandbox.state === "error" || sandbox.state === "cancelled")
+            return yield* abandon(sandboxId, "Boat could not start a machine to build on.");
+          return next(progress, 2000);
+        }
+        case "install": {
+          if (files.find((file) => file.name === "recipe.sh") === undefined)
+            return yield* abandon(sandboxId, "This deployment ships no Boat recipe.");
+          for (const file of files)
+            yield* boat((client) =>
+              client.writeFile(sandboxId, `${recipeDir}/${file.name}`, file.content),
+            ).pipe(control("build"));
+          const result = yield* boat((client) =>
+            client.command(sandboxId, installCommand, recipeSeconds),
+          ).pipe(control("build"));
+          if (result.exitCode !== 0)
+            return yield* abandon(sandboxId, "The Notus recipe failed on the build machine.");
+          return next({ step: "save", sandboxId }, 0);
+        }
+        case "save": {
+          yield* boat((client) => client.saveSnapshot(sandboxId, builtName)).pipe(control("build"));
+          return next({ step: "saving", sandboxId }, 5000);
+        }
+        case "saving": {
+          const snapshot = yield* boat((client) => client.getSnapshot(builtName)).pipe(
+            control("build"),
+          );
+          if (snapshot.status === "saving") return next(progress, 5000);
+          if (snapshot.status === "failed")
+            return yield* abandon(sandboxId, "Boat could not save the snapshot.");
+          yield* removeBuildMachine(sandboxId);
+          return { _tag: "Ready", ref: builtName } satisfies BuildStep;
+        }
+      }
     });
   return {
     launch: Effect.fn("Compute.Boat.launch")(function* (input) {
@@ -305,6 +409,27 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
         ),
         Effect.withSpan("Compute.Boat.proveReplacement"),
       ),
+    build: (input) =>
+      descriptor.capabilities
+        .ensure("template:build")
+        .pipe(Effect.andThen(buildStep(input)), Effect.withSpan("Compute.Boat.build")),
+    discardBuild: (input) =>
+      descriptor.capabilities.ensure("template:build").pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const progress = yield* progressOf(input);
+            // A create whose answer was lost: the same key and body hand the sandbox back.
+            const sandboxId =
+              progress === null
+                ? (yield* boat((client) => client.create(buildMachine(input))).pipe(
+                    control("build"),
+                  )).id
+                : progress.sandboxId;
+            yield* removeBuildMachine(sandboxId);
+          }),
+        ),
+        Effect.withSpan("Compute.Boat.discardBuild"),
+      ),
   };
 };
 
@@ -312,6 +437,7 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
 export const adapter = Effect.gen(function* () {
   const credentials = yield* ComputeCredentials;
   const templates = yield* Templates;
+  const files = (yield* Recipe).files(provider);
   return {
     provider,
     descriptor,
@@ -327,7 +453,7 @@ export const adapter = Effect.gen(function* () {
         Layer.provide(Config.layer({ credential: Redacted.make(account.apiKey), timeoutMs })),
         Layer.orDie,
       );
-      return port(workspaceId, templates, (effect) => effect.pipe(Effect.provide(client)));
+      return port(workspaceId, templates, files, (effect) => effect.pipe(Effect.provide(client)));
     }),
   } satisfies ProviderAdapter;
 });

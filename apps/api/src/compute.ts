@@ -1,6 +1,7 @@
 import type { Configuration, ProviderAdapter } from "@notus/compute/adapter";
 import type { ComputeCredentials } from "@notus/compute/credentials";
 import { Provider, PROVIDERS } from "@notus/compute/provider";
+import type { Recipe } from "@notus/compute/recipe";
 import type { Templates } from "@notus/compute/templates";
 import {
   adapter as boatAdapter,
@@ -15,7 +16,11 @@ import * as Schema from "effect/Schema";
 
 /** Every adapter this build has. Total over `Provider`, so a new provider does not compile without one. */
 const adapters: {
-  readonly [P in Provider]: Effect.Effect<ProviderAdapter, never, ComputeCredentials | Templates>;
+  readonly [P in Provider]: Effect.Effect<
+    ProviderAdapter,
+    never,
+    ComputeCredentials | Templates | Recipe
+  >;
 } = { namespace: namespaceAdapter, boat: boatAdapter };
 /** The same providers' credential-free checks, for the API's saves. */
 const configurations: { readonly [P in Provider]: Configuration } = {

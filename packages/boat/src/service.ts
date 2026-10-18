@@ -9,7 +9,14 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { Config } from "./config";
 import { BoatError, type Operation } from "./errors";
-import { type CommandResult, type CreateInput, Sandbox, SandboxId } from "./types";
+import {
+  type CommandResult,
+  type CreateInput,
+  NamedSnapshot,
+  Sandbox,
+  SandboxId,
+  SnapshotName,
+} from "./types";
 
 /**
  * The few Boat calls a devbox needs, over `https://boat.dev/api/v1`. Every mutation's outcome is
@@ -24,12 +31,20 @@ export interface Interface {
   readonly remove: (id: string) => Effect.Effect<void, BoatError>;
   /** Sets the time left before auto-stop, counted from now; null removes the deadline. */
   readonly setDeadline: (id: string, ttlSeconds: number | null) => Effect.Effect<void, BoatError>;
-  /** A short synchronous command on the running machine, as the sandbox user. */
+  /**
+   * A synchronous command on the running machine, as the sandbox user. Boat allows up to 600
+   * seconds; the call waits that long plus the client's own timeout.
+   */
   readonly command: (
     id: string,
     command: string,
     timeoutSeconds: number,
   ) => Effect.Effect<CommandResult, BoatError>;
+  /** Writes or replaces a text file under `/home/user` or `/tmp` on the running machine. */
+  readonly writeFile: (id: string, path: string, content: string) => Effect.Effect<void, BoatError>;
+  /** Saves the sandbox under `name`, replacing an earlier snapshot of that name once it is ready. */
+  readonly saveSnapshot: (id: string, name: string) => Effect.Effect<NamedSnapshot, BoatError>;
+  readonly getSnapshot: (name: string) => Effect.Effect<NamedSnapshot, BoatError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/boat/Service") {}
 
@@ -37,6 +52,7 @@ const maxResponseBytes = 1024 * 1024;
 const Code = Schema.String.check(Schema.isPattern(/^[A-Za-z_]{1,64}$/));
 const ErrorBody = Schema.Struct({ code: Schema.optionalKey(Schema.Unknown) });
 const SandboxEnvelope = Schema.Struct({ sandbox: Sandbox });
+const SnapshotEnvelope = Schema.Struct({ snapshot: NamedSnapshot });
 const CommandEnvelope = Schema.Struct({
   exitCode: Schema.NullOr(Schema.Int),
   stdout: Schema.String,
@@ -91,10 +107,12 @@ export const layerNoDeps = Layer.effect(
     const call = Effect.fn("Boat.call")(
       function* (
         operation: Operation,
-        method: "GET" | "POST" | "PATCH" | "DELETE",
+        method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
         path: string,
         body: unknown,
         headers: Readonly<Record<string, string>>,
+        // How long Boat itself may take on top of the client's timeout, such as a long command.
+        _waitMs = 0,
       ) {
         const base = HttpClientRequest.make(method)(`${Config.endpoint}${path}`).pipe(
           HttpClientRequest.acceptJson,
@@ -131,7 +149,7 @@ export const layerNoDeps = Layer.effect(
           Effect.mapError(() => fail(operation, "invalidResponse", "unknown")),
         );
       },
-      (effect, operation) =>
+      (effect, operation, _method, _path, _body, _headers, waitMs = 0) =>
         effect.pipe(
           Effect.scoped,
           Effect.provideService(FetchHttpClient.RequestInit, {
@@ -139,7 +157,7 @@ export const layerNoDeps = Layer.effect(
             credentials: "omit",
           }),
           Effect.timeoutOrElse({
-            duration: settings.timeoutMs,
+            duration: settings.timeoutMs + waitMs,
             orElse: () => Effect.fail(fail(operation, "timeout", "unknown")),
           }),
         ),
@@ -153,6 +171,15 @@ export const layerNoDeps = Layer.effect(
         Effect.map((envelope) => envelope.sandbox),
         Effect.mapError(() => fail(operation, "invalidResponse", "unknown")),
       );
+    const snapshotName = (value: string) =>
+      Schema.decodeEffect(SnapshotName)(value).pipe(
+        Effect.mapError(() => fail("snapshot", "invalidInput", "notSent")),
+      );
+    const snapshot = (payload: unknown) =>
+      Schema.decodeUnknownEffect(SnapshotEnvelope)(payload).pipe(
+        Effect.map((envelope) => envelope.snapshot),
+        Effect.mapError(() => fail("snapshot", "invalidResponse", "unknown")),
+      );
 
     return Service.of({
       create: (input) =>
@@ -161,13 +188,13 @@ export const layerNoDeps = Layer.effect(
           "POST",
           "/sandboxes",
           {
-            from: input.from,
+            ...(input.from === undefined ? {} : { from: input.from }),
             ...(input.type === undefined ? {} : { type: input.type }),
             ...(input.ttlSeconds === undefined ? {} : { ttlSeconds: input.ttlSeconds }),
             // None of the account's own secrets, files or credentials reach the box.
             noEnv: true,
-            env: input.env,
-            setupScript: input.setupScript,
+            ...(input.env === undefined ? {} : { env: input.env }),
+            ...(input.setupScript === undefined ? {} : { setupScript: input.setupScript }),
           },
           { "Idempotency-Key": input.idempotencyKey },
         ).pipe(Effect.flatMap(sandbox("create"))),
@@ -218,6 +245,7 @@ export const layerNoDeps = Layer.effect(
               `/sandboxes/${sandboxId}/commands`,
               { command, timeoutSeconds },
               {},
+              timeoutSeconds * 1000,
             ),
           ),
           Effect.flatMap((payload) =>
@@ -225,6 +253,33 @@ export const layerNoDeps = Layer.effect(
               Effect.mapError(() => fail("command", "invalidResponse", "unknown")),
             ),
           ),
+        ),
+      writeFile: (value, path, content) =>
+        id("write", value).pipe(
+          Effect.flatMap((sandboxId) =>
+            call(
+              "write",
+              "PUT",
+              `/sandboxes/${sandboxId}/files`,
+              { path, content, encoding: "utf8" },
+              {},
+            ),
+          ),
+          Effect.asVoid,
+        ),
+      saveSnapshot: (value, name) =>
+        Effect.all([id("snapshot", value), snapshotName(name)]).pipe(
+          Effect.flatMap(([sandboxId, snapshot]) =>
+            call("snapshot", "POST", "/named-snapshots", { sandboxId, name: snapshot }, {}),
+          ),
+          Effect.flatMap(snapshot),
+        ),
+      getSnapshot: (name) =>
+        snapshotName(name).pipe(
+          Effect.flatMap((snapshot) =>
+            call("snapshot", "GET", `/named-snapshots/${snapshot}`, undefined, {}),
+          ),
+          Effect.flatMap(snapshot),
         ),
     });
   }),

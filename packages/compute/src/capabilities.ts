@@ -24,6 +24,11 @@ export const Capability = Schema.Literals([
    * missed renewal lets the provider stop the box.
    */
   "activity:lease",
+  /**
+   * Notus can build the Notus base template in the workspace's own account from the recipe it
+   * ships, so a workspace that connects has something to launch without building it by hand.
+   */
+  "template:build",
 ]);
 export type Capability = typeof Capability.Type;
 

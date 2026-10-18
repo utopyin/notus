@@ -48,6 +48,23 @@ export interface Launch {
   };
 }
 
+/**
+ * Where a template build stands. `progress` is the adapter's own JSON, which the host stores
+ * between steps and hands back unread; null before the first step.
+ */
+export interface Build {
+  /** Stable per build, so a step retried after a lost answer finds what it already made. */
+  readonly operationId: string;
+  readonly progress: Schema.Json | null;
+}
+
+/** What one build step left: more to do after a pause, a template to launch from, or a refusal. */
+export type BuildStep =
+  | { readonly _tag: "Continue"; readonly progress: Schema.Json; readonly afterMs: number }
+  | { readonly _tag: "Ready"; readonly ref: string }
+  /** The provider refused the build for good; the adapter already removed what it made. */
+  | { readonly _tag: "Failed"; readonly reason: string };
+
 /** What an adapter does for one workspace; every value is a plain closure over its configuration. */
 export interface DevboxPort {
   readonly launch: (input: Launch) => Effect.Effect<Resource, ConfigurationError | ComputeError>;
@@ -76,6 +93,17 @@ export interface DevboxPort {
     resource: Resource,
     previousInstanceId: string,
   ) => Effect.Effect<Termination, ComputeError | CapabilityNotSupportedError>;
+  /**
+   * Takes the Notus template build one step further in the workspace's own account. Each step is
+   * safe to run again with the same input, so a failed or lost step is simply retried.
+   */
+  readonly build: (
+    build: Build,
+  ) => Effect.Effect<BuildStep, ComputeError | CapabilityNotSupportedError>;
+  /** Removes what an unfinished build made, once the host gives up on it. */
+  readonly discardBuild: (
+    build: Build,
+  ) => Effect.Effect<void, ComputeError | CapabilityNotSupportedError>;
 }
 
 /** Checks that need no credential, so the API refuses a save before anything is connected. */

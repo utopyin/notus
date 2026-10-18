@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@effect/tsgo/schema.json",
-  "include": ["./alchemy.run.ts"],
+  "include": ["./alchemy.run.ts", "./apps/api/src/raw.d.ts"],
   "compilerOptions": {
     "target": "esnext",
     "strict": true,

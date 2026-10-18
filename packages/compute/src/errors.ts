@@ -42,6 +42,7 @@ export class ComputeError extends Schema.TaggedError<ComputeError>()("Compute.Co
     "end",
     "proof",
     "hold",
+    "build",
   ]),
   outcome: Schema.Literals(["notSent", "rejected", "notFound", "unknown"]),
 }) {}

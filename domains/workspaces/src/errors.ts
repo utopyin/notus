@@ -19,8 +19,8 @@ export class TemplateError extends Schema.TaggedError<TemplateError>()("Workspac
 export class ComputeConnectionError extends Schema.TaggedError<ComputeConnectionError>()(
   "Workspaces.ComputeConnectionError",
   {
-    operation: Schema.Literals(["list", "connect", "disconnect"]),
-    reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden"]),
+    operation: Schema.Literals(["list", "connect", "disconnect", "build"]),
+    reason: Schema.Literals(["invalid-input", "storage", "invalid-record", "forbidden", "missing"]),
   },
 ) {}
 

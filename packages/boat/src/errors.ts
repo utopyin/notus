@@ -8,6 +8,8 @@ export const Operation = Schema.Literals([
   "delete",
   "command",
   "update",
+  "write",
+  "snapshot",
 ]);
 export type Operation = typeof Operation.Type;
 

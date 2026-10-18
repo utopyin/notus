@@ -7,7 +7,8 @@ import type { ProviderDescriptor } from "../descriptor";
  * neither `sleep:auto` nor `busy:signal` holds. Notus moves that deadline through the API while
  * the box works instead (`activity:lease`). A sandbox has one machine at a time, and the
  * adapter reads that machine's boot id through Boat's API, so a new boot id proves the previous
- * machine ended.
+ * machine ended. Boat has no image build, but its API can run the Notus recipe on a plain machine
+ * and save it as a named snapshot, so Notus builds the template itself (`template:build`).
  */
 export const BOAT_DESCRIPTOR: ProviderDescriptor<"boat"> = {
   provider: "boat",
@@ -15,7 +16,13 @@ export const BOAT_DESCRIPTOR: ProviderDescriptor<"boat"> = {
   icon: "boat",
   capabilities: new Capabilities({
     provider: "boat",
-    values: ["sleep:request", "wake:request", "replacement:proof", "activity:lease"],
+    values: [
+      "sleep:request",
+      "wake:request",
+      "replacement:proof",
+      "activity:lease",
+      "template:build",
+    ],
   }),
   template: {
     noun: { one: "snapshot", many: "snapshots" },

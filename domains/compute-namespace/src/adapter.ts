@@ -194,6 +194,12 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
     ),
   // The box marks itself busy through its template's hook; there is no deadline to move.
   hold: () => descriptor.capabilities.ensure("activity:lease"),
+  // An admin builds and publishes the image; Notus builds nothing in a Namespace account.
+  build: () =>
+    descriptor.capabilities
+      .ensure("template:build")
+      .pipe(Effect.andThen(Effect.die("Namespace declares no template build"))),
+  discardBuild: () => descriptor.capabilities.ensure("template:build"),
   proveReplacement: (_resource, previousInstanceId) =>
     descriptor.capabilities.ensure("replacement:proof").pipe(
       Effect.andThen(

@@ -34,15 +34,29 @@ export const Sandbox = Schema.Struct({
 });
 export interface Sandbox extends Schema.Schema.Type<typeof Sandbox> {}
 
+/** A name Boat saves a snapshot under: what `from` then starts a sandbox from. */
+export const SnapshotName = Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9-]{0,62}$/));
+
+export const SnapshotStatus = Schema.Literals(["saving", "ready", "failed"]);
+export type SnapshotStatus = typeof SnapshotStatus.Type;
+
+/** Only the fields Notus reads; Boat's error text stays out. */
+export const NamedSnapshot = Schema.Struct({
+  name: SnapshotName,
+  status: SnapshotStatus,
+});
+export interface NamedSnapshot extends Schema.Schema.Type<typeof NamedSnapshot> {}
+
 export interface CreateInput {
   /** Account-unique; Boat returns the same sandbox for the same key and body within 24 hours. */
   readonly idempotencyKey: string;
-  readonly from: string;
+  /** A named snapshot or share code; absent for Boat's own base machine. */
+  readonly from?: string;
   readonly type?: MachineType;
   /** Null disables auto-stop. */
   readonly ttlSeconds?: number | null;
-  readonly env: Readonly<Record<string, string>>;
-  readonly setupScript: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly setupScript?: string;
 }
 
 export interface CommandResult {

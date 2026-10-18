@@ -91,3 +91,11 @@ export const disconnectCompute = createServerFn({ method: "POST" })
     async ({ data }) =>
       await api().dashboardDisconnectCompute(cookie(), data.workspaceId, data.provider),
   );
+
+/** An admin builds the Notus template again in the workspace's account; a running build is reported. */
+export const buildTemplate = createServerFn({ method: "POST" })
+  .validator((input: { workspaceId: string; provider: string }) => input)
+  .handler(
+    async ({ data }) =>
+      await api().dashboardBuildTemplate(cookie(), data.workspaceId, data.provider),
+  );

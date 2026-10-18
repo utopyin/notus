@@ -38,6 +38,12 @@ export interface Interface {
     actorId: string,
     provider: string,
   ) => Effect.Effect<ReadonlyArray<ComputeConnection>, ComputeConnectionError>;
+  /** Admins only: the provider account Notus is about to spend on a template build is there. */
+  readonly authorizeBuild: (
+    workspaceId: string,
+    actorId: string,
+    provider: string,
+  ) => Effect.Effect<void, ComputeConnectionError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/workspaces/compute/Service",
@@ -170,7 +176,20 @@ export const layerNoDeps = Layer.effect(
         .pipe(storage("disconnect"));
       return yield* read("disconnect", workspaceId);
     });
-    return Service.of({ list, connect, disconnect });
+    const authorizeBuild = Effect.fn("Compute.authorizeBuild")(function* (
+      workspaceId: string,
+      actorId: string,
+      provider: string,
+    ) {
+      yield* requireAdmin("build", workspaceId, actorId);
+      const rows = yield* store.db
+        .select({ key: computeConnections.key })
+        .from(computeConnections)
+        .where(eq(computeConnections.key, key(workspaceId, provider)))
+        .pipe(storage("build"));
+      if (rows.length === 0) return yield* fail("build", "missing");
+    });
+    return Service.of({ list, connect, disconnect, authorizeBuild });
   }),
 );
 export const layer = layerNoDeps.pipe(Layer.provide(D1.layer));

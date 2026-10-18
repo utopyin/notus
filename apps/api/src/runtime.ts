@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { Provider } from "@notus/compute/provider";
 import { adaptersOf } from "./compute";
+import * as RecipeLayer from "./recipe";
 import type { RuntimeConfig } from "./config";
 
 export const authentication = (settings: RuntimeConfig | null) =>
@@ -22,6 +23,30 @@ export const authentication = (settings: RuntimeConfig | null) =>
         ),
       )
     : Auth.disabled;
+
+// A failed read yields no template: a launch is then refused, never an unlisted one started.
+const templates = Layer.effect(
+  Templates,
+  Effect.gen(function* () {
+    const stored = yield* WorkspaceTemplates.Service;
+    return Templates.of({
+      approved: (workspaceId, provider) =>
+        stored.approved(workspaceId, provider).pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning(`devbox.workspace_templates_failed ${error.reason}`),
+          ),
+          Effect.orElseSucceed(() => ({ refs: [], default: null })),
+        ),
+    });
+  }),
+);
+
+/**
+ * Which providers this deployment runs, over the workspaces' own accounts and templates; a
+ * workspace naming another is refused. The caller provides the shared database's reads.
+ */
+export const registry = (providers: ReadonlyArray<Provider>) =>
+  Providers.layer(adaptersOf(providers)).pipe(Layer.provide([templates, RecipeLayer.layer]));
 
 /**
  * The task host's dev boxes. Provider accounts and templates are workspace data, so the only
@@ -51,24 +76,6 @@ export const execution = (settings: RuntimeConfig | null, providers: ReadonlyArr
       });
     }),
   ).pipe(Layer.provide(auth));
-  // A failed read yields no template: a launch is then refused, never an unlisted one started.
-  const templates = Layer.effect(
-    Templates,
-    Effect.gen(function* () {
-      const stored = yield* WorkspaceTemplates.Service;
-      return Templates.of({
-        approved: (workspaceId, provider) =>
-          stored.approved(workspaceId, provider).pipe(
-            Effect.tapError((error) =>
-              Effect.logWarning(`devbox.workspace_templates_failed ${error.reason}`),
-            ),
-            Effect.orElseSucceed(() => ({ refs: [], default: null })),
-          ),
-      });
-    }),
-  );
-  // Which providers this deployment runs; a workspace naming another is refused.
-  const registry = Providers.layer(adaptersOf(providers)).pipe(Layer.provide(templates));
-  const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, registry]));
+  const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, registry(providers)]));
   return Layer.merge(auth, devbox);
 };

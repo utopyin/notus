@@ -17,6 +17,7 @@ import { Credentials } from "@notus/workspaces/credentials";
 import { Workspaces } from "@notus/workspaces/workspaces";
 import { Roles } from "@notus/workspaces/roles";
 import { PLATFORM_DESCRIPTORS } from "@notus/platform/descriptors/index";
+import { descriptorOf } from "@notus/compute/descriptors/index";
 import { configurationOf, offered } from "./compute";
 import * as Install from "./install";
 import * as Clock from "effect/Clock";
@@ -49,6 +50,7 @@ import * as RuntimeLayers from "./runtime";
 import { cryptoLayer } from "./crypto";
 import { SharedDatabase } from "./database";
 import { Task } from "./task";
+import { Build } from "./build";
 
 export default class Api extends Cloudflare.Worker<Api>()(
   "Api",
@@ -72,6 +74,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
     const auth = yield* makeAuth(dashboard);
     const tasks = yield* Task;
     const connections = yield* Connection;
+    const builds = yield* Build;
     const database = yield* SharedDatabase;
     const binding = yield* Cloudflare.D1.QueryDatabase(database);
     const execution = yield* Cloudflare.WorkerExecutionContext;
@@ -396,6 +399,23 @@ export default class Api extends Cloudflare.Worker<Api>()(
             _tag: "Environment",
             reason: "This deployment runs no such devbox provider.",
           });
+    };
+    /** The workspace's template build with one provider; null where the provider builds none. */
+    const builder = (workspaceId: string, provider: string) => {
+      if (!descriptorOf(provider)?.capabilities.has("template:build")) return null;
+      const object = builds.getByName(`${workspaceId}:${provider}`);
+      return {
+        status: object.status().pipe(Effect.provideService(RuntimeContext, runtime)),
+        start: (actorId: string) =>
+          object.start(workspaceId, provider, actorId).pipe(
+            Effect.provideService(RuntimeContext, runtime),
+            Effect.flatMap((view) =>
+              view === null
+                ? Effect.fail<DashboardFailure>({ _tag: "Template", reason: "invalid-input" })
+                : Effect.succeed(view),
+            ),
+          ),
+      };
     };
     const authorized = <A>(
       cookie: string,
@@ -730,6 +750,8 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 (yield* connections.list(workspaceId, me.userId)).find(
                   (connection) => connection.provider === provider,
                 ) ?? null,
+              /** The last build of the Notus template, where the provider builds one. */
+              build: yield* builder(workspaceId, provider)?.status ?? Effect.succeed(null),
             };
           }),
         ),
@@ -842,7 +864,37 @@ export default class Api extends Cloudflare.Worker<Api>()(
               normalized,
               me.now,
             );
+            // A newly connected account holds none of the old one's snapshots, so every connect
+            // builds the Notus template afresh where the provider builds one.
+            // The account is connected either way; an admin can start a build that failed to.
+            const build = builder(workspaceId, provider);
+            if (build !== null)
+              yield* build.start(me.userId).pipe(
+                Effect.tapError((error) =>
+                  Effect.logWarning(`dashboard.build_start_failed ${error.reason ?? ""}`),
+                ),
+                Effect.ignore,
+              );
             return connected.find((connection) => connection.provider === provider) ?? null;
+          }),
+        ),
+      /**
+       * An admin builds the Notus template again in the workspace's own account, such as after a
+       * failed build; a build already running is reported instead of started twice.
+       */
+      dashboardBuildTemplate: (cookie: string, workspaceId: string, provider: string) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            yield* compute(provider);
+            const build = builder(workspaceId, provider);
+            if (build === null)
+              return yield* Effect.fail<DashboardFailure>({
+                _tag: "Template",
+                reason: "This provider builds no template; add one of your own.",
+              });
+            const connections = yield* Compute.Service;
+            yield* connections.authorizeBuild(workspaceId, me.userId, provider);
+            return yield* build.start(me.userId);
           }),
         ),
       /** Boxes already running are not ended, but Notus reaches none of them until it is connected again. */

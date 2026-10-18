@@ -1,12 +1,90 @@
 import type { ProviderDescriptor } from "@notus/compute/descriptor";
 import { IconX } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { queryClient } from "../query";
 import type { EnvironmentView } from "../server/devbox";
 
 type Template = EnvironmentView["workspaceImages"][number];
+type Build = NonNullable<EnvironmentView["build"]>;
+
+/** How often the page looks again while a build runs; one takes a few minutes. */
+const buildPollMs = 10_000;
+
+/**
+ * The Notus template Notus builds in the workspace's own account, on providers that let it: what
+ * the last build did, and a button for admins to build it again. While one runs, the page reloads
+ * until it ends.
+ */
+export const TemplateBuild: FC<{
+  descriptor: ProviderDescriptor;
+  workspaceId: string;
+  build: Build | null;
+  connected: boolean;
+  disabled: boolean;
+  onBuild: () => Promise<string | null>;
+  onPoll: () => Promise<void>;
+}> = ({ descriptor, workspaceId, build, connected, disabled, onBuild, onPoll }) => {
+  const noun = descriptor.template.noun;
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const building = build?.status === "building";
+  // The page reloads on the poll itself; nothing is read from the query.
+  useQuery(
+    {
+      queryKey: ["template-build", workspaceId, descriptor.provider],
+      queryFn: async () => {
+        await onPoll();
+        return Date.now();
+      },
+      enabled: building,
+      initialData: 0,
+      initialDataUpdatedAt: Date.now,
+      staleTime: Infinity,
+      refetchInterval: buildPollMs,
+    },
+    queryClient,
+  );
+  const status =
+    build === null
+      ? connected
+        ? `Notus has not built its ${noun.one} in this account yet.`
+        : `Once the account is connected, Notus builds its ${noun.one} in it.`
+      : build.status === "building"
+        ? `Building the Notus ${noun.one} in your ${descriptor.name} account. This takes a few minutes.`
+        : build.status === "ready"
+          ? `The Notus ${noun.one} ${build.ref ?? ""} was built ${when(build.finishedAt ?? build.startedAt)}.`
+          : `The last build failed: ${build.reason ?? "no reason given"}`;
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <span className={build?.status === "failed" ? "text-destructive flex-1" : "flex-1"}>
+        {status}
+        {message ? <span className="text-destructive block">{message}</span> : null}
+      </span>
+      {disabled || !connected ? null : (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || building}
+          onClick={async () => {
+            if (busy) return;
+            setBusy(true);
+            setMessage(await onBuild());
+            setBusy(false);
+          }}
+        >
+          {building ? "Building" : build === null ? "Build" : "Rebuild"}
+        </Button>
+      )}
+    </div>
+  );
+};
+
+const when = (millis: number) =>
+  new Date(millis).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
  * The workspace's templates for one provider: the references its admins added, the only ones it

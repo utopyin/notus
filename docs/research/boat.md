@@ -31,6 +31,16 @@ States, from the `Sandbox` schema: `init`, `provisioning`, `provisioned`, `cloni
 - `noEnv: true` gives the sandbox none of the account's environment variables, secret files or credentials, "confined to itself so it cannot act on your account or other sandboxes". The workspace's own Boat account may hold unrelated secrets, so Notus would create every sandbox this way.
 - Boat has no image build. A named snapshot built once from the Notus base recipe is the template; `from` also accepts another account's share code.
 
+## Template build (documented 2026-10-18, not yet exercised by Notus)
+
+What the [template build](../plans/compute.md) relies on, from the API reference only:
+
+- `PUT /sandboxes/{id}/files` with `{ path, content, encoding: "utf8" | "base64" }` writes or replaces a file, answering `200 file.written`. The canonical path must resolve under `/home/user` or `/tmp`, else `400 invalid_path`. No size limit is documented; the supervisor bundle is about 490 KB.
+- `POST /sandboxes/{id}/commands` waits up to 60 s for a starting sandbox; a synchronous command times out after 30 s by default and accepts `timeoutSeconds` up to 600.
+- `POST /named-snapshots` with `{ sandboxId, name }` answers `202 snapshot.named.saving`. A running sandbox "takes a fresh capture first, which can run minutes". Reusing a name "replaces that snapshot's artifact once the new save is ready". Names are `^[a-z0-9][a-z0-9-]{0,62}$`, and `latest`, `tree`, `pull`, `rm`, `save`, `current`, `self` and `new` are reserved.
+- `GET /named-snapshots/{name}` reports `status` `saving`, `ready` or `failed` (with `error`); `404` for an unknown name. `GET /named-snapshots` and `DELETE /named-snapshots/{name}` exist too.
+- `POST /sandboxes` without `from` starts Boat's own base machine, which the [adapter check](#adapter-check-2026-10-17) found to be Ubuntu 24.04 AMD64 with the user `user` (UID 1000).
+
 ## Machine identity
 
 The `Sandbox` schema has no field naming the machine that currently backs a sandbox, and the [probe](#live-probe-2026-10-17) found none either: the API's stable fields stay the same across resumes, and the fields that change are addresses. Inside the box, the kernel boot id, `/etc/machine-id` and the hostname all change on every resume. Notus's enrollment protocol binds a box to a provider-reported instance id, and its replacement check needs proof that the previous instance ended. A Boat adapter therefore cannot claim `replacement:proof`, and needs another source of the instance id.

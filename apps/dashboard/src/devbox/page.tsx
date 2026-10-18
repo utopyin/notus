@@ -22,6 +22,7 @@ import { canonical } from "../lib/json";
 import { useWorkspace } from "../routes/$slug";
 import {
   addImage,
+  buildTemplate,
   connectCompute,
   disconnectCompute,
   environmentHistory,
@@ -33,7 +34,7 @@ import {
 } from "../server/devbox";
 import { ComputeConnection } from "./connection";
 import { changes, type Kit } from "./kit";
-import { WorkspaceTemplates } from "./templates";
+import { TemplateBuild, WorkspaceTemplates } from "./templates";
 
 const when = (millis: number) =>
   new Date(millis).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -47,7 +48,8 @@ export function ProviderPage<F>({ kit, data }: { kit: Kit<F>; data: EnvironmentV
   const { view } = useWorkspace();
   const { descriptor } = kit;
   const provider = descriptor.provider;
-  const { approvedImages, workspaceImages, defaultImage, connection } = data;
+  const { approvedImages, workspaceImages, defaultImage, connection, build } = data;
+  const builds = descriptor.capabilities.has("template:build");
   // Another provider's configuration is not this form's: the card starts empty, and saving
   // switches the workspace over.
   const environment = data.environment?.provider === provider ? data.environment : null;
@@ -233,12 +235,25 @@ export function ProviderPage<F>({ kit, data }: { kit: Kit<F>; data: EnvironmentV
             Your {descriptor.template.noun.many}
           </CardTitle>
           <CardDescription className="text-pretty">
-            The {descriptor.template.noun.many} this workspace may launch. Build yours from the
-            Notus base recipe and add its reference; it then appears in the field above. Notus does
-            not inspect it: whoever adds one vouches for what it contains.
+            {builds
+              ? `The ${descriptor.template.noun.many} this workspace may launch. Notus builds its own from the Notus base recipe in your account when you connect it, and adds it here. You can add others of your own; whoever adds one vouches for what it contains.`
+              : `The ${descriptor.template.noun.many} this workspace may launch. Build yours from the Notus base recipe and add its reference; it then appears in the field above. Notus does not inspect it: whoever adds one vouches for what it contains.`}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
+          {builds ? (
+            <TemplateBuild
+              descriptor={descriptor}
+              workspaceId={view.workspace.id}
+              build={build}
+              connected={connection !== null}
+              disabled={!isAdmin}
+              onBuild={async () =>
+                reload(await buildTemplate({ data: { workspaceId: view.workspace.id, provider } }))
+              }
+              onPoll={() => router.invalidate()}
+            />
+          ) : null}
           <WorkspaceTemplates
             descriptor={descriptor}
             short={kit.shortTemplate}
