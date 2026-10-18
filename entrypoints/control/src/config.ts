@@ -1,4 +1,4 @@
-import { Failure as AuthenticationFailure } from "@notus/control/runtime/auth";
+import { Failure as AuthenticationFailure } from "./runtime/auth";
 import { Provider } from "@notus/compute/provider";
 import { Mode } from "@notus/executions/types";
 import * as Config from "effect/Config";

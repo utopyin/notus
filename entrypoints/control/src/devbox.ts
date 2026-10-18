@@ -1,4 +1,4 @@
-import * as Auth from "@notus/control/runtime/auth";
+import * as Auth from "./runtime/auth";
 import { Devbox } from "@notus/executions/devbox";
 import { DevboxFailure } from "@notus/executions/errors";
 import { Templates } from "@notus/compute/templates";
@@ -8,7 +8,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { Provider } from "@notus/compute/provider";
 import { adaptersOf } from "./compute";
-import * as RecipeLayer from "./recipe";
 import type { RuntimeConfig } from "./config";
 
 export const authentication = (settings: RuntimeConfig | null) =>
@@ -44,10 +43,11 @@ const templates = Layer.effect(
 
 /**
  * Which providers this deployment runs, over the workspaces' own accounts and templates; a
- * workspace naming another is refused. The caller provides the shared database's reads.
+ * workspace naming another is refused. The caller provides the shared database's reads and the
+ * deployment's recipe.
  */
 export const registry = (providers: ReadonlyArray<Provider>) =>
-  Providers.layer(adaptersOf(providers)).pipe(Layer.provide([templates, RecipeLayer.layer]));
+  Providers.layer(adaptersOf(providers)).pipe(Layer.provide(templates));
 
 /**
  * The task host's dev boxes. Provider accounts and templates are workspace data, so the only

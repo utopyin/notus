@@ -105,12 +105,12 @@ export interface Interface {
    * decisions (replay lookup, record) with every other call on this connection; the provider
    * round trip itself runs outside it.
    */
-  readonly forward: (
+  readonly forward: <R>(
     userId: string,
     operationId: string,
     request: ForwardRequest,
-    gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>,
-  ) => Effect.Effect<ForwardResponse, ConnectionError>;
+    gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<ForwardResponse, ConnectionError, R>;
   /**
    * A fresh subscription login for an agent process on the user's dev box. The refresh token never
    * leaves; the caller serializes this with every other call on the connection.
@@ -312,11 +312,11 @@ export const layerNoDeps = Layer.effect(
         expiresAt: rotated.expiresAt,
       };
     });
-    const forward = Effect.fn("Connections.forward")(function* (
+    const forward = Effect.fn("Connections.forward")(function* <R>(
       userId: string,
       operationId: string,
       input: ForwardRequest,
-      gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>,
+      gate: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E, R>,
     ) {
       yield* Schema.decodeEffect(Schema.NonEmptyString)(operationId).pipe(
         Effect.mapError(() => fail("invalid-input")),

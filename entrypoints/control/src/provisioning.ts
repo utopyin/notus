@@ -3,7 +3,9 @@ import { Provisioning } from "@notus/executions/provisioning";
 import { digest, type ProvisioningStatus } from "@notus/executions/types";
 import { State } from "@notus/tasks/state";
 import * as DateTime from "effect/DateTime";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Equal from "effect/Equal";
 
 const summary = (status: ProvisioningStatus): string => {
@@ -24,99 +26,109 @@ const summary = (status: ProvisioningStatus): string => {
   return `${lifecycle} ${last} No model or repository work was run.${wake}`;
 };
 
-/** Readiness admission deliberately does not create a simulated invocation. */
-export const admit = Effect.fn("ProvisioningControl.admit")(function* (command: Admission) {
-  const state = yield* State.Service;
-  return yield* state.admit(command);
-});
-
-/** Local-only repair. The host performs provider calls outside its concurrency gate. */
-export const advance = Effect.fn("ProvisioningControl.advance")(function* (now: number) {
+const make = Effect.gen(function* () {
   const state = yield* State.Service;
   const execution = yield* Provisioning.Service;
-  const task = yield* state.snapshot;
 
-  if (!task.task || task.task.mode !== "readiness") return 0;
-
-  let status = yield* execution.current;
-  // The durable D1 forwarding handoff supplies the environment before acknowledgement.
-  if (!status) return 0;
-
-  const reservation = task.task.reservation;
-  const origin = task.inputs.find((row) => row.id === reservation.startInputId);
-  const responded = new Set(task.responses.map((row) => row.inputId));
-  let count = 0;
-
-  for (const row of task.inputs) {
-    if (count >= 16) break;
-    if (responded.has(row.id)) continue;
-
-    const initial = row.id === reservation.startInputId;
-    const wake = !initial && row.input.text.trim().toLowerCase() === "wake";
-    const authorized = origin !== undefined && Equal.equals(origin.input.actor, row.input.actor);
-
-    if (wake && authorized) {
-      yield* execution.requestWake(row.id, now);
-      status = (yield* execution.current) ?? status;
-    }
-
-    if (
-      (initial || (wake && authorized)) &&
-      (status.pendingWork !== null || (status.phase !== "ready" && status.phase !== "blocked"))
-    )
-      continue;
-
-    const text = `${wake && !authorized ? "Only the initiating actor may wake the box in this readiness slice. " : ""}${summary(status)}`;
-
-    yield* state.recordResponse(
-      {
-        id: key("runtime-status", row.id),
-        inputId: row.id,
-        content: text,
-        digest: digest(text),
-        acceptedAt: now,
-      },
-      now,
-    );
-
-    count++;
-  }
-
-  return count;
-});
-
-export const nextWake = Effect.fn("ProvisioningControl.nextWake")(function* (now: number) {
-  const state = yield* State.Service;
-  const execution = yield* Provisioning.Service;
-  const task = yield* state.snapshot;
-  const status = yield* execution.current;
-
-  if (!task.task || !status) return yield* state.nextWake(now);
-
-  const responded = new Set(task.responses.map((row) => row.inputId));
-  const origin = task.inputs.find((row) => row.id === task.task?.reservation.startInputId);
-
-  const final =
-    status.pendingWork === null && (status.phase === "ready" || status.phase === "blocked");
-
-  const unanswered = task.inputs.some((row) => {
-    if (responded.has(row.id)) return false;
-    if (row.id === task.task?.reservation.startInputId) return final;
-
-    const wake =
-      row.input.text.trim().toLowerCase() === "wake" &&
-      origin !== undefined &&
-      Equal.equals(origin.input.actor, row.input.actor);
-
-    // A wake without provider work needs a pass to schedule its durable intent.
-    return !wake || final;
+  /** Readiness admission deliberately does not create a simulated invocation. */
+  const admit = Effect.fn("ProvisioningControl.admit")(function* (command: Admission) {
+    return yield* state.admit(command);
   });
 
-  if (unanswered) return now;
+  /** Local-only repair. The host performs provider calls outside its concurrency gate. */
+  const advance = Effect.fn("ProvisioningControl.advance")(function* (now: number) {
+    const task = yield* state.snapshot;
 
-  const times = [yield* state.nextWake(now), yield* execution.nextWake].filter(
-    (value): value is number => value !== null,
-  );
+    if (!task.task || task.task.mode !== "readiness") return 0;
 
-  return times.length ? Math.max(now, Math.min(...times)) : null;
+    let status = yield* execution.current;
+    // The durable D1 forwarding handoff supplies the environment before acknowledgement.
+    if (!status) return 0;
+
+    const reservation = task.task.reservation;
+    const origin = task.inputs.find((row) => row.id === reservation.startInputId);
+    const responded = new Set(task.responses.map((row) => row.inputId));
+    let count = 0;
+
+    for (const row of task.inputs) {
+      if (count >= 16) break;
+      if (responded.has(row.id)) continue;
+
+      const initial = row.id === reservation.startInputId;
+      const wake = !initial && row.input.text.trim().toLowerCase() === "wake";
+      const authorized = origin !== undefined && Equal.equals(origin.input.actor, row.input.actor);
+
+      if (wake && authorized) {
+        yield* execution.requestWake(row.id, now);
+        status = (yield* execution.current) ?? status;
+      }
+
+      if (
+        (initial || (wake && authorized)) &&
+        (status.pendingWork !== null || (status.phase !== "ready" && status.phase !== "blocked"))
+      )
+        continue;
+
+      const text = `${wake && !authorized ? "Only the initiating actor may wake the box in this readiness slice. " : ""}${summary(status)}`;
+
+      yield* state.recordResponse(
+        {
+          id: key("runtime-status", row.id),
+          inputId: row.id,
+          content: text,
+          digest: digest(text),
+          acceptedAt: now,
+        },
+        now,
+      );
+
+      count++;
+    }
+
+    return count;
+  });
+
+  const nextWake = Effect.fn("ProvisioningControl.nextWake")(function* (now: number) {
+    const task = yield* state.snapshot;
+    const status = yield* execution.current;
+
+    if (!task.task || !status) return yield* state.nextWake(now);
+
+    const responded = new Set(task.responses.map((row) => row.inputId));
+    const origin = task.inputs.find((row) => row.id === task.task?.reservation.startInputId);
+
+    const final =
+      status.pendingWork === null && (status.phase === "ready" || status.phase === "blocked");
+
+    const unanswered = task.inputs.some((row) => {
+      if (responded.has(row.id)) return false;
+      if (row.id === task.task?.reservation.startInputId) return final;
+
+      const wake =
+        row.input.text.trim().toLowerCase() === "wake" &&
+        origin !== undefined &&
+        Equal.equals(origin.input.actor, row.input.actor);
+
+      // A wake without provider work needs a pass to schedule its durable intent.
+      return !wake || final;
+    });
+
+    if (unanswered) return now;
+
+    const times = [yield* state.nextWake(now), yield* execution.nextWake].filter(
+      (value): value is number => value !== null,
+    );
+
+    return times.length ? Math.max(now, Math.min(...times)) : null;
+  });
+
+  return { admit, advance, nextWake };
 });
+
+export interface Interface extends Effect.Success<typeof make> {}
+
+export class Service extends Context.Service<Service, Interface>()("@notus/control/Readiness") {}
+
+export const layer = Layer.effect(Service, make);
+
+export * as ReadinessControl from "./provisioning";

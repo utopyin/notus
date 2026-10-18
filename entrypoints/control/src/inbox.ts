@@ -56,9 +56,9 @@ export interface Interface {
    */
   readonly takeover: (route: Reservation) => Effect.Effect<void, IntakeError>;
   /** Success from forward must mean Task DO admission and its wake are durable. */
-  readonly drain: <E>(
-    forward: (admission: Admission) => Effect.Effect<void, E>,
-  ) => Effect.Effect<DrainResult, IntakeError>;
+  readonly drain: <E, R>(
+    forward: (admission: Admission) => Effect.Effect<void, E, R>,
+  ) => Effect.Effect<DrainResult, IntakeError, R>;
   readonly snapshot: (workspaceId: string) => Effect.Effect<Snapshot, IntakeError>;
   /** The workspace's tasks by their routes, newest first; each task's state lives in its object. */
   readonly tasks: (
@@ -267,8 +267,8 @@ export const layerNoDeps = Layer.effect(
       return { eventKey, messageKey, inputId: input.inputId };
     });
 
-    const drain = Effect.fn("Inbox.drain")(function* <E>(
-      forward: (admission: Admission) => Effect.Effect<void, E>,
+    const drain = Effect.fn("Inbox.drain")(function* <E, R>(
+      forward: (admission: Admission) => Effect.Effect<void, E, R>,
     ) {
       const now = yield* Clock.currentTimeMillis;
 

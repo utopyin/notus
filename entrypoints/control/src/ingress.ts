@@ -1,8 +1,9 @@
-import type { Conflict, IntakeError, Unauthorized } from "@notus/control/errors";
+import type { Conflict, IntakeError, Unauthorized } from "./errors";
 import type { InstallationRef } from "@notus/platform/ids";
 import type { Platform } from "@notus/platform/platform";
 import { Platforms } from "@notus/platforms/registry";
 import { conversationKeyOf, type Input, type Source } from "@notus/platform/source";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
@@ -24,7 +25,8 @@ export interface Dependencies {
   readonly admit: (
     input: Input,
   ) => Effect.Effect<unknown, Conflict | IntakeError | Unauthorized | IngressFailure>;
-  readonly kick: Effect.Effect<void, IngressFailure>;
+  /** Starts a drain beyond this delivery; it runs on the request's platform lifetime. */
+  readonly kick: Effect.Effect<void, IngressFailure, RuntimeContext>;
 }
 
 const ok = () => HttpServerResponse.empty({ status: 200 });

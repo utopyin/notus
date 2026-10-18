@@ -4,7 +4,9 @@ import { Provisioning } from "@notus/executions/provisioning";
 import type { CommandRow, Step } from "@notus/executions/rows";
 import { Steps } from "@notus/executions/steps";
 import { State } from "@notus/tasks/state";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import type * as Schema from "effect/Schema";
 import type {
   CommandView,
@@ -188,125 +190,6 @@ const statusOf = (
   }
 };
 
-/** The task as the dashboard shows it, or null for an object that holds no task. */
-export const read = Effect.fn("View.read")(function* () {
-  const state = yield* State.Service;
-  const attempts = yield* Attempts.Service;
-  const steps = yield* Steps.Service;
-  const commands = yield* Commands.Service;
-  const provisioning = yield* Provisioning.Service;
-  const snapshot = yield* state.snapshot;
-  const task = snapshot.task;
-  if (task === null) return null;
-
-  const execution = yield* attempts.snapshot;
-  const stepRows = yield* steps.snapshot;
-  const commandRows = yield* commands.snapshot;
-  const box = yield* provisioning.current;
-  const repository = yield* provisioning.repository;
-  const instructions = yield* provisioning.instructions;
-
-  const deliveryOf = new Map(
-    snapshot.deliveries.flatMap((row) => (row.responseId ? [[row.responseId, row.status]] : [])),
-  );
-  const invocationOf = new Map(execution.invocations.map((row) => [row.inputId, row]));
-
-  const timeline = [...snapshot.inputs]
-    .sort((a, b) => a.createdAt - b.createdAt)
-    .map((row): TurnView => {
-      const invocation = invocationOf.get(row.id);
-
-      return {
-        inputId: row.id,
-        platform: row.input.target.source.platform,
-        author: row.input.actor.externalId,
-        text: row.input.text,
-        answered: row.obligation === "fulfilled",
-        createdAt: row.createdAt,
-        steps: invocation
-          ? stepRows
-              .filter((candidate) => candidate.invocationId === invocation.id)
-              .sort((a, b) => a.index - b.index)
-              .map((candidate) => step(candidate, commandRows))
-          : [],
-        responses: snapshot.responses
-          .filter((response) => response.inputId === row.id)
-          .sort((a, b) => a.createdAt - b.createdAt)
-          .map((response) => ({
-            id: response.id,
-            text: response.text,
-            final: response.final,
-            delivery: deliveryOf.get(response.id) ?? null,
-            createdAt: response.createdAt,
-          })),
-      };
-    });
-  // Inputs that only add context to a turn still in flight get no invocation of their own.
-  const latest = timeline.findLast((turn) => invocationOf.has(turn.inputId));
-  const latestInvocation = latest ? invocationOf.get(latest.inputId) : undefined;
-
-  const { status, activity } = statusOf(
-    task.closedAt !== null,
-    latest,
-    latestInvocation?.status === "pending",
-    snapshot.deliveries.some(
-      (row) => row.kind === "answer" && (row.status === "pending" || row.status === "sending"),
-    ),
-  );
-
-  const pullRequest = commandRows.findLast((row) => row.result?.pullRequest)?.result?.pullRequest;
-  const origin = snapshot.sources.find((source) => source.id === task.originSourceId);
-
-  const times = [
-    task.createdAt,
-    ...snapshot.inputs.map((row) => row.createdAt),
-    ...snapshot.responses.map((row) => row.createdAt),
-    ...stepRows.map((row) => row.updatedAt),
-    ...commandRows.map((row) => row.updatedAt),
-  ];
-
-  const detail: TaskDetail = {
-    id: task.id,
-    workspaceId: task.reservation.workspaceId,
-    initiatorId: task.reservation.initiatorId,
-    mode: task.mode,
-    status,
-    activity,
-    request: timeline[0]?.text ?? "",
-    origin: {
-      platform: task.reservation.source.platform,
-      scope: task.reservation.source.scope,
-      conversation: task.reservation.source.conversation,
-    },
-    repository: repository ? `${repository.owner}/${repository.name}` : null,
-    pullRequest: pullRequest ? { number: pullRequest.number, url: pullRequest.url } : null,
-    turns: timeline.length,
-    steps: stepRows.length,
-    createdAt: task.createdAt,
-    updatedAt: Math.max(...times),
-    closedAt: task.closedAt,
-    sources: snapshot.sources.map((row) => ({
-      platform: row.attachment.source.platform,
-      scope: row.attachment.source.scope,
-      conversation: row.attachment.source.conversation,
-      origin: row.id === origin?.id,
-    })),
-    devbox: box
-      ? {
-          provider: box.providerName,
-          phase: box.phase,
-          blockedReason: box.blockedReason,
-          resourceId: box.resourceId,
-          lastReadyAt: box.lastReadyAt,
-        }
-      : null,
-    roles: instructions.roles.map((role) => ({ name: role.name, revision: role.revision })),
-    timeline,
-  };
-
-  return detail;
-});
-
 /** The list row: the detail without its timeline and attachments. */
 export const summarize = (detail: TaskDetail): TaskSummary => ({
   id: detail.id,
@@ -325,5 +208,135 @@ export const summarize = (detail: TaskDetail): TaskSummary => ({
   updatedAt: detail.updatedAt,
   closedAt: detail.closedAt,
 });
+
+const make = Effect.gen(function* () {
+  const state = yield* State.Service;
+  const attempts = yield* Attempts.Service;
+  const steps = yield* Steps.Service;
+  const commands = yield* Commands.Service;
+  const provisioning = yield* Provisioning.Service;
+
+  /** The task as the dashboard shows it, or null for an object that holds no task. */
+  const read = Effect.fn("View.read")(function* () {
+    const snapshot = yield* state.snapshot;
+    const task = snapshot.task;
+    if (task === null) return null;
+
+    const execution = yield* attempts.snapshot;
+    const stepRows = yield* steps.snapshot;
+    const commandRows = yield* commands.snapshot;
+    const box = yield* provisioning.current;
+    const repository = yield* provisioning.repository;
+    const instructions = yield* provisioning.instructions;
+
+    const deliveryOf = new Map(
+      snapshot.deliveries.flatMap((row) => (row.responseId ? [[row.responseId, row.status]] : [])),
+    );
+    const invocationOf = new Map(execution.invocations.map((row) => [row.inputId, row]));
+
+    const timeline = [...snapshot.inputs]
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((row): TurnView => {
+        const invocation = invocationOf.get(row.id);
+
+        return {
+          inputId: row.id,
+          platform: row.input.target.source.platform,
+          author: row.input.actor.externalId,
+          text: row.input.text,
+          answered: row.obligation === "fulfilled",
+          createdAt: row.createdAt,
+          steps: invocation
+            ? stepRows
+                .filter((candidate) => candidate.invocationId === invocation.id)
+                .sort((a, b) => a.index - b.index)
+                .map((candidate) => step(candidate, commandRows))
+            : [],
+          responses: snapshot.responses
+            .filter((response) => response.inputId === row.id)
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map((response) => ({
+              id: response.id,
+              text: response.text,
+              final: response.final,
+              delivery: deliveryOf.get(response.id) ?? null,
+              createdAt: response.createdAt,
+            })),
+        };
+      });
+    // Inputs that only add context to a turn still in flight get no invocation of their own.
+    const latest = timeline.findLast((turn) => invocationOf.has(turn.inputId));
+    const latestInvocation = latest ? invocationOf.get(latest.inputId) : undefined;
+
+    const { status, activity } = statusOf(
+      task.closedAt !== null,
+      latest,
+      latestInvocation?.status === "pending",
+      snapshot.deliveries.some(
+        (row) => row.kind === "answer" && (row.status === "pending" || row.status === "sending"),
+      ),
+    );
+
+    const pullRequest = commandRows.findLast((row) => row.result?.pullRequest)?.result?.pullRequest;
+    const origin = snapshot.sources.find((source) => source.id === task.originSourceId);
+
+    const times = [
+      task.createdAt,
+      ...snapshot.inputs.map((row) => row.createdAt),
+      ...snapshot.responses.map((row) => row.createdAt),
+      ...stepRows.map((row) => row.updatedAt),
+      ...commandRows.map((row) => row.updatedAt),
+    ];
+
+    const detail: TaskDetail = {
+      id: task.id,
+      workspaceId: task.reservation.workspaceId,
+      initiatorId: task.reservation.initiatorId,
+      mode: task.mode,
+      status,
+      activity,
+      request: timeline[0]?.text ?? "",
+      origin: {
+        platform: task.reservation.source.platform,
+        scope: task.reservation.source.scope,
+        conversation: task.reservation.source.conversation,
+      },
+      repository: repository ? `${repository.owner}/${repository.name}` : null,
+      pullRequest: pullRequest ? { number: pullRequest.number, url: pullRequest.url } : null,
+      turns: timeline.length,
+      steps: stepRows.length,
+      createdAt: task.createdAt,
+      updatedAt: Math.max(...times),
+      closedAt: task.closedAt,
+      sources: snapshot.sources.map((row) => ({
+        platform: row.attachment.source.platform,
+        scope: row.attachment.source.scope,
+        conversation: row.attachment.source.conversation,
+        origin: row.id === origin?.id,
+      })),
+      devbox: box
+        ? {
+            provider: box.providerName,
+            phase: box.phase,
+            blockedReason: box.blockedReason,
+            resourceId: box.resourceId,
+            lastReadyAt: box.lastReadyAt,
+          }
+        : null,
+      roles: instructions.roles.map((role) => ({ name: role.name, revision: role.revision })),
+      timeline,
+    };
+
+    return detail;
+  });
+
+  return { read };
+});
+
+export interface Interface extends Effect.Success<typeof make> {}
+
+export class Service extends Context.Service<Service, Interface>()("@notus/control/View") {}
+
+export const layer = Layer.effect(Service, make);
 
 export * as View from "./view";

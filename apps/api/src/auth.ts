@@ -6,8 +6,10 @@ import {
   type GenericOAuthConfig,
   type GenericOAuthUserInfo,
 } from "better-auth/plugins/generic-oauth";
+import { Sessions } from "@notus/control/hosts/sessions";
+import type { DashboardConfig } from "@notus/control/config";
+import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
-import type { DashboardConfig } from "./config";
 import { SharedDb } from "@notus/db/shared";
 
 /**
@@ -138,3 +140,65 @@ export const makeAuth = (dashboard: DashboardConfig) =>
             }),
           ],
   });
+
+type Auth = Effect.Success<ReturnType<typeof makeAuth>>;
+
+/** The dashboard's sessions over Better Auth; the API reads nothing else of it. */
+export const sessions = (auth: Auth) => {
+  const failure = (operation: string) => (cause: unknown) =>
+    new Sessions.SessionError({ operation, cause });
+
+  return Sessions.Service.of({
+    signIn: (cookie) =>
+      Effect.gen(function* () {
+        const headers = new Headers({ cookie });
+        const session = yield* auth.getSession(headers);
+        if (session === null) return null;
+
+        const accounts = yield* auth.api.listUserAccounts({ headers });
+
+        return {
+          sessionId: session.session.id,
+          user: {
+            id: session.user.id,
+            name: session.user.name,
+            email: session.user.email,
+            image: session.user.image ?? null,
+            slackTeamId: session.user.slackTeamId ?? null,
+            githubLogin: session.user.githubLogin ?? null,
+          },
+          accounts: accounts.map((account) => ({
+            id: account.id,
+            providerId: account.providerId,
+            accountId: account.accountId,
+            createdAt: account.createdAt,
+          })),
+        };
+      }).pipe(Effect.mapError(failure("signIn"))),
+    list: (cookie) =>
+      auth.api.listSessions({ headers: new Headers({ cookie }) }).pipe(
+        Effect.map((listed) =>
+          listed.map((session) => ({
+            id: session.id,
+            createdAt: session.createdAt,
+            userAgent: session.userAgent ?? null,
+          })),
+        ),
+        Effect.mapError(failure("list")),
+      ),
+    // The token never leaves this Worker: revocation goes by the session's ID.
+    revoke: (cookie, sessionId) =>
+      Effect.gen(function* () {
+        const headers = new Headers({ cookie });
+        const listed = yield* auth.api.listSessions({ headers });
+        const session = listed.find((candidate) => candidate.id === sessionId);
+
+        if (session === undefined) return false;
+
+        yield* auth.api.revokeSession({ headers, body: { token: session.token } });
+
+        return true;
+      }).pipe(Effect.mapError(failure("revoke"))),
+    fetch: auth.fetch,
+  });
+};

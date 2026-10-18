@@ -1,6 +1,6 @@
-import * as Auth from "@notus/control/runtime/auth";
-import { Failure } from "@notus/control/runtime/errors";
-import * as Protocol from "@notus/control/runtime/protocol";
+import * as Auth from "./auth";
+import { Failure } from "./errors";
+import * as Protocol from "./protocol";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
