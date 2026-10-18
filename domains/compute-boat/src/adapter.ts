@@ -64,8 +64,13 @@ const Plain = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._~:/?#@!&()*+,;=
  * Runs once after create, as the sandbox user with passwordless sudo. Per-sandbox `env` does not
  * reach systemd units, so the bootstrap goes to a root-only environment file the template's
  * `notus-devbox.service` reads; the unit then starts again by itself after every resume.
+ * A snapshot saved from a box that already ran the supervisor carries its journal, which would win
+ * over this launch's bootstrap; a created sandbox is always a new box, so its state starts empty.
  */
 const setupScript = `set -eu
+sudo systemctl stop notus-devbox.service || true
+sudo rm -rf /home/devbox/.local/state/notus
+sudo install -d -m 0700 -o 1001 -g 1001 /home/devbox/.local/state/notus
 sudo install -d -m 0755 -o root -g root /etc/notus
 printf 'NOTUS_CONTROL_URL=%s\\nNOTUS_BOOTSTRAP_TOKEN=%s\\n' "$NOTUS_CONTROL_URL" "$NOTUS_BOOTSTRAP_TOKEN" \\
   | sudo sh -c 'umask 077; cat > /etc/notus/bootstrap.env'
