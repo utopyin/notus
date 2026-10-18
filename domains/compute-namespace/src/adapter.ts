@@ -235,7 +235,6 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
 
 /**
  * Namespace behind the devbox port, with clients built per workspace from its own sealed token.
- * The only importer of `@notus/namespace` besides the dashboard's form.
  */
 export const adapter = Effect.gen(function* () {
   const credentials = yield* ComputeCredentials;

@@ -7,9 +7,8 @@ import {
 import { isObject, type Json, type JsonObject } from "../../lib/json";
 
 /**
- * The devbox configuration as the page edits it: one string per field, so a half-typed number is
- * still a field and not a broken document. `configOf` turns it into the JSON the provider's policy
- * validates, `fieldsOf` reads it back, and the form never sees the document itself.
+ * The devbox configuration as the page edits it: one string per field, so a half-typed number
+ * stays editable. `configOf` turns it into the document and `fieldsOf` reads it back.
  */
 export type Egress = "unrestricted" | "allowed" | "policy";
 export interface Variable {

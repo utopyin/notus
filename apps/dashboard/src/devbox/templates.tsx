@@ -32,7 +32,7 @@ export const TemplateBuild: FC<{
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const building = build?.status === "building";
-  // The page reloads on the poll itself; nothing is read from the query.
+  // The poll only reloads the page; its data is unused.
   useQuery(
     {
       queryKey: ["template-build", workspaceId, descriptor.provider],

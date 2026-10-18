@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 
-/** Worker Web Crypto, without Node platform imports. */
+/** Worker Web Crypto. */
 export const cryptoLayer = Layer.sync(Crypto.Crypto, () =>
   Crypto.make({
     randomBytes: (size) => {

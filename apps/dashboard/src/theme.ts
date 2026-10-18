@@ -35,7 +35,7 @@ export const setTheme = (theme: Theme) => {
 
 const subscribe = (onChange: () => void) => {
   listeners.add(onChange);
-  // A system-following page has to react to the OS switching, not only to the menu.
+  // A system-following page also reacts to the OS switching.
   const media = prefersDark();
 
   const onMedia = () => {

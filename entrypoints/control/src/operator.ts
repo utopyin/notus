@@ -643,7 +643,7 @@ const make = Effect.gen(function* () {
 
           if (params._tag === "None") continue;
 
-          // A role the workspace never defined is answered by evaluate, not run without it.
+          // A role the workspace never defined is answered by evaluate.
           const composed = composeSpecialist(params.value, yield* provisioning.instructions);
 
           if (composed.error !== undefined) continue;
@@ -875,7 +875,7 @@ const make = Effect.gen(function* () {
     const briefing = yield* brief(step.invocationId);
 
     if (!briefing) {
-      // Inconsistent local state: fail the step rather than call a model blindly.
+      // Inconsistent local state fails the step.
       yield* steps.record(step, { _tag: "Failed", failure: "missing-briefing" }, now);
       yield* settle(now);
       return null;

@@ -21,7 +21,7 @@ export class Configuration extends Context.Service<
   Configuration,
   {
     readonly signingSecret: Redacted.Redacted<string>;
-    /** Absent when this deployment cannot install: the dashboard then offers no "Add to Slack". */
+    /** Absent when this deployment cannot install. */
     readonly oauth: {
       readonly clientId: string;
       readonly clientSecret: Redacted.Redacted<string>;
@@ -256,7 +256,7 @@ export const adapter: Effect.Effect<
           return { send: handle.reply };
         }),
       },
-      // Posting in a channel the app is in is participation enough; membership is authorized elsewhere.
+      // Posting in a channel the app is in is participation enough.
       identity: { mayParticipate: () => Effect.succeed(true) },
     };
   };

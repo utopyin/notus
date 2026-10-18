@@ -18,8 +18,8 @@ const ignored = (reason: string) =>
 /**
  * Every platform's deliveries, at `POST /<platform>/events`, authenticated by the platform's own
  * signature. The adapter verifies and normalizes; this route resolves the workspace, lets the
- * adapter rule on the actor, and admits the input. Nothing here knows what a channel or a pull
- * request is. A conversation is routed by the task that opened it or checked it out.
+ * adapter rule on the actor, and admits the input, the same way for every platform. A conversation
+ * is routed by the task that opened it or checked it out.
  */
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
@@ -57,7 +57,7 @@ export const routes = HttpRouter.use((router) =>
 
       yield* inbox.admit({
         workspaceId,
-        // The inbox recomputes identity keys server-side; these placeholders are never trusted.
+        // Placeholders: the inbox recomputes identity keys server-side.
         inputId: "pending",
         messageKey: "pending",
         conversationKey: conversationKeyOf(workspaceId, source),

@@ -40,7 +40,7 @@ export class Capabilities extends Schema.Class<Capabilities>("Compute.Capabiliti
   has(capability: Capability): boolean {
     return this.values.includes(capability);
   }
-  /** Fails rather than returning a boolean, so a skipped check is a type error at the call site. */
+  /** Fails, so a skipped check is a type error at the call site. */
   ensure(capability: Capability): Effect.Effect<void, CapabilityNotSupportedError> {
     return this.has(capability)
       ? Effect.void
@@ -48,7 +48,7 @@ export class Capabilities extends Schema.Class<Capabilities>("Compute.Capabiliti
   }
 }
 
-/** Declared here rather than in errors.ts: errors import Capability, and the other way would cycle. */
+/** Declared here because errors.ts imports Capability; the reverse import would cycle. */
 export class CapabilityNotSupportedError extends Schema.TaggedError<CapabilityNotSupportedError>()(
   "Compute.CapabilityNotSupported",
   { provider: Provider, capability: Capability },

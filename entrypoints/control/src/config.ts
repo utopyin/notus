@@ -22,7 +22,6 @@ export const deploymentConfig = Effect.gen(function* () {
 });
 export type DeploymentConfig = Effect.Success<typeof deploymentConfig>;
 
-/** Separate from Slack configuration and never spread into task-domain settings. */
 export const runtimeConfig = Effect.gen(function* () {
   const url = yield* Config.option(Config.String("NOTUS_CONTROL_URL"));
 
@@ -33,7 +32,7 @@ export const runtimeConfig = Effect.gen(function* () {
   const decoded = yield* Schema.decodeEffect(
     Schema.fromJsonString(Schema.Record(Schema.String, Schema.NonEmptyString)),
   )(Redacted.value(encodedKeys)).pipe(
-    // A malformed key set is a deployment defect, not a missing setting.
+    // A malformed key set is a deployment defect.
     Effect.mapError(() => new AuthenticationFailure({ reason: "configuration" })),
     Effect.orDie,
   );
@@ -89,7 +88,7 @@ export const githubConfig = Effect.gen(function* () {
 export type GithubConfig = NonNullable<Effect.Success<typeof githubConfig>>;
 /**
  * Dashboard sign-in: the Slack app's and the GitHub App's OAuth clients, and the dashboard's
- * public origin once known. A provider without credentials is simply not offered.
+ * public origin once known. Only providers with credentials are offered.
  */
 export const dashboardConfig = Effect.gen(function* () {
   const slackId = yield* Config.option(Config.String("SLACK_CLIENT_ID"));
@@ -121,14 +120,14 @@ export const webhookConfig = Effect.gen(function* () {
 
 /**
  * Which devbox providers this deployment runs, comma-separated; Namespace alone by default.
- * Deployment authority, not workspace data: a workspace still connects its own account.
+ * Deployment authority: each workspace still connects its own account.
  */
 export const computeConfig = Effect.gen(function* () {
   const listed = yield* Config.String("NOTUS_COMPUTE_PROVIDERS").pipe(
     Config.withDefault("namespace"),
   );
 
-  // An unknown or repeated provider is a deployment defect, not a missing setting.
+  // An unknown or repeated provider is a deployment defect.
   return yield* Schema.decodeUnknownEffect(Schema.UniqueArray(Provider))(
     listed
       .split(",")

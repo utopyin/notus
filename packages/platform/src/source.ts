@@ -47,7 +47,7 @@ export const Received = Schema.Struct({
   text: Schema.String,
   occurredAt: OrderedTimestamp,
   startIntent: Schema.Boolean,
-  /** The conversation's first message, as opposed to a reply inside it. */
+  /** The conversation's first message. */
   root: Schema.Boolean,
 });
 export interface Received extends Schema.Schema.Type<typeof Received> {}

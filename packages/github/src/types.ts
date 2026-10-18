@@ -3,7 +3,7 @@ import * as Schema from "effect/Schema";
 const Segment = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/));
 
 /** One GitHub repository a task may target. The installation decides whether it is reachable. */
-/** Owner and name only, for operations that never touch branches. */
+/** Owner and name only, for operations without a branch. */
 export const RepositoryName = Schema.Struct({ owner: Segment, name: Segment });
 export interface RepositoryName extends Schema.Schema.Type<typeof RepositoryName> {}
 export const Repository = Schema.Struct({
@@ -14,10 +14,7 @@ export const Repository = Schema.Struct({
 });
 export interface Repository extends Schema.Schema.Type<typeof Repository> {}
 
-/**
- * Any safe git branch name on the wire. Which branches a task may push to is control policy,
- * enforced where the command is built, so a policy change never strands a deployed runtime.
- */
+/** Any safe git branch name on the wire. */
 export const TaskBranch = Schema.String.check(
   Schema.isMaxLength(200),
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/),

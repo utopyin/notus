@@ -2,7 +2,7 @@ import type { Capabilities } from "./capabilities";
 import type { Platform } from "./platform";
 import type { Scope } from "./source";
 
-/** A stable key the dashboard resolves to a brand mark. Not a component: the server imports this too. */
+/** A stable key for the platform's brand mark. */
 export type PlatformIconKey = "slack" | "github";
 
 /**

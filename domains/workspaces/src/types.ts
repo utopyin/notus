@@ -2,7 +2,7 @@ import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { Platform } from "@notus/platform/platform";
 import * as Schema from "effect/Schema";
 
-/** Provider-owned JSON, with separate routing metadata. No provider decoding or secret resolution. */
+/** Provider-owned JSON, with separate routing metadata. */
 export const Environment = Schema.Struct({
   workspaceId: Schema.NonEmptyString,
   provider: Schema.NonEmptyString,
@@ -64,7 +64,7 @@ export type Role = typeof Role.Type;
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 export const WorkspaceName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80));
-/** Path segments that are pages of their own, never a workspace. */
+/** Path segments that are pages of their own, reserved from workspace slugs. */
 export const reservedSlugs = new Set([
   "account",
   "welcome",

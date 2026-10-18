@@ -23,7 +23,7 @@ const adapters: {
   >;
 } = { namespace: namespaceAdapter, boat: boatAdapter };
 
-/** The same providers' credential-free checks, for the API's saves. */
+/** The same providers' credential-free checks. */
 const configurations: { readonly [P in Provider]: Configuration } = {
   namespace: namespaceConfiguration,
   boat: boatConfiguration,

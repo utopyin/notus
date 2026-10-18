@@ -7,7 +7,7 @@ import type { ComputeError, ConfigurationError, ConnectionError } from "./errors
 import type { Provider } from "./provider";
 import type { TemplateSet } from "./templates";
 
-/** A provider's box as Notus stores it. The image observation stays opaque and is never a status payload. */
+/** A provider's box as Notus stores it. The image observation stays opaque. */
 export const Resource = Schema.Struct({
   id: Schema.NonEmptyString,
   name: Schema.NonEmptyString,
@@ -20,7 +20,7 @@ export interface Resource extends Schema.Schema.Type<typeof Resource> {}
 export const State = Schema.Literals(["running", "stopped", "ended", "unknown"]);
 export type State = typeof State.Type;
 
-/** What the provider last said about a resource; never continuous health. */
+/** What the provider last said about a resource, at the moment it said it. */
 export interface Observation {
   readonly resource: Resource;
   readonly state: State;
@@ -106,7 +106,7 @@ export interface DevboxPort {
   ) => Effect.Effect<void, ComputeError | CapabilityNotSupportedError>;
 }
 
-/** Checks that need no credential, so the API refuses a save before anything is connected. */
+/** Checks that need no credential, so they run before anything is connected. */
 export interface Configuration {
   /**
    * The configuration must select one of the workspace's templates, or select none and leave it
@@ -119,8 +119,8 @@ export interface Configuration {
   /** The normalized reference, or why the provider cannot start from it. */
   readonly validateTemplate: (ref: string) => Effect.Effect<string, ConfigurationError>;
   /**
-   * The normalized account JSON an admin submitted, checked for shape only: nothing is sent to
-   * the provider. The result is what the workspace stores, sealed.
+   * The normalized account JSON an admin submitted, checked for shape only. The result is what
+   * the workspace stores, sealed.
    */
   readonly validateConnection: (
     input: Schema.Json,

@@ -215,7 +215,7 @@ export const layerNoDeps = Layer.effect(
         }),
         (effect, input) =>
           effect.pipe(
-            // Classification only; the adapter logged whatever native detail is safe to keep.
+            // Classification only.
             Effect.tapError((error) =>
               Effect.logWarning(
                 `devbox.${input.work}_failed ${error._tag}${

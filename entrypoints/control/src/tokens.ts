@@ -28,14 +28,14 @@ const CodexAuthFile = Schema.fromJsonString(
 
 /**
  * Short-lived credentials a task hands its dev box: minted or refreshed outside the object's
- * gate, returned once, never persisted by the task. Each is absent rather than failing the task.
+ * gate and returned once. One that cannot be had is absent and the task carries on.
  */
 const make = Effect.gen(function* () {
   const durable = yield* Durable.Service;
   const state = yield* State.Service;
   // Model logins and GitHub sign-ins stay in the initiator's Connection object.
   const connections = yield* ConnectionObject.Remote;
-  // Absent configuration fails the checkout, never the object.
+  // Absent configuration fails only the checkout.
   const github = yield* Effect.serviceOption(GithubApp.Service);
 
   const initiator = durable

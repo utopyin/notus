@@ -30,7 +30,7 @@ export interface Due {
  *
  * What is held lives in memory only. An evicted object forgets it: a running command is held
  * again on the next alarm, and a box whose hand-back was forgotten stops when its last hold runs
- * out. Either way the provider's deadline, never Notus, is what finally stops a box.
+ * out. Either way the provider's deadline is what finally stops a box.
  */
 export interface Interface {
   /** What the alarm should do now, if anything. Reads local state only. */
@@ -39,7 +39,7 @@ export interface Interface {
   readonly nextWake: (
     now: number,
   ) => Effect.Effect<number | null, ExecutionError | ProvisioningFailure>;
-  /** Makes the call; a failure is retried after a short wait, never in a tight loop. */
+  /** Makes the call; a failure is retried after a short wait. */
   readonly perform: (due: Due, now: number) => Effect.Effect<void>;
 }
 export class Service extends Context.Service<Service, Interface>()("@notus/executions/Activity") {}

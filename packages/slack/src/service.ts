@@ -133,7 +133,7 @@ export const make = (token: Redacted.Redacted<string>) =>
         // timed-out mutation may have succeeded; it must never trigger a retry.
         Effect.timeout("10 seconds"),
         Effect.mapError(classify),
-        // Distilled's response reader currently promotes body-read failures to defects.
+        // Distilled's response reader promotes body-read failures to defects.
         // A broken response may follow a successful mutation. Never retry it here.
         Effect.catchDefect(() => Effect.fail(ambiguous())),
       );

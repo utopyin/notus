@@ -25,9 +25,8 @@ const slackUserInfo = "https://slack.com/api/openid.connect.userInfo";
 const teamClaim = "https://slack.com/team_id";
 
 /**
- * Sign in with Slack through Better Auth's generic OAuth provider, keeping the team ID: the
- * Slack source adapter resolves a mention's initiator by team and user, so the sign-in must
- * record both. The team lands on the user as `slackTeamId`; the user ID is the account subject.
+ * Sign in with Slack through Better Auth's generic OAuth provider, keeping the team ID: the team
+ * lands on the user as `slackTeamId`; the user ID is the account subject.
  */
 const slackProvider = (credentials: {
   clientId: string;
@@ -77,14 +76,13 @@ const slackProvider = (credentials: {
 };
 
 /**
- * The dashboard's sign-in, hosted by the API Worker under `/auth` so the API can validate every
- * session itself. The dashboard forwards `/auth/*` through its service binding, which keeps the
- * session cookie on the dashboard's origin. Providers without configured credentials are absent.
+ * The dashboard's sign-in, hosted under `/auth` so this Worker validates every session itself.
+ * Providers without configured credentials are absent.
  */
 const make = Effect.flatMap(dashboardConfig, (dashboard) =>
   BetterAuth({
     id: "Auth",
-    // The account domain's Drizzle migrations own the tables; Better Auth never migrates.
+    // The account domain's Drizzle migrations own the tables.
     migrate: false,
     basePath: "/auth",
     ...(dashboard.origin === null
@@ -96,7 +94,7 @@ const make = Effect.flatMap(dashboardConfig, (dashboard) =>
       modelName: "auth_users",
       additionalFields: {
         slackTeamId: { type: "string", required: false, input: false },
-        /** The login GitHub knows the user by; task branches are attributed under it. */
+        /** The login GitHub knows the user by. */
         githubLogin: { type: "string", required: false, input: false },
       },
     },
@@ -147,7 +145,7 @@ const make = Effect.flatMap(dashboardConfig, (dashboard) =>
 
 /**
  * The sign-in instance this Worker hosts, built once from the dashboard's configuration. Its calls
- * need Alchemy's `RuntimeContext`, as the `Sessions` port declares.
+ * need Alchemy's `RuntimeContext`.
  *
  * @effect-expect-leaking RuntimeContext
  */
@@ -155,12 +153,12 @@ export class Auth extends Context.Service<Auth>()("@notus/api/Auth", { make }) {
 
 export const layer = Layer.effect(Auth, Auth.make).pipe(Layer.provide(database));
 
-/** Better Auth's own routes, which the dashboard forwards through its service binding. */
+/** Better Auth's own routes. */
 export const routes = HttpRouter.use((router) =>
   Effect.flatMap(Auth, (auth) => router.add("*", "/auth/*", auth.fetch)),
 );
 
-/** The dashboard's sessions over Better Auth; the API reads nothing else of it. */
+/** The dashboard's sessions over Better Auth. */
 export const sessions = Layer.effect(
   Sessions.Service,
   Effect.gen(function* () {

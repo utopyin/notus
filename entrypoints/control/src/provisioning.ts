@@ -30,12 +30,12 @@ const make = Effect.gen(function* () {
   const state = yield* State.Service;
   const execution = yield* Provisioning.Service;
 
-  /** Readiness admission deliberately does not create a simulated invocation. */
+  /** Readiness admission records no invocation. */
   const admit = Effect.fn("ProvisioningControl.admit")(function* (command: Admission) {
     return yield* state.admit(command);
   });
 
-  /** Local-only repair. The host performs provider calls outside its concurrency gate. */
+  /** Local-only repair. */
   const advance = Effect.fn("ProvisioningControl.advance")(function* (now: number) {
     const task = yield* state.snapshot;
 

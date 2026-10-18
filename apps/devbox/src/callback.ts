@@ -44,7 +44,7 @@ export class Configuration extends Context.Service<
   }
 >()("@notus/devbox/Callback.Configuration") {}
 
-// No overall wake deadline. Each HTTP request has its own bounded lifetime.
+// Unbounded overall; each HTTP request has its own bounded lifetime.
 const backoff = Schedule.exponential("250 millis").pipe(
   Schedule.modifyDelay(({ duration }) =>
     Effect.succeed(Duration.min(duration, Duration.seconds(30))),
@@ -106,7 +106,7 @@ export const layerNoDeps = Layer.effect(
 
           const recover = Effect.gen(function* () {
             const assignment = yield* client.assignment(credential).pipe(
-              // The client exposes permanent HTTP rejection, not a status code.
+              // The client reports a permanent HTTP rejection as a non-retryable `rejected`.
               // A consumed revision can only recover through exact enrollment replay.
               Effect.catchIf(
                 (failure) => failure.reason === "rejected" && !failure.retryable,
@@ -218,7 +218,7 @@ export const layerNoDeps = Layer.effect(
           yield* store.write({ ...journal, pending });
         }
 
-        // Execute again after refresh and on EVERY HTTP attempt, never cache a ping.
+        // Execute again after refresh and on every HTTP attempt.
         // Wrap native failures so the HTTP retry policy cannot retry them.
         const validation = yield* Effect.result(validate);
 
@@ -364,7 +364,7 @@ export const layer = Layer.unwrap(
           <E, R>(validate: Effect.Effect<void, E, R>) => validate,
         ),
         login: Effect.succeed({ github: null }),
-        // Unbound runs have no control to pull from; stay alive as before.
+        // Unbound runs have no control to pull from, so they idle.
         commands: () => Effect.never,
       });
 

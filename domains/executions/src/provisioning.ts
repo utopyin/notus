@@ -338,7 +338,7 @@ const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
       if (bound) {
         const s = yield* load(existing.id);
         if (s.bootstrap.workspaceId !== params.workspaceId) return yield* fail("conflict");
-        // Configuration selection belongs to the first committed initialization, not its retries.
+        // Only the first committed initialization selects the configuration.
         return status(s, true);
       }
 
@@ -582,7 +582,7 @@ const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
         const sameIncarnation = s.enrollment?.instanceId === result.instanceId;
         const startupEpoch = sameIncarnation ? s.runtimeEpoch : s.runtimeEpoch + 1;
         // VM suspension may preserve the same incarnation and process memory. Its previous
-        // receipt is historical readiness, not a new native health check.
+        // receipt proves only past readiness.
         const ready = sameIncarnation && s.ready?.observation.epoch === startupEpoch;
 
         s = {
@@ -982,15 +982,13 @@ const within = (db: TaskDb.Queries, crypto: Crypto.Crypto) => {
  * Only claim carries opaque configuration. Never log/serialize it to a user-facing status.
  * Keep the captured Crypto implementation synchronous for Drizzle's transactionSync.
  * Claims last 30 seconds; startup/reconciliation gets 10 minutes. Persist nextWake as an alarm.
- * Timeout blocks status, not the assignment. Only an explicit wake event can reopen reconciliation.
+ * Timeout blocks status; the assignment stands. Only an explicit wake event can reopen reconciliation.
  * An operator attempt replaced by Attempts.replace binds a fresh provisioning row on initialize;
  * the replaced row is kept for history and its box listed in retirements until ended.
  * Enrollment/readiness/wake history is retained without pruning for durable replay.
  * Old exact enrollment/ready retries acknowledge history; they never restore current authority.
  * record consumes a claim. Repeating record after commit returns stale-claim; read current instead.
- * WakeReceipt acknowledges admission only. Control must persist its own per-input final response
- * from ProvisioningStatus, including responsePolicy/outbox handoffs. No simulated invocation is made.
- * No same-kernel recovery, continuous health or model authority is supported.
+ * WakeReceipt acknowledges admission only.
  */
 export interface Interface {
   readonly initialize: (

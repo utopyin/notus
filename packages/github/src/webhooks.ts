@@ -234,7 +234,7 @@ export const decode = Effect.fn("GitHub.decode")(function* (
   }
 });
 
-/** Slack-style ordered timestamp from an ISO instant, so inbox ordering stays uniform. */
+/** The platform's ordered timestamp from an ISO instant. */
 export const orderedTimestamp = (iso: string): string | null => {
   const millis = Date.parse(iso);
   if (!Number.isFinite(millis) || millis < 0) return null;

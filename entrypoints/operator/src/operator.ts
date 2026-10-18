@@ -12,8 +12,8 @@ import { Briefing, Disposition, type StepResult, type ToolCall } from "./types";
 const Parts = Schema.Array(Response.Part(Tools.encoded));
 
 /**
- * One model round for the current turn. Idempotency, leases and persistence belong to the
- * caller; this only turns a briefing plus earlier rounds into replayable response parts.
+ * One model round for the current turn: a briefing plus earlier rounds in, replayable response
+ * parts out.
  */
 export const run = Effect.fn("Operator.run")(function* (
   input: Briefing,
@@ -45,7 +45,7 @@ export const run = Effect.fn("Operator.run")(function* (
     prompt = Prompt.concat(prompt, Prompt.fromResponseParts(parts));
   }
 
-  // Tool calls come back unresolved; the durable owner executes them and appends results.
+  // Tool calls come back unresolved.
   const response = yield* LanguageModel.generateText({
     prompt,
     toolkit: Tools.ready,

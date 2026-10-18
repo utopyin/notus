@@ -77,7 +77,7 @@ export const Claim = Schema.Struct({
 });
 export interface Claim extends Schema.Schema.Type<typeof Claim> {}
 
-/** Trusted adapter reports, not provider proof formats. Unknown responses must use Lost. */
+/** Trusted adapter reports. Unknown responses must use Lost. */
 export const ProvisioningResult = Schema.TaggedUnion({
   Assigned: {
     operationId: Schema.NonEmptyString,
@@ -166,8 +166,8 @@ export interface Readiness extends Schema.Schema.Type<typeof Readiness> {}
 export const ReadinessReceipt = Schema.Struct({ observation: Readiness, acceptedAt: Millis });
 export interface ReadinessReceipt extends Schema.Schema.Type<typeof ReadinessReceipt> {}
 
-/** Last observed state, never continuous health. Control owns the per-input response handoff.
- * No config, native image, capability ID, challenge or callback credential is exposed.
+/** Last observed state. No config, native image, capability ID, challenge or callback credential
+ * is exposed.
  */
 export const ProvisioningStatus = Schema.Struct({
   attemptId: Schema.NonEmptyString,
@@ -203,7 +203,7 @@ const Timeout = Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600
 
 /**
  * A repository a task may work in: one the workspace covers through a GitHub installation. The
- * default branch is whatever the remote reports; nothing configures it.
+ * default branch is whatever the remote reports.
  */
 export const RepositoryRef = Schema.Struct({
   owner: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,100}$/)),
@@ -252,7 +252,7 @@ export const CommandSpec = Schema.Union([
     timeoutMs: Timeout,
   }),
   Schema.Struct({
-    /** Publish the checkout's commits to a branch; committing is the specialist's or the operator's. */
+    /** Publish the checkout's existing commits to a branch. */
     kind: Schema.Literal("push"),
     repository: RepositoryRef,
     path: WorkspacePath,
@@ -291,7 +291,7 @@ export const executorOf = (spec: CommandSpec): "runtime" | "control" =>
   spec.kind === "pull-request" || spec.kind === "update" ? "control" : "runtime";
 export const Command = Schema.Struct({ id: Schema.NonEmptyString, spec: CommandSpec });
 export interface Command extends Schema.Schema.Type<typeof Command> {}
-/** Bounded observation the runtime reports; output is truncated, never streamed. */
+/** Bounded observation the runtime reports; output is truncated. */
 export const CommandResult = Schema.Struct({
   exitCode: Schema.NullOr(Schema.Int),
   stdout: Schema.String.check(Schema.isMaxLength(65_536)),

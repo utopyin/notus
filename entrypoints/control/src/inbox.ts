@@ -72,7 +72,7 @@ export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/inbox/Service",
 ) {}
 
-// This limits one Worker pass's SQL/RPC budget, never accepted work or retry count.
+// This bounds one Worker pass's SQL/RPC budget only.
 const passSize = 25;
 const leaseMs = 60_000;
 const inputJson = Schema.fromJsonString(Input);
@@ -112,7 +112,7 @@ export const layerNoDeps = Layer.effect(
         });
       }
 
-      // Starting is a platform capability, not something a caller asserts.
+      // Start authority comes from the platform's capabilities.
       const { descriptor } = yield* platforms
         .forPlatform(source.platform)
         .pipe(storageError("resolvePlatform"));
@@ -377,7 +377,7 @@ export const layerNoDeps = Layer.effect(
           Effect.catch((error) =>
             Effect.gen(function* () {
               const failedAt = yield* Clock.currentTimeMillis;
-              // Durable exponential backoff, capped delay but unlimited attempts. No sleeping fibers.
+              // Durable exponential backoff, capped delay but unlimited attempts.
               const delay = Math.min(300_000, 1000 * 2 ** Math.min(claim.attempts - 1, 9));
               yield* store.batch([
                 sql`UPDATE inbox_messages SET state = 'pending', token = NULL,

@@ -21,7 +21,7 @@ export interface Interface {
   readonly adopt: (login: Login) => Effect.Effect<string, IdentityError>;
   /** The GitHub login a user is known by, from sign-in or the fixture seed; null when neither gave one. */
   readonly githubLogin: (userId: string) => Effect.Effect<string | null, IdentityError>;
-  /** Display profiles of canonical users, for member lists. Users never seen signing in are absent. */
+  /** Display profiles of canonical users. Users never seen signing in are absent. */
   readonly profiles: (
     userIds: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyMap<string, Profile>, IdentityError>;
@@ -87,7 +87,7 @@ export const layerNoDeps = Layer.effect(
 
         const owner = userId;
 
-        // The latest sign-in's profile is what member lists show.
+        // The latest sign-in's profile wins.
         yield* store.batch([
           sql`UPDATE account_users SET name = ${login.profile.name}, email = ${login.profile.email},
           image = ${login.profile.image}, githubLogin = COALESCE(${login.profile.githubLogin}, githubLogin),

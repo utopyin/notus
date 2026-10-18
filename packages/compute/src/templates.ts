@@ -11,8 +11,7 @@ export interface TemplateSet {
 
 /**
  * Host-trusted and carrying no authorization: the adapter reads it to check that a launch selects
- * one of the workspace's templates. A failed read yields none, so a launch is refused rather than
- * an unlisted template started.
+ * one of the workspace's templates. A failed read yields none, so the launch is refused.
  */
 export interface Interface {
   readonly approved: (workspaceId: string, provider: Provider) => Effect.Effect<TemplateSet>;

@@ -1,7 +1,7 @@
 /**
- * What a workspace may choose in its restricted devbox configuration, as plain values. The
- * policy validates against these; the dashboard offers exactly these. No Effect here, so a
- * browser bundle can import this file without the provider client behind it.
+ * What a workspace may choose in its restricted devbox configuration, as plain values the policy
+ * validates against. Free of Effect, so a browser bundle can import this file without the
+ * provider client behind it.
  */
 
 /** The only environment variables a workspace may set: locale, time and terminal hints. Loader, shell, runtime, proxy and model overrides are unsafe. */

@@ -18,7 +18,7 @@ export const TokenSet = Schema.Struct({
 });
 export interface TokenSet extends Schema.Schema.Type<typeof TokenSet> {}
 
-/** Development login file shape written by scripts/chatgpt. */
+/** Development login file shape. */
 export const StoredLogin = Schema.Struct({
   access: Schema.NonEmptyString,
   refresh: Schema.NonEmptyString,

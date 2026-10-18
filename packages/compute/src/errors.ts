@@ -29,7 +29,7 @@ export class ConfigurationError extends Schema.TaggedError<ConfigurationError>()
 /**
  * A provider call that did not succeed. `notSent` and `rejected` changed nothing; `notFound` means
  * the resource is not there; `unknown` may have changed provider state, so the caller reconciles
- * before another mutation and never retries it blindly. Provider bodies and causes stay out.
+ * before another mutation. Provider bodies and causes stay out.
  */
 export class ComputeError extends Schema.TaggedError<ComputeError>()("Compute.ComputeError", {
   provider: Provider,

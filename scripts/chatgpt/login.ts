@@ -1,6 +1,6 @@
 /**
  * `bun run login:chatgpt` — "Sign in with ChatGPT" (PKCE) and store the tokens
- * in `.auth/chatgpt.json` for development inference. Same flow as pi / opencode.
+ * in `.auth/chatgpt.json` for development inference.
  */
 import * as BunFileSystem from "@effect/platform-bun/BunFileSystem";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";

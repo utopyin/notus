@@ -46,6 +46,6 @@ export const platformsLayer = (
       }),
       FetchHttpClient.layer,
     ]),
-    // A malformed App key or a platform registered twice is a deployment defect, not a request error.
+    // A malformed App key or a platform registered twice is a deployment defect.
     Layer.orDie,
   );

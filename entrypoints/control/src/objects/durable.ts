@@ -4,8 +4,8 @@ import type * as Effect from "effect/Effect";
 
 /**
  * The durable object hosting a service: its input gate, key-value storage and alarm. The app
- * implements it over its platform's object state; objects never see the platform type. Every call
- * needs `RuntimeContext`: it works only inside a handler, never while the object is constructed.
+ * implements it over its platform's object state. Every call needs `RuntimeContext`: it works only
+ * inside a handler.
  */
 export interface Interface {
   /**

@@ -17,7 +17,7 @@ const make = Effect.gen(function* () {
   const state = yield* State.Service;
   const attempts = yield* Attempts.Service;
 
-  /** Provider work only. The host owns short local gates and durable wakes. */
+  /** Provider work only. */
   const deliver = Effect.fn("Control.deliver")(function* (
     claim: DeliveryClaim,
   ): Effect.fn.Return<DeliveryOutcome> {

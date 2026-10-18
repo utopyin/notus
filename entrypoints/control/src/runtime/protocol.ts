@@ -52,7 +52,7 @@ export const PollRequest = Schema.Struct({
   waitMs: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 20_000 })),
 });
 export interface PollRequest extends Schema.Schema.Type<typeof PollRequest> {}
-/** A checkout command carries its short-lived read token only on the wire, never in storage. */
+/** A checkout command carries its short-lived read token on the wire only. */
 export const RuntimeCommand = Schema.Struct({
   ...Command.fields,
   credential: Schema.NullOr(Schema.NonEmptyString),

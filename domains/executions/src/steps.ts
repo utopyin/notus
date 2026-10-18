@@ -11,8 +11,7 @@ import { Step } from "./rows";
 import { Millis } from "./types";
 
 // Operational bounds. The lease exceeds one bounded provider call. The step bound is a runaway
-// guard, not a usage limit: product policy imposes no execution cap, and real editing work
-// takes many rounds.
+// guard, sized for editing work that takes many rounds.
 const leaseMs = 150_000;
 const maxAttempts = 6;
 const maxSteps = 200;

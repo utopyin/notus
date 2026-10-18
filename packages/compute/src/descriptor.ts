@@ -1,7 +1,7 @@
 import type { Capabilities } from "./capabilities";
 import type { Provider } from "./provider";
 
-/** A stable key the dashboard resolves to a brand mark. Not a component: the server imports this too. */
+/** A stable key for the provider's brand mark. */
 export type ProviderIconKey = "namespace" | "boat";
 
 /**

@@ -43,7 +43,7 @@ export const setDefaultImage = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; provider: string; ref: string | null }) => input)
   .handler(async ({ data }) => await call((api) => api.setDefaultImage(data)));
 
-/** An admin connects the workspace's own provider account; the response never carries the credential. */
+/** An admin connects the workspace's own provider account. */
 export const connectCompute = createServerFn({ method: "POST" })
   .validator(
     (input: { workspaceId: string; provider: string; credential: Json; label: string }) => input,

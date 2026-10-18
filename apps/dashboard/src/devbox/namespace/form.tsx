@@ -32,8 +32,8 @@ const enforcementItems = [
 
 /**
  * The Namespace configuration as fields. Every value the restricted policy accepts has a field
- * here; the image can only be one the workspace added. Nothing is validated beyond what the
- * fields themselves say: the policy on the API has the last word and its message is shown.
+ * here; the image can only be one the workspace added. A refusal on save shows the policy's
+ * message.
  */
 export const NamespaceForm: FC<{
   fields: Fields;

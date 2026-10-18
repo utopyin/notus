@@ -32,12 +32,12 @@ import {
 // The dashboard's API: Effect RPC over HTTP at `/rpc`, authenticated by the dashboard's session
 // cookie. The dashboard's server imports this module, so it holds the contract only.
 
-/** Every refusal the dashboard sees: a short reason it shows or branches on, never a cause. */
+/** Every refusal the dashboard sees: a short reason it shows or branches on. */
 export class DashboardError extends Schema.TaggedError<DashboardError>()("DashboardError", {
   reason: Schema.String,
 }) {}
 
-/** The signed-in user a call acts for, resolved from the forwarded cookie, never trusted from it. */
+/** The signed-in user a call acts for, resolved from the forwarded cookie. */
 export interface SignedIn {
   readonly userId: string;
   readonly sessionId: string;
@@ -174,7 +174,7 @@ export class DevboxRpcs extends RpcGroup.make(
     { ...ProviderOf, ref: Schema.NullOr(Schema.String) },
     Schema.Array(WorkspaceTemplate),
   ),
-  /** The credential is sealed on write; no response carries it back. */
+  /** The credential is sealed on write and stays write-only. */
   call(
     "connectCompute",
     { ...ProviderOf, credential: Json, label: Schema.String },

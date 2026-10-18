@@ -40,7 +40,7 @@ export const Route = createFileRoute("/account")({
   component: Account,
 });
 
-/** A short "Chrome on macOS" label; the full user agent is not useful to read. */
+/** A short "Chrome on macOS" label from the user agent. */
 const clientOf = (userAgent: string | null | undefined) => {
   if (!userAgent) return "Unknown client";
   const browser = /Edg\//.test(userAgent)
@@ -188,8 +188,7 @@ const whenOf = (millis: number | null) =>
 
 /**
  * The user's own model accounts. A ChatGPT subscription serves Codex on the dev box; a platform
- * API key serves the operator, which runs on Cloudflare where the subscription backend is
- * unreachable. Nothing here ever shows a token: status, the account, when it was linked or rotated.
+ * API key serves the operator. Each row shows status, the account, and when it was linked or rotated.
  */
 function ModelConnections(props: { connections: ReadonlyArray<Connection> }) {
   const router = useRouter();

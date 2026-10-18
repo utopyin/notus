@@ -1,7 +1,6 @@
 /**
  * ChatGPT-subscription OAuth tokens for development inference, stored in
- * `.auth/chatgpt.json` (gitignored). Same constants and shape as pi / opencode /
- * the Codex CLI ("Sign in with ChatGPT").
+ * `.auth/chatgpt.json` (gitignored).
  */
 import { OAuth } from "@notus/openai/oauth";
 import { StoredLogin } from "@notus/openai/types";
@@ -26,7 +25,7 @@ export const Credentials = Schema.Struct({
 });
 export type Credentials = typeof Credentials.Type;
 
-/** Same shape the Worker's fixture seed decodes. `expires` is epoch milliseconds. */
+/** `expires` is epoch milliseconds. */
 const Stored = StoredLogin;
 
 export type Stored = typeof Stored.Type;

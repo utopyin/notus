@@ -32,7 +32,7 @@ type Operation = ComputeError["operation"];
 /**
  * The workspace's native configuration: the named snapshot a box starts from (or none, for the
  * default), its size, and Boat's auto-stop deadline in seconds (null for none, absent for Boat's
- * own hour). The deadline stops a box even mid-command; see docs/research/boat.md.
+ * own hour). The deadline stops a box even mid-command.
  */
 const Native = Schema.Struct({
   template: Schema.optionalKey(TemplateName),
@@ -207,7 +207,7 @@ const port = (
       Effect.orElseSucceed(() => null),
     );
 
-  /** The stored name is Notus's, not Boat's; the sandbox id alone is the identity. */
+  /** The stored name is Notus's own; the sandbox id alone is the identity. */
   const observe = (stored: Pick<Resource, "name" | "image">, sandbox: Sandbox) =>
     Effect.gen(function* () {
       const state = stateOf(sandbox.state);
@@ -220,7 +220,7 @@ const port = (
         image: stored.image,
       };
 
-      // A live sandbox whose machine does not answer yet is not known to be running.
+      // A live sandbox counts as running only once its machine answers.
       return {
         resource,
         state: state === "running" && instanceId === null ? "unknown" : state,

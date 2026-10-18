@@ -159,7 +159,7 @@ export const layer = DevboxRpcs.toLayer(
 
           return connected.find((connection) => connection.provider === provider) ?? null;
         }).pipe(refuse),
-      /** A build already running is reported instead of started twice. */
+      /** A build already running is reported. */
       buildTemplate: ({ workspaceId, provider }) =>
         Effect.gen(function* () {
           const me = yield* Viewer;
@@ -174,7 +174,7 @@ export const layer = DevboxRpcs.toLayer(
 
           return yield* build.start(me.userId);
         }).pipe(refuse),
-      /** Boxes already running are not ended, but Notus reaches none of them until it is connected again. */
+      /** Boxes already running keep running, unreachable until the account is connected again. */
       disconnectCompute: ({ workspaceId, provider }) =>
         refuse(
           Effect.flatMap(Viewer, (me) =>

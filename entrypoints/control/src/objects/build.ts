@@ -30,7 +30,7 @@ const Record = Schema.Struct({
   startedAt: Schema.Int,
   finishedAt: Schema.NullOr(Schema.Int),
   ref: Schema.NullOr(Schema.String),
-  /** User-facing, from the adapter or this object; never a provider's own message. */
+  /** User-facing, from the adapter or this object. */
   reason: Schema.NullOr(Schema.String),
   /** Consecutive failed steps; a step that moves on resets it. */
   failures: Schema.Int,
@@ -62,7 +62,7 @@ const viewOf = (record: Record): BuildView => ({
  * stands, so a build survives restarts and a step that fails is retried. A finished template is
  * added to the workspace's templates, and becomes the default when there is none.
  */
-// A type, not an interface: object RPC shapes need its implicit index signature.
+// A type alias: object RPC shapes need its implicit index signature.
 export type Interface = {
   /** The last build, or null when this workspace never built one with this provider. */
   readonly status: () => Effect.Effect<BuildView | null, never, RuntimeContext>;

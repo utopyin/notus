@@ -191,7 +191,7 @@ export const wakes = sqliteTable("execution_wakes", {
 /**
  * Operator checkpoints: one model round per step, sequential within an invocation.
  * parts holds the encoded response once the step is done; the prompt is rebuilt from
- * the task record plus these parts, never from a live process.
+ * the task record plus these parts.
  */
 export const steps = sqliteTable(
   "execution_steps",
@@ -251,7 +251,7 @@ export const commands = sqliteTable(
     index("execution_command_status").on(t.status, t.createdAt),
   ],
 );
-/** Last runtime poll, so control knows whether the box is listening before asking for a wake. */
+/** Last runtime poll: whether the box is listening. */
 export const polls = sqliteTable("execution_polls", {
   singleton: integer().primaryKey().$type<1>(),
   epoch: integer().notNull(),

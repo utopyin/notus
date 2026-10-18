@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-/** A command the control plane carries out itself, never the dev box. */
+/** A command the control plane carries out itself. */
 export interface Command {
   readonly id: string;
   readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" | "update" }>;
@@ -33,7 +33,7 @@ const done = {
 
 /**
  * Control-plane actions: opening a pull request with the App's token, and posting a message in
- * the origin conversation. Each reports a command result; a failure is a result, never an error.
+ * the origin conversation. Each reports a command result, failures included.
  */
 const make = Effect.gen(function* () {
   const platforms = yield* Platforms.Service;

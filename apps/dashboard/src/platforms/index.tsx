@@ -11,8 +11,8 @@ export const PLATFORMS: ReadonlyArray<Platform> = ["slack", "github"];
 
 /**
  * What the dashboard knows about a platform beyond its descriptor: the brand mark, copy, and the
- * component that renders its details. Generic pages pick a slot by platform and never branch on
- * the name themselves; a platform without a slot set is a compile error here.
+ * component that renders its details. Generic pages pick a slot by platform; a platform without
+ * a slot set is a compile error here.
  */
 export interface PlatformSlots {
   readonly name: string;

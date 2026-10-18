@@ -14,8 +14,7 @@ import { Environment, EnvironmentRevision } from "./types";
 
 /**
  * The workspace's default devbox configuration. `get` and `set` are host-trusted and carry no
- * authorization: the task host reads with `get`, and a deployment writes with `set`. `view`,
- * `history` and `save` are what the dashboard calls, gated on membership like the roles are.
+ * authorization; `view`, `history` and `save` are gated on membership like the roles are.
  * Providers alone interpret config and resolve secret references; this service stores JSON.
  * Every write, trusted or not, is a revision, so a change can be traced and put back.
  */
@@ -76,7 +75,7 @@ const fail = (operation: Operation, reason: EnvironmentError["reason"]) =>
   new EnvironmentError({ operation, reason });
 
 // Rows have just been parsed from stored JSON. Freeze them without freezing caller-owned input.
-// Keep snapshots independent of subsequent edits; callers can persist one for an attempt later.
+// Keep snapshots independent of subsequent edits.
 const freeze = (config: Schema.Json) => {
   const pending: Array<Schema.Json> = [config];
 

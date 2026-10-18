@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { call } from "./api";
 
-// Every call forwards the request's cookie; the API resolves and authorizes the user itself.
+// Every call forwards the request's cookie.
 
 type Role = "admin" | "member";
 
@@ -59,7 +59,7 @@ export const removeScope = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; source: ScopeInput }) => input)
   .handler(async ({ data }) => await call((api) => api.removeScope(data)));
 
-/** Where to send the admin to install a platform; the API remembers the intent until the platform returns. */
+/** Where to send the admin to install a platform. */
 export const installUrl = createServerFn({ method: "POST" })
   .validator((input: { workspaceId: string; platform: "slack" | "github" }) => input)
   .handler(async ({ data }) => await call((api) => api.installUrl(data)));

@@ -30,8 +30,8 @@ const statuses: Record<ConnectionError["reason"], number> = {
 };
 
 /**
- * HttpClient whose only transport is the initiator's Connection object. Requests carry no
- * credentials; the object adds them and replays an identical operation without a second charge.
+ * HttpClient whose only transport is the initiator's Connection object, which adds credentials
+ * and replays an identical operation without a second charge.
  * Built inside an object instance, whose runtime context every model request runs in.
  */
 export const client = Effect.gen(function* () {

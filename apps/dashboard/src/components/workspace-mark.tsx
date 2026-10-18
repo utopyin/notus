@@ -63,7 +63,7 @@ const oklch = (l: number, c: number, hDeg: number): string => {
 export const markOf = (id: string) => {
   const seed = hash(id);
   const hue = unit(seed, 0) * 360;
-  // Ink sits 120 to 220 degrees away: always a clear complement, never a near-duplicate.
+  // Ink sits 120 to 220 degrees away, a clear complement.
   const inkHue = (hue + 120 + unit(seed, 1) * 100) % 360;
   return {
     colorBack: oklch(0.36 + unit(seed, 2) * 0.08, 0.16, hue),
@@ -74,7 +74,7 @@ export const markOf = (id: string) => {
   };
 };
 
-/** The world box the wave is drawn in; "cover" scales it to the mark, so size never changes the look. */
+/** The world box the wave is drawn in; "cover" scales it to the mark, so it looks the same at any size. */
 const world = 256;
 
 /**

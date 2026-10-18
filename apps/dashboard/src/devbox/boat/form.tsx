@@ -15,7 +15,7 @@ const DEFAULT = "default-choice";
 
 /**
  * The Boat configuration as fields: the named snapshot a box starts from, its size and Boat's
- * auto-stop deadline. The adapter on the API has the last word and its message is shown.
+ * auto-stop deadline. A refusal on save shows the adapter's message.
  */
 export const BoatForm: FC<{
   fields: Fields;

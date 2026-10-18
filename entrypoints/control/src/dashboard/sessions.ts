@@ -19,7 +19,7 @@ export interface SignIn {
     readonly slackTeamId: string | null;
     readonly githubLogin: string | null;
   };
-  /** Linked provider accounts by provider and subject, never their tokens. */
+  /** Linked provider accounts by provider and subject. */
   readonly accounts: ReadonlyArray<{
     readonly id: string;
     readonly providerId: string;
@@ -35,9 +35,9 @@ export interface Session {
 }
 
 /**
- * The dashboard's sign-in. Sessions are validated by the API, never trusted from the dashboard;
- * the app implements it over its auth provider and serves that provider's own routes. Calls
- * need `RuntimeContext`: they run inside a request.
+ * The dashboard's sign-in. The API validates every session itself; the app implements it over its
+ * auth provider and serves that provider's own routes. Calls need `RuntimeContext`: they run
+ * inside a request.
  */
 export interface Interface {
   /** Null for an anonymous request. */

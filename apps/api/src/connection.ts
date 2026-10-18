@@ -18,7 +18,6 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
   }).pipe(Effect.provide(SharedDb.layer), Effect.orDie),
 ) {}
 
-/** The namespace, for the Worker and the objects that call a user's Connection. */
 export const remote = Layer.effect(
   ConnectionObject.Remote,
   Effect.map(Connection, (objects) => (userId) => objects.getByName(userId)),

@@ -18,7 +18,7 @@ import { credentialKeyConfig, dashboardConfig } from "../config";
 import { cryptoLayer } from "../crypto";
 import { Durable } from "./durable";
 
-/** Calls cross the object boundary as values: a refusal carries its reason, never an error class. */
+/** Calls cross the object boundary as values: a refusal carries its reason. */
 export type Result<A> =
   | { readonly ok: true; readonly value: A }
   | { readonly ok: false; readonly reason: ConnectionError["reason"] };
@@ -27,9 +27,9 @@ type Call<A> = Effect.Effect<Result<A>, never, RuntimeContext>;
 
 /**
  * One user's saved model logins, addressed by user ID. Only this object opens provider material.
- * Callers receive status, a device code to type, or forwarded provider responses, never credentials.
+ * Callers receive status, a device code to type, or forwarded provider responses.
  */
-// A type, not an interface: object RPC shapes need its implicit index signature.
+// A type alias: object RPC shapes need its implicit index signature.
 export type Interface = {
   readonly status: (userId: string) => Call<ReadonlyArray<ConnectionStatus>>;
   /** An explicit link with material in hand: the harness, or a pasted API key. */
@@ -37,7 +37,7 @@ export type Interface = {
   readonly revoke: (userId: string, provider: Provider) => Call<ConnectionStatus>;
   readonly beginDeviceLogin: (userId: string) => Call<DeviceLogin>;
   readonly pollDeviceLogin: (userId: string) => Call<DeviceLogin>;
-  /** The login goes to one dev box round, never to storage. */
+  /** A login for one dev box round only. */
   readonly agentLogin: (userId: string, minimumLifetimeMs: number) => Call<AgentLogin>;
   readonly forward: (
     userId: string,
@@ -46,7 +46,7 @@ export type Interface = {
   ) => Call<ForwardResponse>;
   /**
    * The user's GitHub sign-in as a login for their dev box, refreshed under this object's gate so
-   * concurrent tasks never spend the same refresh token twice. Never stored here.
+   * concurrent tasks spend each refresh token once.
    */
   readonly githubLogin: (userId: string, minimumLifetimeMs: number) => Call<GithubLogin | null>;
 };

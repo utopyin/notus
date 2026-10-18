@@ -50,8 +50,7 @@ export function ProviderPage<F>({ kit, data }: { kit: Kit<F>; data: EnvironmentV
   const provider = descriptor.provider;
   const { approvedImages, workspaceImages, defaultImage, connection, build } = data;
   const builds = descriptor.capabilities.has("template:build");
-  // Another provider's configuration is not this form's: the card starts empty, and saving
-  // switches the workspace over.
+  // Another provider's configuration leaves the card empty; saving switches the workspace over.
   const environment = data.environment?.provider === provider ? data.environment : null;
   const runsElsewhere = data.environment !== null && environment === null;
   const router = useRouter();

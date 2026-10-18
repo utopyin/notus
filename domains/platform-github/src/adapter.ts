@@ -19,7 +19,7 @@ export class Configuration extends Context.Service<
   Configuration,
   {
     readonly webhookSecret: Redacted.Redacted<string> | null;
-    /** Absent when this deployment cannot install: the dashboard then offers no "Install GitHub App". */
+    /** Absent when this deployment cannot install. */
     readonly slug: string | null;
     /**
      * The installing user's own GitHub user token, null when they never signed in with GitHub.

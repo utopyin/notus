@@ -11,7 +11,7 @@ import { signalGroup } from "./host";
 import { Settings } from "./settings";
 
 const outputCap = 65_536;
-/** Where a provider's template puts its busy signal; see docs/plans/compute.md. */
+/** Where a provider's template puts its busy signal. */
 const busyHook = "/usr/local/libexec/notus/busy";
 
 /** Collect a stream into text, keeping only the first outputCap bytes and noting truncation. */
@@ -163,10 +163,8 @@ const specialistScript = (
 };
 
 /**
- * Push the checkout's commits to the task branch. Committing is not this command's job: a
- * specialist commits when told to, or the operator does through git; a dirty checkout is refused
- * rather than swept into a commit nobody wrote. Signed in as the initiator, the push carries
- * their token; otherwise the command's own write token.
+ * Push the checkout's existing commits to the task branch; a dirty checkout is refused. Signed in
+ * as the initiator, the push carries their token; otherwise the command's own write token.
  */
 const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
@@ -311,7 +309,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
           collect(child.stderr),
           child.exitCode.pipe(
             Effect.map((code): number | null => Number(code)),
-            // A signal-terminated process has no exit code; that is a result, not a failure.
+            // A signal-terminated process has no exit code and still yields a result.
             Effect.orElseSucceed((): number | null => null),
             Effect.timeoutOrElse({
               duration: command.spec.timeoutMs,

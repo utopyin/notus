@@ -13,17 +13,16 @@ import { WorkspaceTemplate } from "./types";
 
 /**
  * What a workspace's boxes may start from, as its admins added them. `approved` is host-trusted
- * and carries no authorization: the API and the task host read it for the provider's checks.
- * `list`, `add`, `remove` and `setDefault` are what the dashboard calls, gated on membership. The
- * reference is opaque here; the caller validates it with the provider's adapter before `add`, and
- * nobody but an admin vouches for what the template contains.
+ * and carries no authorization; `list`, `add`, `remove` and `setDefault` are gated on
+ * membership. The reference is opaque here; the caller validates it with the provider's adapter
+ * before `add`, and nobody but an admin vouches for what the template contains.
  */
 export interface Interface {
   readonly approved: (
     workspaceId: string,
     provider: string,
   ) => Effect.Effect<TemplateSet, TemplateError>;
-  /** Oldest first, so the select keeps a stable order. */
+  /** Oldest first, for a stable order. */
   readonly list: (
     workspaceId: string,
     userId: string,

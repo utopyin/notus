@@ -78,7 +78,7 @@ export const layerNoDeps = (options: Options) =>
         return pong;
       }).pipe(Effect.withSpan("Herdr.Client.ping"));
       const snapshot = Effect.gen(function* () {
-        // Fresh compatibility observation, never a process-global cached ping.
+        // A fresh compatibility observation on every call.
         yield* ping;
         const result = yield* request("session.snapshot");
 
@@ -96,6 +96,6 @@ export const layerNoDeps = (options: Options) =>
     }),
   );
 
-// Host transport remains a genuine explicit runtime requirement.
+// Host transport is an explicit runtime requirement.
 export const layer = layerNoDeps;
 export * as Client from "./client";

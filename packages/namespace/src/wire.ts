@@ -31,7 +31,7 @@ const networkPolicy = Schema.Struct({
   egressPolicy: optional(Schema.Struct({ tag: text })),
 }).check(Schema.makeFilter((value) => !(value.egressDomains && value.egressPolicy)));
 
-// A maintained projection for validation, not a serializer or generated SDK replacement.
+// A maintained projection for validation.
 export const CreateSettings = Schema.Struct({
   imageName: optional(text),
   imageRef: optional(text),

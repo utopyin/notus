@@ -67,7 +67,7 @@ const fingerprint = (key: string) =>
     ),
   );
 
-/** The user's sessions and model connections: status projections, never tokens or material. */
+/** The user's sessions and model connections, as status projections. */
 export const account = AccountRpcs.toLayer(
   Effect.gen(function* () {
     const sessions = yield* Sessions.Service;
@@ -90,7 +90,7 @@ export const account = AccountRpcs.toLayer(
               a.current ? -1 : b.current ? 1 : b.createdAt.localeCompare(a.createdAt),
             );
         }).pipe(refuse),
-      /** The token never leaves the API: revocation goes by the session's ID. */
+      /** Revocation goes by the session's ID, so the token stays in the API. */
       revokeSession: ({ sessionId }) =>
         Effect.gen(function* () {
           const me = yield* Viewer;

@@ -15,7 +15,7 @@ export type Result<A> =
   | { readonly ok: true; readonly value: A }
   | { readonly ok: false; readonly reason: string };
 
-// The API is reached through the service binding only; the host name is never resolved.
+// Every request goes through the service binding; the host name is a placeholder.
 const protocol = RpcClient.layerProtocolHttp({ url: "https://api.internal/rpc" }).pipe(
   Layer.provide([
     FetchHttpClient.layer.pipe(
@@ -30,8 +30,7 @@ const protocol = RpcClient.layerProtocolHttp({ url: "https://api.internal/rpc" }
 );
 
 /**
- * One call on the API as the signed-in user. The request's cookie travels with it and the API
- * resolves the session itself; the dashboard asserts nothing.
+ * One call on the API as the signed-in user, carrying the request's cookie.
  */
 export const call = <A, E extends { readonly _tag: string }>(
   run: (client: Client) => Effect.Effect<A, E>,

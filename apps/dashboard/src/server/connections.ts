@@ -3,7 +3,7 @@ import { call } from "./api";
 
 export type ModelProvider = "openai-chatgpt" | "openai-api";
 
-/** The signed-in user's model connections: status projections, never material. */
+/** The signed-in user's model connections, as status. */
 export const getConnections = createServerFn({ method: "GET" }).handler(async () => {
   const result = await call((api) => api.connections({}));
   return result.ok ? result.value : [];

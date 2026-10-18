@@ -11,7 +11,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { AppError } from "./errors";
 import { InstallationToken, PullRequest, Repository, RepositoryName, TaskBranch } from "./types";
 
-/** A dedicated GitHub App: separate from model connections and deployment credentials. */
+/** The GitHub App Notus acts as. */
 export class Configuration extends Context.Service<
   Configuration,
   {
@@ -395,7 +395,7 @@ export const layerNoDeps = Layer.effect(
         const grant = yield* mint({ metadata: "read" }, null);
         const found: Array<InstallationRepository> = [];
 
-        // GitHub pages at 100; an installation larger than ten pages is not one Notus serves yet.
+        // GitHub pages at 100; listing stops after ten pages.
         for (let page = 1; page <= 10; page++) {
           const request = HttpClientRequest.get(
             `${endpoint}/installation/repositories?per_page=100&page=${page}`,

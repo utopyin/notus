@@ -2,8 +2,7 @@ import { Capabilities } from "../capabilities";
 import type { ProviderDescriptor } from "../descriptor";
 
 /**
- * Only what the code relies on today. Auto-sleep is Namespace's documented behavior and still
- * untested here (docs/research/devbox-results.md); Stop exists in the client but nothing asks for it.
+ * Only what the code relies on. Auto-sleep is Namespace's documented behavior, untested here.
  */
 export const NAMESPACE_DESCRIPTOR: ProviderDescriptor<"namespace"> = {
   provider: "namespace",

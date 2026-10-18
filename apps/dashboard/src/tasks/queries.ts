@@ -3,7 +3,7 @@ import { getTask, listTasks } from "../server/tasks";
 
 /**
  * Tasks change while they run, so both views poll: the list every few seconds, an open task
- * faster. Polling pauses while the tab is hidden; each poll reads the task's own object.
+ * faster. Polling pauses while the tab is hidden.
  */
 const listPollMs = 4_000;
 const taskPollMs = 2_000;

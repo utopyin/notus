@@ -9,7 +9,7 @@ import { ForwardRequest, ForwardResponse } from "./types";
 
 /**
  * The one OpenAI backend a Worker can reach. OpenAI's edge refuses every request arriving from
- * Cloudflare's network before reading the token (see docs/research/openai-auth.md), so the
+ * Cloudflare's network before reading the token, so the
  * subscription backend at chatgpt.com only ever serves Codex on the dev box, which carries the
  * subscription login. The operator runs on the Platform API with the initiator's key.
  */

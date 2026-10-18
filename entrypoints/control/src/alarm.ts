@@ -120,7 +120,7 @@ const make = (settings: DeploymentConfig) =>
         );
         if (!claimed) break;
 
-        // The model round runs outside the gate; the Connection object owns credentials.
+        // The model round runs outside the gate.
         const outcome = yield* Operator.run(claimed.briefing, claimed.step.priorParts).pipe(
           Effect.provideService(LanguageModel.LanguageModel, model),
           Effect.provideService(Broker.Operation, {
@@ -239,7 +239,7 @@ const make = (settings: DeploymentConfig) =>
         counts.claimed++;
 
         yield* Effect.gen(function* () {
-          // Network work must never enter the local gate.
+          // Network work stays outside the local gate.
           const outcome = yield* control.deliver(claim);
 
           yield* gate(

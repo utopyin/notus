@@ -193,8 +193,7 @@ export const toolkit = Toolkit.make(
   PostUpdate,
 );
 /**
- * Tool calls are never executed inline. Control records them as durable waits and resolves them
- * from provider observations, so the handlers here are unreachable by construction.
+ * The handlers here are unreachable by construction: every tool call comes back unresolved.
  */
 const unreachable = () => Effect.die("tool calls are executed durably by control, never inline");
 

@@ -8,7 +8,7 @@ export const layer = Layer.effect(
   Durable.Service,
   Effect.map(Cloudflare.DurableObjectState, (state) =>
     Durable.Service.of({
-      // A failure leaves the gate as a value, never a rejected promise that resets the object.
+      // A failure stays a value: a rejected promise would reset the object.
       gate: (effect) => state.blockConcurrencyWhile(() => Effect.exit(effect)).pipe(Effect.flatten),
       get: (key) => state.storage.get(key),
       put: (key, value) => state.storage.put(key, value),

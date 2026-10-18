@@ -38,7 +38,7 @@ export const Me = Schema.Struct({
 });
 export interface Me extends Schema.Schema.Type<typeof Me> {}
 
-/** One of the user's sessions, never its token: revocation goes by ID. */
+/** One of the user's sessions; revocation goes by ID. */
 export const Session = Schema.Struct({
   id: Schema.String,
   createdAt: Schema.String,
@@ -47,7 +47,7 @@ export const Session = Schema.Struct({
 });
 export interface Session extends Schema.Schema.Type<typeof Session> {}
 
-/** An installation with its platform's descriptor, so the dashboard never branches on the platform. */
+/** An installation with its platform's descriptor, enough to render any platform. */
 export const InstallationSummary = Schema.Struct({
   workspaceId: Schema.String,
   platform: Platform,

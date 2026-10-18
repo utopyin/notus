@@ -8,7 +8,7 @@ import * as HttpClientRequest from "effect/http/HttpClientRequest";
 import { OAuthError } from "./errors";
 import { TokenSet } from "./types";
 
-/** The Codex public client. Notus does not own an independently registered OAuth client. */
+/** The Codex public client. */
 export const clientId = "app_EMoamEEZ73f0CkXaXp7hrann";
 export const tokenUrl = "https://auth.openai.com/oauth/token";
 

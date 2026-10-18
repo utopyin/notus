@@ -23,7 +23,7 @@ export const authentication = (settings: RuntimeConfig | null) =>
       )
     : Auth.disabled;
 
-// A failed read yields no template: a launch is then refused, never an unlisted one started.
+// A failed read yields no template, and the launch is refused.
 const templates = Layer.effect(
   Templates,
   Effect.gen(function* () {

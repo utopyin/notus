@@ -30,7 +30,7 @@ export const Route = createFileRoute("/$slug/platforms/$platform")({
     if (!parent.loaderData) return;
     const view = parent.loaderData;
     const installation = view.installations.find((i) => i.platform === params.platform);
-    // Not awaited: the page renders its skeleton while the platform answers.
+    // Left pending so the page renders its skeleton while the platform answers.
     if (installation) void queryClient.prefetchQuery(scopesQuery(view.workspace.id, installation));
     await collectionsOf(view.workspace.id).scopes.preload();
   },

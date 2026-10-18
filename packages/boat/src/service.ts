@@ -20,8 +20,7 @@ import {
 
 /**
  * The few Boat calls a devbox needs, over `https://boat.dev/api/v1`. Every mutation's outcome is
- * classified; provider messages, bodies and headers never leave this module. See
- * docs/research/boat.md for what each call was observed to do.
+ * classified; provider messages, bodies and headers never leave this module.
  */
 export interface Interface {
   readonly create: (input: CreateInput) => Effect.Effect<Sandbox, BoatError>;

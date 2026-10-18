@@ -175,7 +175,7 @@ const methods = (settings: DeploymentConfig) =>
     };
   });
 
-// A type, not an interface: object RPC shapes need its implicit index signature.
+// A type alias: object RPC shapes need its implicit index signature.
 export type Interface = Effect.Success<ReturnType<typeof methods>>;
 
 /** @effect-expect-leaking RuntimeContext */
@@ -209,7 +209,7 @@ export const make = Effect.gen(function* () {
   const shared = yield* SharedDb.Service;
   const connections = yield* ConnectionObject.Remote;
 
-  // Deliveries reach their platform through the registry; this object never verifies webhooks or installs.
+  // Deliveries reach their platform through the registry.
   const platforms = platformsLayer(deployment, github, {
     webhookSecret: null,
     slack: null,
@@ -217,7 +217,7 @@ export const make = Effect.gen(function* () {
     githubInstaller: null,
   });
 
-  // Absent configuration fails a checkout or a pull request, never the object.
+  // Absent configuration fails only a checkout or a pull request.
   const app = github
     ? GithubApp.layer.pipe(
         Layer.provide([Layer.succeed(GithubApp.Configuration, github), FetchHttpClient.layer]),

@@ -314,7 +314,7 @@ export const layerNoDeps = Layer.effect(
     const crypto = yield* Crypto.Crypto;
     const queries = (tx: TaskDb.Queries) => within(tx, crypto);
 
-    // Every service operation owns its transaction; Control repairs cross-owner handoffs.
+    // Every service operation owns its transaction.
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(
         Effect.mapError((cause): ExecutionError => {

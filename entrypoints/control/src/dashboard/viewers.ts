@@ -13,7 +13,7 @@ import { Sessions } from "./sessions";
 /**
  * Resolves the signed-in dashboard user from the forwarded cookie: the session, its linked
  * provider accounts as verified identities, and the canonical Notus user those identities adopt.
- * Anonymous requests yield null; nothing here is trusted from the caller.
+ * Anonymous requests yield null.
  */
 const make = Effect.gen(function* () {
   const sessions = yield* Sessions.Service;

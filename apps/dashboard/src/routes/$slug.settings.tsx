@@ -13,7 +13,7 @@ import { useWorkspace } from "./$slug";
 
 export const Route = createFileRoute("/$slug/settings")({
   staticData: { shell: { active: "settings", title: "Settings" } },
-  // The invites list is a TanStack DB collection, which does not render on the server.
+  // The invites list is a TanStack DB collection, which renders on the client only.
   ssr: false,
   loader: async ({ parentMatchPromise }) => {
     const parent = await parentMatchPromise;
@@ -48,8 +48,8 @@ function WorkspaceForm() {
   const router = useRouter();
   const [name, setName] = useState(view.workspace.name);
   const [slug, setSlug] = useState(view.workspace.slug);
-  // What the form last saved. Comparing against this, not the page data that refreshes later,
-  // keeps the button from flickering between a save and the refresh.
+  // What the form last saved. Comparing against this keeps the button from flickering while the
+  // page data refreshes after a save.
   const [saved, setSaved] = useState({ name: view.workspace.name, slug: view.workspace.slug });
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

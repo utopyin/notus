@@ -36,7 +36,7 @@ import {
 } from "./types";
 
 /**
- * Workspace administration for the dashboard. Every mutation takes the acting user and checks
+ * Workspace administration. Every mutation takes the acting user and checks
  * their role here, so callers only have to prove who the user is. Invite tokens are returned once
  * and stored hashed; nothing here returns a secret.
  */

@@ -23,7 +23,7 @@ export class IngressError extends Schema.TaggedError<IngressError>()("Sources.In
   platform: Platform,
   reason: Schema.Literals(["signature", "envelope", "unconfigured"]),
 }) {}
-/** A timed-out or undecodable write may have landed, so it is ambiguous, never retried blindly. */
+/** A timed-out or undecodable write may have landed, so it is ambiguous. */
 export class SourceError extends Schema.TaggedError<SourceError>()("Sources.SourceError", {
   classification: Schema.Literals(["unsupported", "rate-limited", "rejected", "ambiguous"]),
   retryAfter: Schema.optionalKey(Schema.Finite),

@@ -7,5 +7,5 @@ import * as Schema from "effect/Schema";
 export const Provider = Schema.Literals(["namespace", "boat"]);
 export type Provider = typeof Provider.Type;
 
-/** The literal values as a tuple, for consumers that need the list rather than the schema. */
+/** The literal values as a tuple. */
 export const PROVIDERS = Provider.literals;

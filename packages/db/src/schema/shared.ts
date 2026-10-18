@@ -15,7 +15,7 @@ export const users = sqliteTable("account_users", {
   email: text(),
   image: text(),
   updatedAt: integer(),
-  /** The login GitHub knows the user by, once they signed in with it; task branches live under it. */
+  /** The login GitHub knows the user by, once they signed in with it. */
   githubLogin: text(),
 });
 
@@ -114,7 +114,7 @@ export const authVerifications = sqliteTable(
 // ─── Workspaces ───
 
 /**
- * One default environment per workspace. Config is JSON text, not a provider model. The current
+ * One default environment per workspace. Config is undecoded JSON text. The current
  * row lives here; every save also lands in the revision table, so a change can be traced and put
  * back.
  */
@@ -146,7 +146,7 @@ export const environmentRevisions = sqliteTable(
     revision: integer().notNull(),
     provider: text().notNull(),
     config: text().notNull(),
-    /** Null when the deployment wrote it, not a person. */
+    /** Null when the deployment wrote it. */
     authorId: text(),
     createdAt: integer().notNull(),
   },
@@ -158,7 +158,7 @@ export const environmentRevisions = sqliteTable(
 
 /**
  * What a workspace's boxes may start from on one provider: an image, a snapshot. The reference is
- * the provider's own string; this table never interprets it. At most one per provider is the
+ * the provider's own string, stored opaque. At most one per provider is the
  * workspace's default.
  */
 export const templates = sqliteTable(
