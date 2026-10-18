@@ -128,8 +128,8 @@ export const computeConfig = Effect.gen(function* () {
     Config.withDefault("namespace"),
   );
 
-  // An unknown provider is a deployment defect, not a missing setting.
-  return yield* Schema.decodeUnknownEffect(Schema.Array(Provider))(
+  // An unknown or repeated provider is a deployment defect, not a missing setting.
+  return yield* Schema.decodeUnknownEffect(Schema.UniqueArray(Provider))(
     listed
       .split(",")
       .map((value) => value.trim())
