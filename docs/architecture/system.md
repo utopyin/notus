@@ -105,12 +105,12 @@ Imports only point downward or sideways. Arrows are real `@notus/*` imports in `
 flowchart TB
   root["alchemy.run.ts<br/>Api and Dashboard resources"]
   subgraph t4["Tier 4 apps: startup, bindings, configuration"]
-    api["apps/api<br/>Worker, Task DO, Connection DO,<br/>ingress, auth, installs, broker"]
+    api["apps/api<br/>Worker and DO declarations, Better Auth,<br/>platform adapters for the host ports"]
     dashboard["apps/dashboard<br/>TanStack Start, shadcn, TanStack DB"]
     devbox["apps/devbox<br/>Bun supervisor, Docker image"]
   end
   subgraph t3["Tier 3 entrypoints: cross-domain use cases"]
-    control["@notus/control<br/>inbox, task, operator, provisioning,<br/>runtime auth, protocol, server, client"]
+    control["@notus/control<br/>hosts (Api, Task, Connection, Build),<br/>inbox, use cases, ingress, broker,<br/>runtime auth, protocol, server, client"]
     operator["@notus/operator<br/>prompt, tools, one model round"]
   end
   subgraph t2["Tier 2 domains: product decisions"]
@@ -126,7 +126,8 @@ flowchart TB
     platform["platform<br/>contract, ids, descriptors"]
     contracts["contracts<br/>json"]
     stages["stages<br/>hostnames"]
-    cloudflare["cloudflare<br/>D1, DO SQLite"]
+    db["db<br/>schemas, relations, migrations,<br/>Shared, Task and Connection stores"]
+    cloudflare["cloudflare<br/>sealing"]
     slackp["slack"]
     githubp["github"]
     namespacep["namespace"]
@@ -136,13 +137,11 @@ flowchart TB
 
   root --> api
   root --> stages
-  api --> control & operator & tasks & executions & accounts & workspaces
-  api --> platforms & pslack & pgithub
-  api --> platform & stages & githubp & namespacep & openaip & cloudflare
+  api --> control & db & cloudflare & stages
   dashboard -.->|"type only"| api
   devbox --> control & executions & herdrp
   control --> operator & tasks & executions & accounts & workspaces & platforms
-  control --> platform & cloudflare
+  control --> platform & cloudflare & db & pslack & pgithub & githubp & openaip
   tasks --> executions
   executions --> workspaces & namespacep & contracts
   accounts --> openaip
@@ -151,7 +150,7 @@ flowchart TB
   pslack --> platform & slackp
   pgithub --> platform & githubp
   tasks & executions & accounts & workspaces --> platform
-  tasks & executions & accounts & workspaces --> cloudflare
+  tasks & executions & accounts & workspaces --> db
   namespacep --> contracts
 ```
 
@@ -300,7 +299,7 @@ sequenceDiagram
 
 ## 6. Intake: any platform to the Task object
 
-Intake is two-phase on purpose. The webhook request only commits a durable inbox row, so the platform gets its acknowledgement fast. A separate drain, started with `waitUntil` right away and repeated by cron every minute, moves rows into Task objects. One route, `/<platform>/events`, serves every platform (`apps/api/src/ingress.ts`).
+Intake is two-phase on purpose. The webhook request only commits a durable inbox row, so the platform gets its acknowledgement fast. A separate drain, started with `waitUntil` right away and repeated by cron every minute, moves rows into Task objects. One route, `/<platform>/events`, serves every platform (`entrypoints/control/src/ingress.ts`).
 
 ```mermaid
 sequenceDiagram
@@ -993,7 +992,7 @@ erDiagram
   INBOX_ROUTES { string key PK "per conversation" string taskId "origin or attached PR" string initiatorId string startMessageKey int initialized }
 ```
 
-Better Auth's tables live in the same shared database under the account domain's schema and migrations: `auth_users` (with `slackTeamId` and `githubLogin`), `auth_sessions`, `auth_accounts` (provider tokens; the GitHub row is the dev box's git login) and `auth_verifications`. Better Auth reaches them through its D1 adapter with those model names and never migrates them itself. Until 2026-09-15 they were a second database, `AuthDb`; it was merged because one product wants one database.
+Better Auth's tables live in the same shared database under `@notus/db`'s schema and migrations: `auth_users` (with `slackTeamId` and `githubLogin`), `auth_sessions`, `auth_accounts` (provider tokens; the GitHub row is the dev box's git login) and `auth_verifications`. Better Auth reaches them through its D1 adapter with those model names and never migrates them itself. Until 2026-09-15 they were a second database, `AuthDb`; it was merged because one product wants one database.
 
 Each Task object has its own SQLite database, and only that object reads it:
 

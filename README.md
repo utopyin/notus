@@ -23,6 +23,7 @@ Each topic has one canonical home:
 | [Dashboard](docs/plans/dashboard.md)                | Sign-in, workspaces and invites, model connections, repositories, instructions    |
 | [Platforms](docs/plans/platforms.md)                | The platform contract, registered adapters per platform, installations and scopes |
 | [Compute](docs/plans/compute.md)                    | Devbox provider contract, capabilities, per-workspace connections and templates   |
+| [Composition](docs/plans/composition.md)            | Central database package and one composed Layer per host                          |
 | [Research](docs/research/README.md)                 | Provider evidence and constraints                                                 |
 | [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                     |
 | [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                     |

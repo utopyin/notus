@@ -61,6 +61,25 @@ Build the top-level graph once per owning runtime lifetime. Reuse stable Layer v
 
 Implementation patterns: [Effect skill](../../.agents/skills/effect/references/SERVICES_LAYERS.md), [default composition](../../repos/effect/ai-docs/src/01_effect/03_services/20_layer-composition.ts), [test composition](../../repos/effect/ai-docs/src/09_testing/20_layer-tests.ts).
 
+## Persistence
+
+`@notus/db` owns every table, relation and migration, one store per database: `shared` (D1), `task` and `connection` (Durable Object SQLite). The database shape is one domain. Each store exports a `Service` typed with its relations and an infra `layer` that declares and binds its database. Domains query through the store tag; they never declare tables.
+
+Tables hold storage shapes. JSON columns are untyped in the schema; the owning domain decodes them at its boundary, typically through `createSelectSchema` overrides in its `rows.ts`. A store never imports domain types.
+
+Shared migrations are generated on deploy by Alchemy's `Drizzle.Schema`. Durable Object migrations are generated with `packages/db/drizzle.<store>.ts` and committed, because an object captures its SQL when its Worker is built.
+
+## Hosts
+
+Each host (a Worker or Durable Object class) is composed in `@notus/control/hosts/<host>`. A host module exports a `Service` whose interface is the host's RPC surface and a `layer(settings)` assembling the domains it uses. Its remaining requirements are infra only: stores, the sealing key, and ports for the platform the app runs on (`Durable`, `Sessions`, `Background`, and `Remote` tags for other objects).
+
+The app reads configuration in the construction phase, provides the infra layers and the host layer once, and returns the host's service:
+
+- No `Layer.build` or `Effect.provideContext` in `apps/` or `entrypoints/`. A service resolves its dependencies at layer construction; use cases that read services are themselves services.
+- Construction holds nothing disposable. Request-scoped resources, such as D1 clients, are acquired per execution by the layer that owns them.
+- Handler methods require only `RuntimeContext`, which the platform supplies to every handler. A port may require it; it is never captured during construction and provided later.
+- A binding is declared in the construction phase. A Durable Object takes the shared store from its construction phase into its instance layer.
+
 ## Import isolation
 
 A provider-neutral API is not necessarily an SDK-free import: the public module also exposes defaults.

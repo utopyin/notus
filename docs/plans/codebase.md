@@ -5,14 +5,14 @@ Proposed ownership, not implemented packages. Follows the [product requirements]
 ## Package layout
 
 ```text
-packages/       contracts/ shared/ namespace/ herdr/ plannotator/ slack/ openai/ github/ cloudflare/
+packages/       contracts/ shared/ db/ namespace/ herdr/ plannotator/ slack/ openai/ github/ cloudflare/
 domains/        workspaces/ accounts/ tasks/ executions/
 entrypoints/    control/ operator/
 apps/           api/ devbox/
 alchemy.run.ts
 ```
 
-Introduce packages as needed, not empty scaffolding. `contracts` holds shared IDs, actor/source references, messages, and artifact references/digests. `shared` holds small conventions every app agrees on and nothing provider-specific: today the deployment stages, which stage is production and which hostnames on the zone a stage owns. The other tier-1 packages communicate with their named providers.
+Introduce packages as needed, not empty scaffolding. `contracts` holds shared IDs, actor/source references, messages, and artifact references/digests. `shared` holds small conventions every app agrees on and nothing provider-specific: today the deployment stages, which stage is production and which hostnames on the zone a stage owns. `db` owns every table, relation and migration and the store layers ([persistence](../architecture/CONTEXT.md#persistence)); domains own the queries. The other tier-1 packages communicate with their named providers.
 
 ## Domain ownership
 
@@ -44,7 +44,7 @@ Each capability exposes its default through the [canonical service namespace](..
 | `tasks/store`                            | `store/cloudflare`                  | `@notus/cloudflare`             |
 | `tasks/artifacts`                        | `artifacts/r2`                      | `@notus/cloudflare`             |
 
-Reuse Effect's neutral `LanguageModel` for inference. `@notus/openai` exposes the subscription-backend `LanguageModel` layer over a caller-supplied `HttpClient`; `apps/api` supplies the broker transport, so the model layer never sees a token. Connection storage and refresh policy stay in `accounts/connections`.
+Reuse Effect's neutral `LanguageModel` for inference. `@notus/openai` exposes the subscription-backend `LanguageModel` layer over a caller-supplied `HttpClient`; `@notus/control/broker` supplies the transport over the initiator's Connection object, so the model layer never sees a token. Connection storage and refresh policy stay in `accounts/connections`.
 
 ## Entrypoints
 
@@ -69,14 +69,14 @@ Reviewer instructions delegate technical decisions and escalate product question
 
 ## Runtime and data ownership
 
-| Owner         | Responsibility                                                                                                                                                                                                                                      |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`    | Control Worker, Alchemy D1/DO declarations and bindings, listeners/scheduled intake recovery, and runtime composition; the Worker itself only reaches the Connection object for status and revocation, never for forwarding                         |
-| Task DO       | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator steps, through domain-owned storage interfaces; hosts the operator loop and its broker transport                                                |
-| Shared D1     | Workspace configuration, membership, installation/verified identity lookup, durable pre-task inbox, and source-routing reservations through ordinary Worker-hosted services; workspace-owned rows are scoped, canonical user IDs remain independent |
-| Connection DO | One saved connection per canonical user, serialized refresh/rotation, revocation, and idempotent forwarding of authorized model requests keyed by operation; it is the credential broker                                                            |
-| Private R2    | Immutable accepted artifacts and large checkpoint blobs; Task records own references, digests, acceptance, and cleanup eligibility                                                                                                                  |
-| `apps/devbox` | Supervisor, local specialist/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting                                                                                       |
+| Owner         | Responsibility                                                                                                                                                                                                                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`    | Worker and Durable Object declarations, configuration reads, Better Auth, and the platform adapters behind the host ports; each host's behavior and composition live in `@notus/control/hosts`. The Worker itself only reaches the Connection object for status and revocation, never for forwarding |
+| Task DO       | Authoritative task/execution records, source attachments, answers/delivery, decisions, and operator steps, through domain-owned storage interfaces; hosts the operator loop and its broker transport                                                                                                 |
+| Shared D1     | Workspace configuration, membership, installation/verified identity lookup, durable pre-task inbox, and source-routing reservations through ordinary Worker-hosted services; workspace-owned rows are scoped, canonical user IDs remain independent                                                  |
+| Connection DO | One saved connection per canonical user, serialized refresh/rotation, revocation, and idempotent forwarding of authorized model requests keyed by operation; it is the credential broker                                                                                                             |
+| Private R2    | Immutable accepted artifacts and large checkpoint blobs; Task records own references, digests, acceptance, and cleanup eligibility                                                                                                                                                                   |
+| `apps/devbox` | Supervisor, local specialist/review processes, readiness/keepalive, result collection, remote clients, scoped runtime credentials, shutdown/failure reporting                                                                                                                                        |
 
 The devbox provides a remote **domain service**, not a second business implementation over remote CRUD storage. It may report work and request questions/reviews/handoff, but cannot grant approval, rewrite execution authority, or own refresh-token rotation. Local journals, native session histories, and files are checkpoints/evidence, not another authoritative task record.
 
