@@ -12,7 +12,7 @@ import {
   Source,
 } from "@notus/platform/source";
 import { Access } from "@notus/workspaces/access";
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -22,7 +22,15 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Conflict, IntakeError, Unauthorized } from "./errors";
 import { envelopes, messages, routes } from "./schema";
-import { DrainResult, EnvelopeRow, MessageRow, Receipt, RouteRow, Snapshot } from "./types";
+import {
+  DrainResult,
+  EnvelopeRow,
+  MessageRow,
+  Receipt,
+  RouteRow,
+  Snapshot,
+  TaskRef,
+} from "./types";
 
 export interface Interface {
   /** The workspace that installed a platform, or null when nobody asked for its events. */
@@ -52,6 +60,13 @@ export interface Interface {
     forward: (admission: Admission) => Effect.Effect<void, E>,
   ) => Effect.Effect<DrainResult, IntakeError>;
   readonly snapshot: (workspaceId: string) => Effect.Effect<Snapshot, IntakeError>;
+  /** The workspace's tasks by their routes, newest first; each task's state lives in its object. */
+  readonly tasks: (
+    workspaceId: string,
+    limit: number,
+  ) => Effect.Effect<ReadonlyArray<TaskRef>, IntakeError>;
+  /** Whether one of the task's conversations is routed in this workspace. */
+  readonly owns: (workspaceId: string, taskId: string) => Effect.Effect<boolean, IntakeError>;
 }
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/inbox/Service",
@@ -398,6 +413,25 @@ export const layerNoDeps = Layer.effect(
           .where(eq(envelopes.workspaceId, workspaceId)),
       });
     }, storageError("snapshot"));
+    const tasks = Effect.fn("Inbox.tasks")(function* (workspaceId: string, limit: number) {
+      const createdAt = sql<number>`min(${routes.createdAt})`;
+      const rows = yield* store.db
+        .select({ taskId: routes.taskId, createdAt })
+        .from(routes)
+        .where(eq(routes.workspaceId, workspaceId))
+        .groupBy(routes.taskId)
+        .orderBy(desc(createdAt))
+        .limit(limit);
+      return yield* Schema.decodeEffect(Schema.Array(TaskRef))(rows);
+    }, storageError("tasks"));
+    const owns = Effect.fn("Inbox.owns")(function* (workspaceId: string, taskId: string) {
+      const rows = yield* store.db
+        .select({ key: routes.key })
+        .from(routes)
+        .where(and(eq(routes.workspaceId, workspaceId), eq(routes.taskId, taskId)))
+        .limit(1);
+      return rows.length > 0;
+    }, storageError("owns"));
     return Service.of({
       workspaceOf,
       repositories,
@@ -407,6 +441,8 @@ export const layerNoDeps = Layer.effect(
       takeover,
       drain,
       snapshot,
+      tasks,
+      owns,
     });
   }),
 );
