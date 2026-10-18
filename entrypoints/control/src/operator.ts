@@ -936,10 +936,8 @@ const make = Effect.gen(function* () {
   return { prepare, admit, advance, claim, record, nextWake };
 });
 
-export interface Interface extends Effect.Success<typeof make> {}
+export class Service extends Context.Service<Service>()("@notus/control/Operator", { make }) {}
 
-export class Service extends Context.Service<Service, Interface>()("@notus/control/Operator") {}
-
-export const layer = Layer.effect(Service, make);
+export const layer = Layer.effect(Service, Service.make);
 
 export * as OperatorControl from "./operator";

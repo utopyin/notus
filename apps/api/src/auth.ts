@@ -6,7 +6,7 @@ import {
   type GenericOAuthConfig,
   type GenericOAuthUserInfo,
 } from "better-auth/plugins/generic-oauth";
-import { dashboardConfig, type DashboardConfig } from "@notus/control/config";
+import { dashboardConfig } from "@notus/control/config";
 import { Sessions } from "@notus/control/dashboard/sessions";
 import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
@@ -82,7 +82,7 @@ const slackProvider = (credentials: {
  * session itself. The dashboard forwards `/auth/*` through its service binding, which keeps the
  * session cookie on the dashboard's origin. Providers without configured credentials are absent.
  */
-const make = (dashboard: DashboardConfig) =>
+const make = Effect.flatMap(dashboardConfig, (dashboard) =>
   BetterAuth({
     id: "Auth",
     // The account domain's Drizzle migrations own the tables; Better Auth never migrates.
@@ -143,7 +143,8 @@ const make = (dashboard: DashboardConfig) =>
               ],
             }),
           ],
-  });
+  }),
+);
 
 /**
  * The sign-in instance this Worker hosts, built once from the dashboard's configuration. Its calls
@@ -151,13 +152,9 @@ const make = (dashboard: DashboardConfig) =>
  *
  * @effect-expect-leaking RuntimeContext
  */
-export class Auth extends Context.Service<Auth, Effect.Success<ReturnType<typeof make>>>()(
-  "@notus/api/Auth",
-) {}
+export class Auth extends Context.Service<Auth>()("@notus/api/Auth", { make }) {}
 
-export const layer = Layer.effect(Auth, Effect.flatMap(dashboardConfig, make)).pipe(
-  Layer.provide(database),
-);
+export const layer = Layer.effect(Auth, Auth.make).pipe(Layer.provide(database));
 
 /** Better Auth's own routes, which the dashboard forwards through its service binding. */
 export const routes = HttpRouter.use((router) =>

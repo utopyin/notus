@@ -59,13 +59,11 @@ const make = Effect.gen(function* () {
   return { resolve };
 });
 
-export interface Interface extends Effect.Success<typeof make> {}
+export class Service extends Context.Service<Service>()("@notus/control/dashboard/Viewers", {
+  make,
+}) {}
 
-export class Service extends Context.Service<Service, Interface>()(
-  "@notus/control/dashboard/Viewers",
-) {}
-
-export const layer = Layer.effect(Service, make);
+export const layer = Layer.effect(Service, Service.make);
 
 const unauthorized = new DashboardError({ reason: "unauthorized" });
 

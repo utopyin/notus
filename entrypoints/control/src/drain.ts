@@ -56,10 +56,8 @@ const make = Effect.gen(function* () {
   return { run };
 });
 
-export interface Interface extends Effect.Success<typeof make> {}
+export class Service extends Context.Service<Service>()("@notus/control/Drain", { make }) {}
 
-export class Service extends Context.Service<Service, Interface>()("@notus/control/Drain") {}
-
-export const layer = Layer.effect(Service, make);
+export const layer = Layer.effect(Service, Service.make);
 
 export * as Drain from "./drain";

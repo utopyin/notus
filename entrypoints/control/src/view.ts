@@ -333,10 +333,8 @@ const make = Effect.gen(function* () {
   return { read };
 });
 
-export interface Interface extends Effect.Success<typeof make> {}
+export class Service extends Context.Service<Service>()("@notus/control/View", { make }) {}
 
-export class Service extends Context.Service<Service, Interface>()("@notus/control/View") {}
-
-export const layer = Layer.effect(Service, make);
+export const layer = Layer.effect(Service, Service.make);
 
 export * as View from "./view";

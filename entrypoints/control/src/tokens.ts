@@ -124,10 +124,8 @@ const make = Effect.gen(function* () {
   return { repository, githubLogin, agentLogin };
 });
 
-export interface Interface extends Effect.Success<typeof make> {}
+export class Service extends Context.Service<Service>()("@notus/control/Tokens", { make }) {}
 
-export class Service extends Context.Service<Service, Interface>()("@notus/control/Tokens") {}
-
-export const layer = Layer.effect(Service, make);
+export const layer = Layer.effect(Service, Service.make);
 
 export * as Tokens from "./tokens";

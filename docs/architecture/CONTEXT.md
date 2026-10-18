@@ -45,7 +45,7 @@ Devbox.layer;
 Devbox.layerNoDeps;
 ```
 
-Use file-local names such as `Interface`, `Service`, and `layer`, projecting the namespace with `export * as Devbox from "./service"`. No separate `/layer` import is required. Keep provider-specific imports for explicit alternatives.
+Use file-local names such as `Interface`, `Service`, and `layer`, projecting the namespace with `export * as Devbox from "./service"`. A service whose shape is its implementation passes it as `Context.Service<Service>()(id, { make })` and provides `Service.make`; declare an `Interface` only for a contract with several implementations, such as a port. No separate `/layer` import is required. Keep provider-specific imports for explicit alternatives.
 
 | Export        | Meaning                                                                        |
 | ------------- | ------------------------------------------------------------------------------ |

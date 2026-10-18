@@ -314,10 +314,8 @@ const make = (settings: DeploymentConfig) =>
     return { mode, advance, arm, recompute, run };
   });
 
-export interface Interface extends Effect.Success<ReturnType<typeof make>> {}
+export class Service extends Context.Service<Service>()("@notus/control/Alarm", { make }) {}
 
-export class Service extends Context.Service<Service, Interface>()("@notus/control/Alarm") {}
-
-export const layer = (settings: DeploymentConfig) => Layer.effect(Service, make(settings));
+export const layer = (settings: DeploymentConfig) => Layer.effect(Service, Service.make(settings));
 
 export * as Alarm from "./alarm";
