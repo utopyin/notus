@@ -1,6 +1,7 @@
 import { D1 } from "@notus/cloudflare/d1";
 import { Inbox } from "@notus/control/inbox";
 import { Identities } from "@notus/accounts/identities";
+import type { Profile } from "@notus/accounts/types";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import { InstallError } from "@notus/platform/installing";
 import { Platform } from "@notus/platform/platform";
@@ -223,6 +224,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Templates.layer,
       Compute.layer,
       Identities.layer,
+      Inbox.layer.pipe(Layer.provide(platforms)),
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
     // The platform's redirect after an install; it moves on to the dashboard's origin.
@@ -241,6 +243,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       | Templates.Service
       | Compute.Service
       | Identities.Service
+      | Inbox.Service
       | Platforms.Service;
     /**
      * Resolves the signed-in dashboard user from the forwarded cookie: the Better Auth session,
@@ -373,6 +376,15 @@ export default class Api extends Cloudflare.Worker<Api>()(
             : Effect.fail<DashboardFailure>({ _tag: "Connection", reason: result.reason }),
         ),
       );
+    /** How many of a workspace's latest tasks the list reads, one object call each. */
+    const taskListLimit = 50;
+    const initiatorOf = (
+      profiles: ReadonlyMap<string, Profile>,
+      task: { readonly initiatorId: string },
+    ) => {
+      const profile = profiles.get(task.initiatorId);
+      return profile ? { name: profile.name, image: profile.image } : null;
+    };
     /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
     interface DashboardFailure {
       readonly _tag: string;
@@ -681,6 +693,70 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 private: scope.private,
               })),
             };
+          }),
+        ),
+      /**
+       * The workspace's tasks, newest first, each read from its own object so the row is as live
+       * as the task. Members see every task of the workspace.
+       */
+      dashboardTasks: (cookie: string, workspaceId: string) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            yield* Workspaces.Service.pipe(
+              Effect.flatMap((workspaces) => workspaces.role(workspaceId, me.userId)),
+            );
+            const refs = yield* Inbox.Service.pipe(
+              Effect.flatMap((inbox) => inbox.tasks(workspaceId, taskListLimit)),
+              Effect.mapError((): DashboardFailure => ({ _tag: "Tasks", reason: "failed" })),
+            );
+            const rows = yield* Effect.forEach(
+              refs,
+              (ref) =>
+                tasks
+                  .getByName(ref.taskId)
+                  .summary()
+                  .pipe(
+                    Effect.provideService(RuntimeContext, runtime),
+                    Effect.orElseSucceed(() => null),
+                  ),
+              { concurrency: 8 },
+            );
+            const listed = rows.filter(
+              (row): row is NonNullable<typeof row> =>
+                row !== null && row.workspaceId === workspaceId,
+            );
+            const profiles = yield* Identities.Service.pipe(
+              Effect.flatMap((identities) =>
+                identities.profiles([...new Set(listed.map((row) => row.initiatorId))]),
+              ),
+            );
+            return listed.map((row) => ({ ...row, initiator: initiatorOf(profiles, row) }));
+          }),
+        ),
+      /** One task with its whole timeline, for a member of the workspace it belongs to. */
+      dashboardTask: (cookie: string, workspaceId: string, taskId: string) =>
+        authorized(cookie, (me) =>
+          Effect.gen(function* () {
+            yield* Workspaces.Service.pipe(
+              Effect.flatMap((workspaces) => workspaces.role(workspaceId, me.userId)),
+            );
+            // Only tasks routed in this workspace are opened, so no object is created for a guess.
+            const owned = yield* Inbox.Service.pipe(
+              Effect.flatMap((inbox) => inbox.owns(workspaceId, taskId)),
+              Effect.mapError((): DashboardFailure => ({ _tag: "Tasks", reason: "failed" })),
+            );
+            const detail = owned
+              ? yield* tasks
+                  .getByName(taskId)
+                  .view()
+                  .pipe(Effect.provideService(RuntimeContext, runtime))
+              : null;
+            if (detail === null || detail.workspaceId !== workspaceId)
+              return yield* Effect.fail<DashboardFailure>({ _tag: "Task", reason: "not-found" });
+            const profiles = yield* Identities.Service.pipe(
+              Effect.flatMap((identities) => identities.profiles([detail.initiatorId])),
+            );
+            return { ...detail, initiator: initiatorOf(profiles, detail) };
           }),
         ),
       // Status only: no method here returns provider tokens.

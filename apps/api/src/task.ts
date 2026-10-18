@@ -13,6 +13,7 @@ import * as Control from "@notus/control/task";
 import * as OperatorControl from "@notus/control/operator";
 import * as ReadinessControl from "@notus/control/provisioning";
 import * as Authentication from "@notus/control/runtime/auth";
+import { View } from "@notus/control/view";
 import { Failure as RuntimeFailure } from "@notus/control/runtime/errors";
 import * as Protocol from "@notus/control/runtime/protocol";
 import * as Runtime from "@notus/control/runtime/server";
@@ -880,6 +881,22 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                         }
                       : snapshot;
                 }),
+              ),
+            /** What the dashboard shows of this task; null when the object holds none. */
+            view: () =>
+              gate(View.read().pipe(Effect.provideContext(services))).pipe(
+                Effect.tapError(() => Effect.logWarning("task.view_failed")),
+                Effect.orElseSucceed(() => null),
+              ),
+            summary: () =>
+              gate(
+                View.read().pipe(
+                  Effect.map((detail) => (detail === null ? null : View.summarize(detail))),
+                  Effect.provideContext(services),
+                ),
+              ).pipe(
+                Effect.tapError(() => Effect.logWarning("task.summary_failed")),
+                Effect.orElseSucceed(() => null),
               ),
             alarm: () => alarm,
           };
