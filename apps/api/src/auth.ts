@@ -8,13 +8,13 @@ import {
 } from "better-auth/plugins/generic-oauth";
 import { dashboardConfig, type DashboardConfig } from "@notus/control/config";
 import { Sessions } from "@notus/control/dashboard/sessions";
+import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as HttpRouter from "effect/http/HttpRouter";
 import * as Redacted from "effect/Redacted";
 import { SharedDb } from "@notus/db/shared";
-import { within } from "./execution";
 
 /**
  * Better Auth's tables live in the shared database, defined and migrated with the rest of the
@@ -147,7 +147,7 @@ const make = (dashboard: DashboardConfig) =>
 
 /**
  * The sign-in instance this Worker hosts, built once from the dashboard's configuration. Its calls
- * run in the current execution; the adapters below run them through `within`.
+ * carry Alchemy's `RuntimeContext` marker, which the adapters below erase with its phantom layer.
  *
  * @effect-expect-leaking RuntimeContext
  */
@@ -199,10 +199,10 @@ export const sessions = Layer.effect(
               createdAt: account.createdAt,
             })),
           };
-        }).pipe(within, Effect.mapError(failure("signIn"))),
+        }).pipe(Effect.provide(RuntimeContext.phantom), Effect.mapError(failure("signIn"))),
       list: (cookie) =>
         auth.api.listSessions({ headers: new Headers({ cookie }) }).pipe(
-          within,
+          Effect.provide(RuntimeContext.phantom),
           Effect.map((listed) =>
             listed.map((session) => ({
               id: session.id,
@@ -224,7 +224,7 @@ export const sessions = Layer.effect(
           yield* auth.api.revokeSession({ headers, body: { token: session.token } });
 
           return true;
-        }).pipe(within, Effect.mapError(failure("revoke"))),
+        }).pipe(Effect.provide(RuntimeContext.phantom), Effect.mapError(failure("revoke"))),
     });
   }),
 );

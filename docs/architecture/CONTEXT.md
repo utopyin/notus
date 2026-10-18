@@ -76,7 +76,7 @@ Entrypoints are neutral about where they run: no Alchemy, Worker or object types
 - **The API is HTTP.** `@notus/control/api` exports `layer`, its services, and `routes`, one `HttpRouter` layer per surface. Each surface owns its transport and authority: Effect RPC for the dashboard at `/rpc`, authenticated by session middleware; platform ingress, by the platform's signature; the dev box callback, by its capability; the install bounce, by nothing. The app serves `HttpRouter.toHttpEffect(routes)` as its `fetch` and schedules `Drain`.
 - **A client imports a contract.** An RPC group and its wire schemas live in modules that import schemas only, so a client's bundle never carries server code.
 - **An object is a two-phase constructor.** `@notus/control/objects/<object>` exports its `Service` (the object's RPC shape), a `Remote` tag addressing other instances, and `make`. Construction reads configuration and takes what outlives the instance, such as the shared store; it returns the instance's effect, which requires only the object's own store, durable state and recipe. The app's object class yields `make` and provides those.
-- **Ports carry no platform types.** `Durable`, `Sessions` and the `Remote` tags are neutral. The app's adapters run platform calls through `within`, in the execution that called them.
+- **Ports carry no platform types.** `Durable`, `Sessions` and the `Remote` tags are neutral. Alchemy's `RuntimeContext` marker, which types platform calls as handler-only, stops at the app's adapters: they erase it with `RuntimeContext.phantom`, as Alchemy's own adapters do.
 
 Composition:
 
