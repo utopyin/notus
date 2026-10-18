@@ -1,7 +1,7 @@
 import { Sqlite } from "@notus/cloudflare/sqlite";
 import { descriptorOf } from "@notus/compute/descriptors/index";
 import * as Json from "@notus/contracts/json";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -44,6 +44,15 @@ import {
 // Operational bounds only. Neither expires an assignment nor limits a human wait.
 const claimDuration = 30_000;
 const startupDuration = 10 * 60_000;
+/** Tries at ending a replaced box before leaving it to the provider's own stop. */
+const retireAttempts = 5;
+
+/** A replaced attempt's box, to end at the provider. */
+export interface Retirement {
+  readonly attemptId: string;
+  readonly environment: Environment;
+  readonly resource: Resource;
+}
 const fail = (reason: ProvisioningFailure["reason"]) => new ProvisioningFailure({ reason });
 
 const decodeInput = Effect.fn("Provisioning.decodeInput")(
@@ -885,6 +894,51 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     return receipt;
   });
 
+  /** Boxes of replaced attempts that may still run at the provider, oldest first. */
+  const retirements = Effect.gen(function* () {
+    const rows = yield* db
+      .select({ state: provisioning.state })
+      .from(provisioning)
+      .innerJoin(attempts, eq(attempts.id, provisioning.attemptId))
+      .where(eq(attempts.active, false))
+      .orderBy(asc(attempts.generation));
+
+    const due: Array<Retirement> = [];
+
+    for (const row of rows) {
+      const s = yield* Schema.decodeEffect(ProvisioningState)(row.state);
+
+      if (s.environment && s.resource && (s.retiredAt ?? null) === null)
+        due.push({
+          attemptId: s.bootstrap.attemptId,
+          environment: s.environment,
+          resource: s.resource,
+        });
+    }
+
+    return due;
+  });
+
+  /** A failed end is tried again on later passes, a few times, before the provider's own stop. */
+  const retired = Effect.fn("Provisioning.retired")(function* (
+    attemptId: string,
+    ended: boolean,
+    now: number,
+  ) {
+    yield* Schema.decodeEffect(Millis)(now);
+    const s = yield* load(attemptId);
+
+    if ((s.retiredAt ?? null) !== null) return;
+
+    const failures = (s.retireFailures ?? 0) + (ended ? 0 : 1);
+
+    yield* save({
+      ...s,
+      retireFailures: failures,
+      retiredAt: ended || failures >= retireAttempts ? now : null,
+    });
+  });
+
   const nextWake = active.pipe(
     Effect.map((s) => {
       if (!s) return null;
@@ -913,6 +967,8 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     claim,
     record,
     requestWake,
+    retirements,
+    retired,
     nextWake,
     context,
     replayEnrollment,
@@ -926,13 +982,14 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
  * Keep the captured Crypto implementation synchronous for Drizzle's transactionSync.
  * Claims last 30 seconds; startup/reconciliation gets 10 minutes. Persist nextWake as an alarm.
  * Timeout blocks status, not the assignment. Only an explicit wake event can reopen reconciliation.
- * Attempt generation stays 1: initialize refuses historical/replacement attempts in this slice.
+ * An operator attempt replaced by Attempts.replace binds a fresh provisioning row on initialize;
+ * the replaced row is kept for history and its box listed in retirements until ended.
  * Enrollment/readiness/wake history is retained without pruning for durable replay.
  * Old exact enrollment/ready retries acknowledge history; they never restore current authority.
  * record consumes a claim. Repeating record after commit returns stale-claim; read current instead.
  * WakeReceipt acknowledges admission only. Control must persist its own per-input final response
  * from ProvisioningStatus, including responsePolicy/outbox handoffs. No simulated invocation is made.
- * No replacement, same-kernel recovery, continuous health or model authority is supported.
+ * No same-kernel recovery, continuous health or model authority is supported.
  */
 export interface Interface {
   readonly initialize: (
@@ -979,6 +1036,13 @@ export interface Interface {
     inputId: string,
     now: number,
   ) => Effect.Effect<WakeReceipt, ProvisioningFailure>;
+  readonly retirements: Effect.Effect<ReadonlyArray<Retirement>, ProvisioningFailure>;
+  /** Records one try at ending a replaced attempt's box. */
+  readonly retired: (
+    attemptId: string,
+    ended: boolean,
+    now: number,
+  ) => Effect.Effect<void, ProvisioningFailure>;
   readonly nextWake: Effect.Effect<number | null, ProvisioningFailure>;
   readonly context: (bootstrap: Bootstrap) => Effect.Effect<EnrollmentContext, ProvisioningFailure>;
   readonly replayEnrollment: (
@@ -1042,6 +1106,10 @@ export const layerNoDeps = Layer.effect(
       ),
       requestWake: Effect.fn("Provisioning.requestWakeAtomic")((id, now) =>
         atomic((q) => q.requestWake(id, now)),
+      ),
+      retirements: atomic((q) => q.retirements),
+      retired: Effect.fn("Provisioning.retiredAtomic")((attemptId, ended, now) =>
+        atomic((q) => q.retired(attemptId, ended, now)),
       ),
       nextWake: atomic((q) => q.nextWake),
       context: Effect.fn("Provisioning.contextAtomic")((input) => atomic((q) => q.context(input))),

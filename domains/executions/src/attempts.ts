@@ -43,6 +43,46 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     return attempt;
   });
 
+  /**
+   * A new generation takes over from the active operator attempt, carrying its turns still in
+   * flight, so they settle on it. The replaced attempt keeps its history and loses its authority.
+   */
+  const replace = Effect.fn("Attempts.replace")(function* (taskId: string, now: number) {
+    yield* Schema.decodeEffect(Schema.NonEmptyString)(taskId);
+    yield* Schema.decodeEffect(Millis)(now);
+
+    const [row] = yield* db
+      .select()
+      .from(attempts)
+      .where(and(eq(attempts.taskId, taskId), eq(attempts.active, true)));
+
+    if (!row) return yield* new Conflict({ message: "No active attempt to replace" });
+
+    const previous = yield* Schema.decodeEffect(Attempt)(row);
+
+    if (previous.mode !== "operator")
+      return yield* new Conflict({ message: "Only operator attempts are replaced" });
+
+    const current: Attempt = {
+      id: yield* crypto.randomUUIDv4(),
+      taskId,
+      generation: previous.generation + 1,
+      mode: previous.mode,
+      active: true,
+      createdAt: now,
+    };
+
+    yield* db.update(attempts).set({ active: false }).where(eq(attempts.id, previous.id));
+    yield* db.insert(attempts).values(current);
+
+    yield* db
+      .update(invocations)
+      .set({ attemptId: current.id, generation: current.generation })
+      .where(and(eq(invocations.attemptId, previous.id), eq(invocations.status, "pending")));
+
+    return { previous, current };
+  });
+
   const schedule = Effect.fn("Attempts.schedule")(function* (
     attempt: Attempt,
     inputId: string,
@@ -216,7 +256,17 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     };
   }).pipe(Effect.withSpan("Attempts.snapshot"));
 
-  return { ensure, schedule, accept, scheduledInputIds, accepted, due, nextWake, snapshot };
+  return {
+    ensure,
+    replace,
+    schedule,
+    accept,
+    scheduledInputIds,
+    accepted,
+    due,
+    nextWake,
+    snapshot,
+  };
 };
 
 export interface Interface {
@@ -225,6 +275,10 @@ export interface Interface {
     now: number,
     mode: Mode,
   ) => Effect.Effect<Attempt, ExecutionError>;
+  readonly replace: (
+    taskId: string,
+    now: number,
+  ) => Effect.Effect<{ readonly previous: Attempt; readonly current: Attempt }, ExecutionError>;
   readonly schedule: (
     attempt: Attempt,
     inputId: string,
@@ -279,6 +333,12 @@ export const layerNoDeps = Layer.effect(
         wrap(
           "ensure",
           db.transaction((tx) => queries(tx).ensure(taskId, now, mode)),
+        ),
+      ),
+      replace: Effect.fn("Attempts.replaceAtomic")((taskId, now) =>
+        wrap(
+          "replace",
+          db.transaction((tx) => queries(tx).replace(taskId, now)),
         ),
       ),
       schedule: Effect.fn("Attempts.scheduleAtomic")((attempt, inputId, dueAt, content) =>

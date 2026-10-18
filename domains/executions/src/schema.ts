@@ -102,6 +102,9 @@ export const ProvisioningState = Schema.Struct({
   grant: Schema.NullOr(EpochGrant),
   ready: Schema.NullOr(ReadinessReceipt),
   updatedAt: Millis,
+  /** Once a replaced attempt's box was ended, or Notus gave up ending it. */
+  retiredAt: Schema.optionalKey(Schema.NullOr(Millis)),
+  retireFailures: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 export interface ProvisioningState extends Schema.Schema.Type<typeof ProvisioningState> {}
 export const provisioning = sqliteTable("execution_provisioning", {

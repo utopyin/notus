@@ -36,6 +36,11 @@ export interface Interface {
     resource: Resource,
     seconds: number | null,
   ) => Effect.Effect<void, DevboxFailure>;
+  /** Ends a box at the provider; one already gone counts as ended. */
+  readonly end: (
+    environment: Environment,
+    resource: Resource,
+  ) => Effect.Effect<void, DevboxFailure>;
   readonly verifyReplacement: (
     environment: Environment | null,
     previous: Enrollment,
@@ -101,6 +106,26 @@ export const layerNoDeps = Layer.effect(
           ),
         );
       }),
+      end: Effect.fn("Devbox.end")(
+        function* (environment, resource) {
+          const provider = yield* port(environment);
+
+          yield* provider.end(resource).pipe(
+            Effect.catchIf(
+              (error) => error.outcome === "notFound",
+              () => Effect.void,
+            ),
+            Effect.tapError((error) =>
+              Effect.logWarning(`devbox.end_failed ${error.operation} ${error.outcome}`),
+            ),
+            Effect.mapError(() => failure("unavailable")),
+          );
+        },
+        Effect.timeoutOrElse({
+          duration: "20 seconds",
+          orElse: () => Effect.fail(failure("unavailable")),
+        }),
+      ),
       verifyReplacement: Effect.fn("Devbox.verifyReplacement")(
         function* (environment, previous, current) {
           if (
@@ -226,6 +251,7 @@ export const disabled = Layer.succeed(
     perform: () => Effect.succeed(ProvisioningResult.cases.Rejected.make({})),
     fetch: () => Effect.fail(failure("disabled")),
     hold: () => Effect.fail(failure("disabled")),
+    end: () => Effect.fail(failure("disabled")),
     verifyReplacement: () => Effect.fail(failure("disabled")),
   }),
 );

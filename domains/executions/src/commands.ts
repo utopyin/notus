@@ -208,6 +208,30 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         ),
       );
   });
+  /**
+   * After a replacement, open commands of an earlier attempt: those for its box fail, since that
+   * box is gone, and control actions move to the active attempt with their claim untouched, so a
+   * lease still running completes and a lost one is offered again as before. Idempotent.
+   */
+  const reassign = Effect.fn("Commands.reassign")(function* (now: number) {
+    yield* Schema.decodeEffect(Millis)(now);
+
+    const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
+    if (!attempt) return;
+
+    const open = or(eq(commands.status, "pending"), eq(commands.status, "claimed"));
+    const stale = ne(commands.attemptId, attempt.id);
+
+    yield* db
+      .update(commands)
+      .set({ status: "failed", failure: "the dev box was replaced", updatedAt: now })
+      .where(and(stale, open, eq(commands.executor, "runtime")));
+
+    yield* db
+      .update(commands)
+      .set({ attemptId: attempt.id, generation: attempt.generation, updatedAt: now })
+      .where(and(stale, open, eq(commands.executor, "control")));
+  });
   const ofStep = Effect.fn("Commands.ofStep")(function* (stepId: string) {
     return yield* Schema.decodeEffect(Schema.Array(CommandRow))(
       yield* db.select().from(commands).where(eq(commands.stepId, stepId)),
@@ -224,7 +248,18 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     );
   }).pipe(Effect.withSpan("Commands.snapshot"));
 
-  return { enqueue, claim, claimControl, complete, observe, fail, ofStep, lastPoll, snapshot };
+  return {
+    enqueue,
+    claim,
+    claimControl,
+    complete,
+    observe,
+    fail,
+    reassign,
+    ofStep,
+    lastPoll,
+    snapshot,
+  };
 };
 
 /**
@@ -252,6 +287,7 @@ export interface Interface {
     now: number,
   ) => Effect.Effect<CommandRow, ExecutionError>;
   readonly fail: (id: string, failure: string, now: number) => Effect.Effect<void, ExecutionError>;
+  readonly reassign: (now: number) => Effect.Effect<void, ExecutionError>;
   readonly ofStep: (stepId: string) => Effect.Effect<ReadonlyArray<CommandRow>, ExecutionError>;
   readonly lastPoll: Effect.Effect<Poll | null, ExecutionError>;
   readonly snapshot: Effect.Effect<ReadonlyArray<CommandRow>, ExecutionError>;
@@ -283,6 +319,12 @@ export const layerNoDeps = Layer.effect(
         wrap(
           "claim",
           db.transaction((tx) => queries(tx).claim(epoch, now)),
+        ),
+      ),
+      reassign: Effect.fn("Commands.reassignAtomic")((now) =>
+        wrap(
+          "reassign",
+          db.transaction((tx) => queries(tx).reassign(now)),
         ),
       ),
       claimControl: Effect.fn("Commands.claimControlAtomic")((now) =>
