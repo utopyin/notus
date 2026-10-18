@@ -18,10 +18,13 @@ const TokenResponse = Schema.Struct({
   expires_in: Schema.Finite.check(Schema.isGreaterThan(0)),
   id_token: Schema.optionalKey(Schema.NonEmptyString),
 });
+
 const claim = "https://api.openai.com/auth";
+
 const Claims = Schema.fromJsonString(
   Schema.Struct({ [claim]: Schema.Struct({ chatgpt_account_id: Schema.NonEmptyString }) }),
 );
+
 const invalid = (operation: OAuthError["operation"]) =>
   new OAuthError({ operation, reason: "invalid-response" });
 
@@ -29,16 +32,20 @@ const invalid = (operation: OAuthError["operation"]) =>
 export const accountIdFromJwt = Effect.fn("OpenAi.OAuth.accountIdFromJwt")(function* (jwt: string) {
   const payload = jwt.split(".")[1];
   if (payload === undefined) return yield* invalid("refresh");
+
   const bytes = yield* Effect.fromResult(Base64Url.decode(payload)).pipe(
     Effect.mapError(() => invalid("refresh")),
   );
+
   const text = yield* Effect.try({
     try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes),
     catch: () => invalid("refresh"),
   });
+
   const claims = yield* Schema.decodeEffect(Claims)(text).pipe(
     Effect.mapError(() => invalid("refresh")),
   );
+
   return claims[claim].chatgpt_account_id;
 });
 
@@ -46,6 +53,7 @@ export const accountIdFromJwt = Effect.fn("OpenAi.OAuth.accountIdFromJwt")(funct
 export const refresh = Effect.fn("OpenAi.OAuth.refresh")(
   function* (refreshToken: Redacted.Redacted<string>) {
     const http = yield* HttpClient.HttpClient;
+
     const request = HttpClientRequest.post(tokenUrl).pipe(
       HttpClientRequest.acceptJson,
       HttpClientRequest.bodyUrlParams({
@@ -54,9 +62,11 @@ export const refresh = Effect.fn("OpenAi.OAuth.refresh")(
         refresh_token: Redacted.value(refreshToken),
       }),
     );
+
     const response = yield* http
       .execute(request)
       .pipe(Effect.mapError(() => new OAuthError({ operation: "refresh", reason: "transport" })));
+
     if (response.status === 400 || response.status === 401) {
       // invalid_grant: the login was revoked or rotated elsewhere. Only a new login helps.
       return yield* new OAuthError({
@@ -65,18 +75,23 @@ export const refresh = Effect.fn("OpenAi.OAuth.refresh")(
         status: response.status,
       });
     }
+
     if (response.status !== 200)
       return yield* new OAuthError({
         operation: "refresh",
         reason: "rejected",
         status: response.status,
       });
+
     const body = yield* response.json.pipe(Effect.mapError(() => invalid("refresh")));
+
     const tokens = yield* Schema.decodeUnknownEffect(TokenResponse)(body).pipe(
       Effect.mapError(() => invalid("refresh")),
     );
+
     const accountId = yield* accountIdFromJwt(tokens.access_token);
     const now = yield* Clock.currentTimeMillis;
+
     return TokenSet.make({
       access: tokens.access_token,
       refresh: tokens.refresh_token,

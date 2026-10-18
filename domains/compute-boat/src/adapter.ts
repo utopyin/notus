@@ -26,6 +26,7 @@ import * as Schema from "effect/Schema";
 
 const provider = "boat" as const;
 const descriptor = BOAT_DESCRIPTOR;
+
 type Operation = ComputeError["operation"];
 
 /**
@@ -40,15 +41,18 @@ const Native = Schema.Struct({
     Schema.NullOr(Schema.Int.check(Schema.isBetween({ minimum: 60, maximum: 2_592_000 }))),
   ),
 });
+
 type Native = typeof Native.Type;
 
 /** The workspace's own account: its API key alone; the endpoint is the client's. */
 const Account = Schema.Struct({
   apiKey: Schema.String.check(Schema.isPattern(/^(?:boat|box)_[\x21-\x7e]{1,4096}$/)),
 });
+
 const timeoutMs = 15_000;
 /** Boat's auto-stop when the configuration sets none. */
 const boatDefaultStopSeconds = 3600;
+
 /** Linux's boot id, read through Boat's own API: the machine currently backing the sandbox. */
 const BootId = Schema.String.check(
   Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
@@ -82,29 +86,36 @@ const recipeSeconds = 540;
  * going waits for it on the lock instead of racing it for apt.
  */
 const installCommand = `sudo flock /tmp/notus-recipe.lock bash ${recipeDir}/recipe.sh >/tmp/notus-recipe.log 2>&1 && rm -rf ${recipeDir}`;
+
 /** Where a build stands between steps; the host stores it unread. */
 const Progress = Schema.Struct({
   step: Schema.Literals(["boot", "install", "save", "saving"]),
   sandboxId: SandboxId,
 });
+
 type Progress = typeof Progress.Type;
 
 /** The admins' pick, or the workspace's only snapshot. */
 const defaultOf = (templates: TemplateSet) =>
   templates.default ?? (templates.refs.length === 1 ? (templates.refs[0] ?? null) : null);
+
 const refuse = (message: string) => new ConfigurationError({ provider, message });
+
 const decodeNative = (config: Schema.Json) =>
   Schema.decodeUnknownEffect(Native)(config, { onExcessProperty: "error" }).pipe(
     Effect.mapError(() =>
       refuse("A Boat configuration names a snapshot, a size and an auto-stop time, nothing else."),
     ),
   );
+
 /** The snapshot a launch starts from: the configured one, else the default; always a listed one. */
 const templateOf = (native: Native, templates: TemplateSet) => {
   const template = native.template ?? defaultOf(templates);
   if (template === null) return Effect.fail(refuse("Choose one of the workspace's snapshots."));
+
   if (!templates.refs.includes(template))
     return Effect.fail(refuse("Configuration must select one of the workspace's snapshots."));
+
   return Effect.succeed(template);
 };
 
@@ -116,6 +127,7 @@ export const configuration: Configuration = {
     ),
   validateTemplate: (ref) => {
     const value = ref.trim();
+
     return Schema.is(TemplateName)(value)
       ? Effect.succeed(value)
       : Effect.fail(
@@ -144,6 +156,7 @@ const stateOf = (state: Sandbox["state"]): State => {
       return "unknown";
   }
 };
+
 const live = (state: Sandbox["state"]) => stateOf(state) === "running";
 
 /** Status and classification only: Boat's messages and bodies never reach logs or errors. */
@@ -178,6 +191,7 @@ const port = (
 ): DevboxPort => {
   const boat = <A>(f: (client: Boat.Interface) => Effect.Effect<A, BoatError>) =>
     run(Boat.Service.pipe(Effect.flatMap(f)));
+
   /** The machine's boot id, or null while none runs or it does not answer yet. */
   const bootId = (id: string) =>
     boat((client) => client.command(id, "/bin/cat /proc/sys/kernel/random/boot_id", 5)).pipe(
@@ -187,23 +201,27 @@ const port = (
       }),
       Effect.orElseSucceed(() => null),
     );
+
   /** The stored name is Notus's, not Boat's; the sandbox id alone is the identity. */
   const observe = (stored: Pick<Resource, "name" | "image">, sandbox: Sandbox) =>
     Effect.gen(function* () {
       const state = stateOf(sandbox.state);
       const instanceId = state === "running" ? yield* bootId(sandbox.id) : null;
+
       const resource: Resource = {
         id: sandbox.id,
         name: stored.name,
         instanceId,
         image: stored.image,
       };
+
       // A live sandbox whose machine does not answer yet is not known to be running.
       return {
         resource,
         state: state === "running" && instanceId === null ? "unknown" : state,
       } satisfies Observation;
     });
+
   /** Polls until the sandbox leaves its transitional states, within the Devbox call's bound. */
   const settle = (id: string, done: (state: Sandbox["state"]) => boolean, operation: Operation) =>
     Effect.gen(function* () {
@@ -213,24 +231,29 @@ const port = (
         if (done(sandbox.state)) return sandbox;
         yield* Effect.sleep("1 second");
       }
+
       return yield* boat((client) => client.get(id)).pipe(control(operation));
     });
+
   /** A plain Boat machine, keyed by the build, with nothing of the account's on it. */
   const buildMachine = (input: Build) => ({
     idempotencyKey: input.operationId,
     type: "small" as const,
     ttlSeconds: buildStopSeconds,
   });
+
   /** The host stores progress unread, so anything else is a defect of this adapter. */
   const progressOf = (input: Build) =>
     input.progress === null
       ? Effect.succeed(null)
       : Schema.decodeUnknownEffect(Progress)(input.progress).pipe(Effect.orDie);
+
   const next = (progress: Progress, afterMs: number): BuildStep => ({
     _tag: "Continue",
     progress,
     afterMs,
   });
+
   const removeBuildMachine = (sandboxId: string) =>
     boat((client) => client.remove(sandboxId)).pipe(
       Effect.catchIf(
@@ -239,39 +262,52 @@ const port = (
       ),
       control("build"),
     );
+
   /** Removes the build machine, then reports why the build cannot go on. */
   const abandon = (sandboxId: string, reason: string) =>
     removeBuildMachine(sandboxId).pipe(Effect.as<BuildStep>({ _tag: "Failed", reason }));
+
   const buildStep = (input: Build) =>
     Effect.gen(function* () {
       const progress = yield* progressOf(input);
+
       if (progress === null) {
         const sandbox = yield* boat((client) => client.create(buildMachine(input))).pipe(
           control("build"),
         );
+
         return next({ step: "boot", sandboxId: sandbox.id }, 1000);
       }
+
       const { sandboxId } = progress;
+
       switch (progress.step) {
         case "boot": {
           const sandbox = yield* boat((client) => client.get(sandboxId)).pipe(control("build"));
+
           if (live(sandbox.state)) return next({ step: "install", sandboxId }, 0);
+
           if (sandbox.state === "error" || sandbox.state === "cancelled")
             return yield* abandon(sandboxId, "Boat could not start a machine to build on.");
+
           return next(progress, 2000);
         }
         case "install": {
           if (files.find((file) => file.name === "recipe.sh") === undefined)
             return yield* abandon(sandboxId, "This deployment ships no Boat recipe.");
+
           for (const file of files)
             yield* boat((client) =>
               client.writeFile(sandboxId, `${recipeDir}/${file.name}`, file.content),
             ).pipe(control("build"));
+
           const result = yield* boat((client) =>
             client.command(sandboxId, installCommand, recipeSeconds),
           ).pipe(control("build"));
+
           if (result.exitCode !== 0)
             return yield* abandon(sandboxId, "The Notus recipe failed on the build machine.");
+
           return next({ step: "save", sandboxId }, 0);
         }
         case "save": {
@@ -282,19 +318,25 @@ const port = (
           const snapshot = yield* boat((client) => client.getSnapshot(builtName)).pipe(
             control("build"),
           );
+
           if (snapshot.status === "saving") return next(progress, 5000);
+
           if (snapshot.status === "failed")
             return yield* abandon(sandboxId, "Boat could not save the snapshot.");
+
           yield* removeBuildMachine(sandboxId);
+
           return { _tag: "Ready", ref: builtName } satisfies BuildStep;
         }
       }
     });
+
   return {
     launch: Effect.fn("Compute.Boat.launch")(function* (input) {
       const set = yield* templates.approved(workspaceId, provider);
       const native = yield* decodeNative(input.config);
       const template = yield* templateOf(native, set);
+
       const controlUrl = yield* Schema.decodeEffect(Plain)(input.bootstrap.controlUrl).pipe(
         Effect.mapError(() => refuse("The control URL cannot be written for the box.")),
       );
@@ -303,6 +345,7 @@ const port = (
       ).pipe(
         Effect.mapError(() => refuse("The bootstrap credential cannot be written for the box.")),
       );
+
       const sandbox = yield* boat((client) =>
         client.create({
           // One operation, one sandbox: a lost answer retried with the same body returns it.
@@ -314,6 +357,7 @@ const port = (
           setupScript,
         }),
       ).pipe(control("launch"));
+
       return { id: sandbox.id, name: input.name, instanceId: null, image: { template } };
     }),
     // Boat takes no name at create, so a lost result leaves no handle beyond the idempotency key,
@@ -330,6 +374,7 @@ const port = (
         Effect.andThen(
           Effect.gen(function* () {
             let sandbox = yield* settle(resource.id, (state) => state !== "archiving", "wake");
+
             if (sandbox.state === "archived")
               sandbox = yield* boat((client) => client.resume(resource.id)).pipe(
                 // A stopped box whose disk Boat deleted after 14 days is gone for good.
@@ -344,13 +389,16 @@ const port = (
                 ),
                 control("wake"),
               );
+
             if (sandbox.state === "cancelled" || sandbox.state === "error")
               return yield* observe(resource, sandbox);
+
             sandbox = yield* settle(
               resource.id,
               (state) => live(state) || state === "error",
               "wake",
             );
+
             return yield* observe(resource, sandbox);
           }),
         ),
@@ -385,6 +433,7 @@ const port = (
             native.autoStopSeconds === undefined ? boatDefaultStopSeconds : native.autoStopSeconds;
           // Without auto-stop there is nothing to hold off.
           if (stop === null) return Effect.void;
+
           return boat((client) =>
             client.setDeadline(resource.id, seconds === null ? stop : Math.max(stop, seconds)),
           ).pipe(control("hold"));
@@ -398,8 +447,10 @@ const port = (
             // One machine per sandbox: while this one runs, a different boot cannot.
             const sandbox = yield* boat((client) => client.get(resource.id)).pipe(control("proof"));
             const current = live(sandbox.state) ? yield* bootId(sandbox.id) : null;
+
             if (current === null || current === previousInstanceId)
               return yield* new ComputeError({ provider, operation: "proof", outcome: "rejected" });
+
             return {
               instanceId: previousInstanceId,
               // An upper bound: the previous boot ended no later than this observation.
@@ -425,6 +476,7 @@ const port = (
                     control("build"),
                   )).id
                 : progress.sandboxId;
+
             yield* removeBuildMachine(sandboxId);
           }),
         ),
@@ -438,21 +490,26 @@ export const adapter = Effect.gen(function* () {
   const credentials = yield* ComputeCredentials;
   const templates = yield* Templates;
   const files = (yield* Recipe).files(provider);
+
   return {
     provider,
     descriptor,
     configuration,
     forWorkspace: Effect.fn("Compute.Boat.forWorkspace")(function* (workspaceId: string) {
       const stored = yield* credentials.get(workspaceId, provider);
+
       if (Option.isNone(stored)) return yield* new ConnectionError({ provider, reason: "missing" });
+
       const account = yield* Schema.decodeUnknownEffect(Account)(stored.value).pipe(
         Effect.mapError(() => new ConnectionError({ provider, reason: "invalid" })),
       );
+
       // The key passed the client's own credential rule above, so building it cannot refuse it.
       const client = Boat.layer.pipe(
         Layer.provide(Config.layer({ credential: Redacted.make(account.apiKey), timeoutMs })),
         Layer.orDie,
       );
+
       return port(workspaceId, templates, files, (effect) => effect.pipe(Effect.provide(client)));
     }),
   } satisfies ProviderAdapter;

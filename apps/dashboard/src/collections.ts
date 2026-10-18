@@ -34,6 +34,7 @@ const scopeCollection = (workspaceId: string) =>
       onInsert: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.modified;
+
           const result = await addScope({
             data: {
               workspaceId,
@@ -45,12 +46,14 @@ const scopeCollection = (workspaceId: string) =>
               },
             },
           });
+
           if (!result.ok) throw new Error(result.reason);
         }
       },
       onDelete: async ({ transaction }) => {
         for (const mutation of transaction.mutations) {
           const row = mutation.original;
+
           const result = await removeScope({
             data: {
               workspaceId,
@@ -61,11 +64,13 @@ const scopeCollection = (workspaceId: string) =>
               },
             },
           });
+
           if (!result.ok) throw new Error(result.reason);
         }
       },
     }),
   );
+
 const inviteCollection = (workspaceId: string) =>
   createCollection(
     queryCollectionOptions({
@@ -95,17 +100,23 @@ const inviteCollection = (workspaceId: string) =>
       },
     }),
   );
+
 const collections = new Map<
   string,
   { scopes: ReturnType<typeof scopeCollection>; invites: ReturnType<typeof inviteCollection> }
 >();
+
 export const collectionsOf = (workspaceId: string) => {
   const existing = collections.get(workspaceId);
+
   if (existing) return existing;
+
   const created = {
     scopes: scopeCollection(workspaceId),
     invites: inviteCollection(workspaceId),
   };
+
   collections.set(workspaceId, created);
+
   return created;
 };

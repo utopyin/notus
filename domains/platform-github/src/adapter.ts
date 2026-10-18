@@ -32,8 +32,10 @@ export class Configuration extends Context.Service<
 >()("@notus/platform-github/Configuration") {}
 
 const unsupported = () => new SourceError({ classification: "unsupported" });
+
 const ingressError = (reason: IngressError["reason"]) =>
   new IngressError({ platform: "github", reason });
+
 /** A timed-out or undecodable write may have landed, so it is ambiguous, never retried blindly. */
 const sourceError = (error: AppError) =>
   new SourceError({
@@ -46,20 +48,28 @@ const sourceError = (error: AppError) =>
             : "rejected"
           : "ambiguous",
   });
+
 /** A repository scope, "owner/name", as only this adapter spells it. */
 const Segment = /^[A-Za-z0-9._-]{1,100}$/;
+
 const repositoryOf = (scope: string) =>
   Effect.gen(function* () {
     const [owner, name, ...rest] = scope.split("/");
+
     if (rest.length > 0 || !owner || !name || !Segment.test(owner) || !Segment.test(name))
       return yield* unsupported();
+
     return { owner, name };
   });
+
 const PullNumber = Schema.String.check(Schema.isPattern(/^[1-9]\d{0,9}$/));
+
 const PullTarget = Schema.fromJsonString(
   Schema.Tuple([Webhooks.TargetKind, Schema.String.check(Schema.isPattern(/^\d{1,20}$/))]),
 );
+
 const writers = new Set<Role>(["admin", "maintain", "write"]);
+
 const installError = (error: AppError) =>
   new InstallError({
     platform: "github",
@@ -73,6 +83,7 @@ const installError = (error: AppError) =>
             : "invalid-response",
     detail: `${error.operation} ${error.reason}${error.status === undefined ? "" : ` http=${error.status}`}`,
   });
+
 const refused = (detail: string) =>
   new InstallError({ platform: "github", reason: "rejected", detail });
 
@@ -89,19 +100,24 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       request: IngressRequest,
     ): Effect.fn.Return<Normalized, IngressError> {
       if (configuration.webhookSecret === null) return yield* ingressError("unconfigured");
+
       yield* Webhooks.verify(
         request.body,
         request.header("x-hub-signature-256"),
         configuration.webhookSecret,
       ).pipe(Effect.mapError(() => ingressError("signature")));
+
       const decoded = yield* Webhooks.decode(
         request.header("x-github-event"),
         request.header("x-github-delivery"),
         request.body,
       ).pipe(Effect.mapError(() => ingressError("envelope")));
+
       if (decoded.type === "ping") return { type: "ignored", reason: "ping" };
       if (decoded.type === "ignored") return { type: "ignored", reason: decoded.reason };
+
       const feedback = decoded.feedback;
+
       // Notus's own comments, and any bot or app, must never start another round.
       if (
         feedback.author.type === "Bot" ||
@@ -109,8 +125,10 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         feedback.viaAppId !== null
       )
         return { type: "ignored", reason: "bot" };
+
       const occurredAt = Webhooks.orderedTimestamp(feedback.createdAt);
       if (occurredAt === null) return yield* ingressError("envelope");
+
       const received = yield* Schema.decodeEffect(Received)({
         eventId: key(feedback.installationId, feedback.deliveryId),
         actor: {
@@ -137,6 +155,7 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         startIntent: false,
         root: false,
       }).pipe(Effect.mapError(() => ingressError("envelope")));
+
       return { type: "input", received };
     });
 
@@ -151,34 +170,44 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
       complete: Effect.fn("GitHub.install")(function* (intent, query) {
         if (configuration.installer === null)
           return yield* new InstallError({ platform: "github", reason: "unconfigured" });
+
         // The setup URL's installation_id is whatever the browser carries, so it proves nothing.
         const installationId = query.get("installation_id");
+
         if (!installationId || !/^\d{1,20}$/.test(installationId))
           return yield* refused("no-installation-id");
+
         // The App JWT confirms the installation exists and names the account it belongs to.
         const installation = yield* app
           .installation(installationId)
           .pipe(Effect.mapError(installError));
+
         // What proves it is the installer's own: their GitHub user token reaches the installation,
         // with push on every repository it covers, so claiming it grants nothing they lack.
         const token = yield* configuration.installer(intent.userId);
         if (token === null) return yield* refused("github-sign-in-required");
+
         const reached = yield* app
           .userRepositories(installation.id, token)
           .pipe(Effect.mapError(installError));
         if (reached === null) return yield* refused("not-your-installation");
+
         const pushable = new Set(
           reached.filter((entry) => entry.push).map((entry) => entry.fullName.toLowerCase()),
         );
+
         const covered = yield* app.forInstallation(installation.id).pipe(
           Effect.flatMap((bound) => bound.repositories),
           Effect.mapError(installError),
         );
+
         if (covered.some((entry) => !pushable.has(entry.fullName.toLowerCase())))
           return yield* refused("push-access-required");
+
         return { installationId: installation.id, label: installation.account, credential: {} };
       }),
     };
+
     /** The surfaces for one installation, over App operations bound to it. */
     const surfacesOf = (installationId: string, bound: App.Bound): InstallationSurfaces => {
       const resolveReply = Effect.fn("GitHub.resolveReply")(function* (
@@ -187,26 +216,33 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         const validated = yield* Schema.decodeEffect(ReplyTarget)(target).pipe(
           Effect.mapError(unsupported),
         );
+
         if (
           validated.source.platform !== "github" ||
           validated.source.installationId !== installationId
         )
           return yield* unsupported();
+
         const repository = yield* repositoryOf(validated.source.scope);
+
         const number = yield* Schema.decodeEffect(PullNumber)(validated.source.conversation).pipe(
           Effect.mapError(unsupported),
         );
         const [kind, id] = yield* Schema.decodeEffect(PullTarget)(validated.target).pipe(
           Effect.mapError(unsupported),
         );
+
         const pullNumber = Number(number);
+
         return {
           react: Effect.fn("GitHub.react")(function* (deliveryId) {
             // Reviews themselves cannot carry reactions on GitHub; the answer still follows.
             if (!deliveryId || kind === "review") return yield* unsupported();
+
             yield* bound
               .react(repository, { kind, commentId: id })
               .pipe(Effect.mapError(sourceError));
+
             return { reference: key("github-reaction", kind, id), deliveryId };
           }),
           reply: Effect.fn("GitHub.reply")(function* (text, deliveryId) {
@@ -218,6 +254,7 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
                     body: text,
                   })
                 : yield* bound.comment(repository, { pullNumber, body: text });
+
             return { reference: key("github-comment", posted.id), deliveryId };
           }, Effect.mapError(sourceError)),
         };
@@ -227,12 +264,15 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         scope: PlatformId,
       ) {
         const repository = yield* repositoryOf(scope);
+
         // Only collaborators with write access may steer a task through its pull request.
         const role = yield* bound
           .collaboratorRole(repository, actor.externalId)
           .pipe(Effect.mapError(sourceError));
+
         return writers.has(role);
       });
+
       return {
         scopes: {
           // Every repository the installation reaches is coverable; the App is already "in" it.
@@ -261,6 +301,7 @@ export const adapter: Effect.Effect<PlatformAdapter, never, Configuration | App.
         identity: { mayParticipate },
       };
     };
+
     return {
       platform: "github",
       descriptor: GITHUB_DESCRIPTOR,

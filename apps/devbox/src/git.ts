@@ -5,6 +5,7 @@ import * as FileSystem from "effect/FileSystem";
 /** The OS user every command and specialist runs as; git reads its configuration from here. */
 export const home = "/home/devbox";
 const credentialsPath = `${home}/.git-credentials`;
+
 /** True when git on the box is signed in as the initiator. */
 export const signedIn = Effect.fn("Devbox.Git.signedIn")(function* () {
   const fs = yield* FileSystem.FileSystem;
@@ -12,6 +13,7 @@ export const signedIn = Effect.fn("Devbox.Git.signedIn")(function* () {
 });
 
 const line = (value: string) => value.replace(/[\r\n"\\]/g, " ").trim();
+
 const write = (path: string, content: string) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
@@ -29,6 +31,7 @@ export const configure = Effect.fn("Devbox.Git.configure")(function* (
 ) {
   const fs = yield* FileSystem.FileSystem;
   const identity = login ?? { name: "Notus", email: "notus[bot]@users.noreply.github.com" };
+
   yield* write(
     `${home}/.gitconfig`,
     [
@@ -44,7 +47,9 @@ export const configure = Effect.fn("Devbox.Git.configure")(function* (
       "",
     ].join("\n"),
   );
+
   if (login === null) return yield* fs.remove(credentialsPath).pipe(Effect.ignore);
+
   yield* write(credentialsPath, `https://x-access-token:${login.token}@github.com\n`);
 });
 export * as Git from "./git";

@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
 /** One thread message as the operator sees it. Provider markup is passed through. */
 export const Message = Schema.Struct({
   role: Schema.Literals(["user", "assistant"]),

@@ -42,6 +42,7 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+
     const workspaceOf = Effect.fn("Access.workspaceOf")(
       function* (ref: InstallationRef) {
         const rows = yield* store.db
@@ -49,6 +50,7 @@ export const layerNoDeps = Layer.effect(
           .from(installations)
           .where(eq(installations.key, key(ref.platform, ref.installationId)))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InstallationRow))));
+
         return rows[0]?.workspaceId ?? null;
       },
       Effect.mapError((cause) => new AccessError({ operation: "workspaceOf", cause })),
@@ -60,6 +62,7 @@ export const layerNoDeps = Layer.effect(
           .from(scopes)
           .where(and(eq(scopes.workspaceId, workspaceId), eq(scopes.platform, "github")))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))));
+
         return rows.map((row) => ({ installationId: row.installationId, fullName: row.scope }));
       },
       Effect.mapError((cause) => new AccessError({ operation: "repositories", cause })),
@@ -71,6 +74,7 @@ export const layerNoDeps = Layer.effect(
       const source = yield* Schema.decodeEffect(Source)(value).pipe(
         Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
       );
+
       const rows = yield* store.db
         .select()
         .from(scopes)
@@ -81,6 +85,7 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))),
           Effect.mapError((cause) => new AccessError({ operation: "authorizeSource", cause })),
         );
+
       if (rows.length === 0)
         return yield* new Denied({ workspaceId, reason: "Scope is not one the workspace covers" });
     });
@@ -90,6 +95,7 @@ export const layerNoDeps = Layer.effect(
       source: Source,
     ) {
       yield* authorizeSource(workspaceId, source);
+
       const rows = yield* store.db
         .select()
         .from(memberships)
@@ -98,13 +104,16 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow))),
           Effect.mapError((cause) => new AccessError({ operation: "authorizeStart", cause })),
         );
+
       if (rows.length === 0)
         return yield* new Denied({
           workspaceId,
           reason: "Initiator is not a fixture workspace member",
         });
+
       return { workspaceId, initiatorId: userId };
     });
+
     return Service.of({ workspaceOf, repositories, authorizeSource, authorizeStart });
   }),
 );

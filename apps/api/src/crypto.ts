@@ -8,10 +8,12 @@ export const cryptoLayer = Layer.sync(Crypto.Crypto, () =>
   Crypto.make({
     randomBytes: (size) => {
       const bytes = new Uint8Array(size);
+
       // Web Crypto limits each getRandomValues call to 65,536 bytes.
       for (let offset = 0; offset < size; offset += 65_536) {
         globalThis.crypto.getRandomValues(bytes.subarray(offset, offset + 65_536));
       }
+
       return bytes;
     },
     digest: (algorithm, data) =>

@@ -90,6 +90,7 @@ export const PushOutcome = Schema.Struct({
   error: Schema.NullOr(Schema.String),
 });
 export interface PushOutcome extends Schema.Schema.Type<typeof PushOutcome> {}
+
 const Slug = Schema.String.annotate({
   description:
     "Short branch slug, lowercase letters, digits and dashes; the branch becomes <initiator username>/<slug>.",
@@ -184,6 +185,7 @@ export const toolkit = Toolkit.make(
  * from provider observations, so the handlers here are unreachable by construction.
  */
 const unreachable = () => Effect.die("tool calls are executed durably by control, never inline");
+
 export const ready = toolkit.pipe(
   Effect.provide(
     toolkit.toLayer({

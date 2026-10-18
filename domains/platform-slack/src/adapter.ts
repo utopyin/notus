@@ -36,6 +36,7 @@ const Credential = Schema.Struct({
 });
 
 const unsupported = () => new SourceError({ classification: "unsupported" });
+
 const ingressError = (reason: IngressError["reason"]) =>
   new IngressError({ platform: "slack", reason });
 
@@ -72,20 +73,29 @@ export const adapter: Effect.Effect<
       request.header("x-slack-signature"),
       configuration.signingSecret,
     ).pipe(Effect.mapError(() => ingressError("signature")));
+
     const envelope = yield* Events.decode(request.body).pipe(
       Effect.mapError(() => ingressError("envelope")),
     );
+
     if (envelope.type === "url_verification")
       return { type: "acknowledge", body: { challenge: envelope.challenge } };
+
     if (envelope.type === "ignored") return { type: "ignored", reason: "event" };
+
     const event = envelope.event;
+
     if (event.team !== undefined && event.team !== envelope.team_id)
       return { type: "ignored", reason: "foreign-team" };
+
     // The bot's own messages must never start another round; the team's credential names it.
     const credential = yield* credentialOf(envelope.team_id);
+
     if (Option.isNone(credential)) return { type: "ignored", reason: "unknown-team" };
     if (event.user === credential.value.botUserId) return { type: "ignored", reason: "self" };
+
     const rootTs = event.thread_ts ?? event.ts;
+
     const received = yield* Schema.decodeEffect(Received)({
       eventId: key(envelope.team_id, envelope.event_id),
       actor: { platform: "slack", installationId: envelope.team_id, externalId: event.user },
@@ -104,6 +114,7 @@ export const adapter: Effect.Effect<
         event.type === "app_mention" || event.text.includes(`<@${credential.value.botUserId}>`),
       root: rootTs === event.ts,
     }).pipe(Effect.mapError(() => ingressError("envelope")));
+
     return { type: "input", received };
   });
 
@@ -121,13 +132,16 @@ export const adapter: Effect.Effect<
     complete: Effect.fn("Slack.install")(function* (intent, query) {
       if (configuration.oauth === null)
         return yield* new InstallError({ platform: "slack", reason: "unconfigured" });
+
       const code = query.get("code");
+
       if (!code)
         return yield* new InstallError({
           platform: "slack",
           reason: "rejected",
           detail: "no-code",
         });
+
       const grant = yield* OAuth.exchange({
         clientId: configuration.oauth.clientId,
         clientSecret: configuration.oauth.clientSecret,
@@ -144,6 +158,7 @@ export const adapter: Effect.Effect<
             }),
         ),
       );
+
       return {
         installationId: grant.teamId,
         label: grant.teamName,
@@ -170,6 +185,7 @@ export const adapter: Effect.Effect<
           }),
       ),
     );
+
   /** The surfaces for one team, over a client holding that team's bot token. */
   const surfacesOf = (teamId: string, slack: Slack.Interface): InstallationSurfaces => {
     const resolveReply = Effect.fn("Slack.resolveReply")(function* (
@@ -178,6 +194,7 @@ export const adapter: Effect.Effect<
       const validated = yield* Schema.decodeEffect(ReplyTarget)(target).pipe(
         Effect.mapError(unsupported),
       );
+
       if (
         validated.source.platform !== "slack" ||
         validated.source.installationId !== teamId ||
@@ -185,8 +202,10 @@ export const adapter: Effect.Effect<
         !Schema.is(Events.Timestamp)(validated.target)
       )
         return yield* unsupported();
+
       const channel = validated.source.scope;
       const rootTs = validated.source.conversation;
+
       return {
         react: Effect.fn("Slack.react")(function* (deliveryId) {
           if (!deliveryId) return yield* unsupported();
@@ -199,6 +218,7 @@ export const adapter: Effect.Effect<
         }),
       };
     });
+
     return {
       scopes: {
         list: slack.listChannels.pipe(
@@ -222,6 +242,7 @@ export const adapter: Effect.Effect<
           const source = yield* Schema.decodeEffect(Source)(origin).pipe(
             Effect.mapError(unsupported),
           );
+
           if (
             source.platform !== target.platform ||
             source.installationId !== target.installationId ||
@@ -229,7 +250,9 @@ export const adapter: Effect.Effect<
             source.conversation !== target.conversation
           )
             return yield* unsupported();
+
           const handle = yield* resolveReply({ source, target: source.conversation });
+
           return { send: handle.reply };
         }),
       },
@@ -237,6 +260,7 @@ export const adapter: Effect.Effect<
       identity: { mayParticipate: () => Effect.succeed(true) },
     };
   };
+
   return {
     platform: "slack",
     descriptor: SLACK_DESCRIPTOR,
@@ -245,10 +269,13 @@ export const adapter: Effect.Effect<
     forInstallation: (ref: InstallationRef) =>
       Effect.gen(function* () {
         const credential = yield* credentialOf(ref.installationId);
+
         if (Option.isNone(credential)) return yield* new InstallationNotFound(ref);
+
         const slack = yield* Slack.make(Redacted.make(credential.value.botToken)).pipe(
           Effect.provideService(HttpClient.HttpClient, http),
         );
+
         return surfacesOf(ref.installationId, slack);
       }),
   };

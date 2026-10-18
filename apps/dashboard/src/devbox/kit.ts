@@ -55,6 +55,7 @@ export interface Change {
   readonly before: string | null;
   readonly after: string | null;
 }
+
 /** Every leaf of the document, by path. Lists of strings stay one leaf so they diff as a whole. */
 const leaves = (
   value: Json | undefined,
@@ -75,6 +76,7 @@ const leaves = (
     into.set(prefix, typeof value === "string" ? short(value) : JSON.stringify(value));
   }
 };
+
 /** What one document changed against the one before it. */
 export const changes = (
   before: Json | undefined,
@@ -83,9 +85,11 @@ export const changes = (
 ): ReadonlyArray<Change> => {
   const from = new Map<string, string>();
   const to = new Map<string, string>();
+
   leaves(before, "", from, short);
   leaves(after, "", to, short);
   const paths = [...new Set([...from.keys(), ...to.keys()])].sort();
+
   return paths
     .filter((path) => from.get(path) !== to.get(path))
     .map((path) => ({ path, before: from.get(path) ?? null, after: to.get(path) ?? null }));

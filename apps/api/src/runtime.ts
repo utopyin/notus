@@ -29,6 +29,7 @@ const templates = Layer.effect(
   Templates,
   Effect.gen(function* () {
     const stored = yield* WorkspaceTemplates.Service;
+
     return Templates.of({
       approved: (workspaceId, provider) =>
         stored.approved(workspaceId, provider).pipe(
@@ -55,11 +56,14 @@ export const registry = (providers: ReadonlyArray<Provider>) =>
  */
 export const execution = (settings: RuntimeConfig | null, providers: ReadonlyArray<Provider>) => {
   if (!settings) return Layer.merge(Auth.disabled, Devbox.disabled);
+
   const auth = authentication(settings);
+
   const authority = Layer.effect(
     Devbox.Authority,
     Effect.gen(function* () {
       const service = yield* Auth.Service;
+
       return Devbox.Authority.of({
         controlUrl: settings.controlUrl,
         issue: Effect.fn("Runtime.bootstrap")((bootstrap) =>
@@ -76,6 +80,8 @@ export const execution = (settings: RuntimeConfig | null, providers: ReadonlyArr
       });
     }),
   ).pipe(Layer.provide(auth));
+
   const devbox = Devbox.layerNoDeps.pipe(Layer.provide([authority, registry(providers)]));
+
   return Layer.merge(auth, devbox);
 };

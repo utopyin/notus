@@ -18,6 +18,7 @@ const client = Layer.unwrap(
     return Client.layer({ socketPath: settings.socketPath }).pipe(Layer.provide(BunSocket.layer));
   }),
 );
+
 const runtime = Supervisor.layer.pipe(
   Layer.provide(client),
   Layer.provide(Callback.layer),
@@ -27,7 +28,9 @@ const runtime = Supervisor.layer.pipe(
 const main = Effect.gen(function* () {
   const supervisor = yield* Supervisor.Service;
   const [command, ...extra] = process.argv.slice(2);
+
   if (extra.length !== 0) return yield* new Failure({ reason: "usage" });
+
   switch (command) {
     case "start":
       return yield* supervisor.start;
@@ -45,6 +48,7 @@ const main = Effect.gen(function* () {
       ? Effect.void
       : Effect.gen(function* () {
           const stdio = yield* Stdio.Stdio;
+
           // Do not print wire frames, environment, paths, daemon output or defect stacks.
           const line = yield* Schema.encodeEffect(
             Schema.fromJsonString(
@@ -54,6 +58,7 @@ const main = Effect.gen(function* () {
               }),
             ),
           )({ status: "failed", taskAuthorized: false });
+
           yield* Stream.make(line + "\n").pipe(Stream.run(stdio.stderr()));
         }).pipe(Effect.orDie),
   ),

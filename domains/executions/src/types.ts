@@ -19,6 +19,7 @@ export const Observation = Schema.Struct({
 export interface Observation extends Schema.Schema.Type<typeof Observation> {}
 
 const Positive = Schema.Int.check(Schema.isGreaterThan(0));
+
 export const Phase = Schema.Literals([
   "pending-create",
   "creating",
@@ -122,6 +123,7 @@ export const Enrollment = Schema.Struct({
           const day = Number(value.slice(8, 10));
           const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
           const days = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+
           return day <= days;
         }),
       ),
@@ -198,6 +200,7 @@ export const WorkspacePath = Schema.String.check(
   Schema.isPattern(/^\/workspaces(\/[A-Za-z0-9._-]{1,100})?$/),
 );
 const Timeout = Schema.Int.check(Schema.isBetween({ minimum: 1_000, maximum: 600_000 }));
+
 /**
  * A repository a task may work in: one the workspace covers through a GitHub installation. The
  * default branch is whatever the remote reports; nothing configures it.
@@ -342,8 +345,10 @@ export interface CommandObservation extends Schema.Schema.Type<typeof CommandObs
  */
 export const digest = (content: string): string => {
   let hash = 0xcbf29ce484222325n;
+
   for (const byte of new TextEncoder().encode(content)) {
     hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
   }
+
   return `fnv1a64:${hash.toString(16).padStart(16, "0")}`;
 };

@@ -22,6 +22,7 @@ export const Route = createFileRoute("/platforms/$platform/install")({
           : result.reason === "unauthorized"
             ? "/sign-in"
             : `/?install=${encodeURIComponent(result.reason)}`;
+
         return new Response(null, { status: 302, headers: { location } });
       },
     },

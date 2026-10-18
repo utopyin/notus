@@ -23,6 +23,7 @@ import * as Schema from "effect/Schema";
 
 const provider = "namespace" as const;
 const descriptor = NAMESPACE_DESCRIPTOR;
+
 type Operation = ComputeError["operation"];
 
 const observe = (resource: NativeResource): Observation => ({
@@ -34,6 +35,7 @@ const observe = (resource: NativeResource): Observation => ({
   },
   state: resource.state === "expired" ? "ended" : resource.state,
 });
+
 const native = (resource: Resource): NativeResource => ({
   id: resource.id,
   name: resource.name,
@@ -66,6 +68,7 @@ const control =
           }),
       ),
     );
+
 const refused = (error: ConfigError) =>
   new ConfigurationError({ provider, message: error.message });
 
@@ -76,14 +79,17 @@ const refused = (error: ConfigError) =>
 const Account = Schema.Struct({
   token: Schema.String.check(Schema.isPattern(/^[\x21-\x7e]{1,4096}$/)),
 });
+
 const timeoutMs = 20_000;
 
 /** The admins' pick, or the workspace's only image. */
 const defaultOf = (templates: TemplateSet) =>
   templates.default ?? (templates.refs.length === 1 ? (templates.refs[0] ?? null) : null);
+
 /** A configuration that selects no image starts from the default, when there is one. */
 const withDefault = (config: Schema.Json, templates: TemplateSet): Schema.Json => {
   const fallback = defaultOf(templates);
+
   return fallback !== null &&
     config !== null &&
     typeof config === "object" &&
@@ -101,6 +107,7 @@ export const configuration: Configuration = {
     }).pipe(Effect.asVoid, Effect.mapError(refused)),
   validateTemplate: (ref) => {
     const value = ref.trim();
+
     return value.length <= 1024 && imageRefPattern.test(value)
       ? Effect.succeed(value)
       : Effect.fail(
@@ -131,6 +138,7 @@ type Run = <A, E>(effect: Effect.Effect<A, E, Clients>) => Effect.Effect<A, E>;
 const port = (workspaceId: string, templates: Templates["Service"], run: Run): DevboxPort => ({
   launch: Effect.fn("Compute.Namespace.launch")(function* (input) {
     const set = yield* templates.approved(workspaceId, provider);
+
     const resource = yield* run(
       Namespace.Service.pipe(
         Effect.flatMap((namespace) =>
@@ -149,6 +157,7 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
         "Namespace.ControlError": (error) => control("launch")(Effect.fail(error)),
       }),
     );
+
     return observe(resource).resource;
   }),
   recover: (name, operationId) =>
@@ -231,22 +240,27 @@ const port = (workspaceId: string, templates: Templates["Service"], run: Run): D
 export const adapter = Effect.gen(function* () {
   const credentials = yield* ComputeCredentials;
   const templates = yield* Templates;
+
   return {
     provider,
     descriptor,
     configuration,
     forWorkspace: Effect.fn("Compute.Namespace.forWorkspace")(function* (workspaceId: string) {
       const stored = yield* credentials.get(workspaceId, provider);
+
       if (Option.isNone(stored)) return yield* new ConnectionError({ provider, reason: "missing" });
+
       const account = yield* Schema.decodeUnknownEffect(Account)(stored.value).pipe(
         Effect.mapError(() => new ConnectionError({ provider, reason: "invalid" })),
       );
+
       // The token passed the client's own credential rule above and the endpoints are its
       // defaults, so building the clients cannot refuse them.
       const clients = Layer.merge(Namespace.layer, Instances.layer).pipe(
         Layer.provide(Config.layer({ credential: Redacted.make(account.token), timeoutMs })),
         Layer.orDie,
       );
+
       return port(workspaceId, templates, (effect) => effect.pipe(Effect.provide(clients)));
     }),
   } satisfies ProviderAdapter;

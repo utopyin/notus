@@ -45,6 +45,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@notus/executions/Devbox") {}
 
 const failure = (reason: DevboxFailure["reason"]) => new DevboxFailure({ reason });
+
 /** A refusal changed nothing; anything this cannot classify must use Lost. */
 const refused = (error: unknown) =>
   Schema.isSchemaError(error) ||
@@ -59,12 +60,14 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const providers = yield* Providers.Service;
     const authority = yield* Authority;
+
     const port = (environment: Environment | null) =>
       environment
         ? providers
             .forWorkspace(environment)
             .pipe(Effect.mapError(() => failure("unsupported-provider")))
         : Effect.fail(failure("unsupported-provider"));
+
     const fetch = Effect.fn("Devbox.fetch")(function* (
       environment: Environment | null,
       stored: Resource,
@@ -73,14 +76,18 @@ export const layerNoDeps = Layer.effect(
       const observed = yield* provider
         .fetch(stored)
         .pipe(Effect.mapError(() => failure("unavailable")));
+
       if (observed.resource.name !== stored.name || observed.state === "ended")
         return yield* failure("identity");
+
       return observed.resource;
     });
+
     return Service.of({
       fetch,
       hold: Effect.fn("Devbox.hold")(function* (environment, resource, seconds) {
         const provider = yield* port(environment);
+
         yield* provider.hold(resource, environment.config, seconds).pipe(
           Effect.tapError((error) =>
             Effect.logWarning(
@@ -102,61 +109,79 @@ export const layerNoDeps = Layer.effect(
             previous.instanceId === current.instanceId
           )
             return yield* failure("unproven");
+
           const observed = yield* fetch(environment, current);
+
           if (observed.instanceId !== current.instanceId) return yield* failure("identity");
+
           const provider = yield* port(environment);
           const ended = yield* provider
             .proveReplacement(current, previous.instanceId)
             .pipe(Effect.mapError(() => failure("unproven")));
+
           return { instanceId: ended.instanceId, endedAt: ended.endedAt };
         },
       ),
       perform: Effect.fn("Devbox.perform")(
         function* (input) {
           const claim = yield* Schema.decodeEffect(Claim)(input);
+
           if (claim.launchVersion !== 1) return ProvisioningResult.cases.Rejected.make({});
+
           const provider = yield* providers.forWorkspace(claim.environment);
+
           if (claim.work === "create") {
             const credential = yield* authority.issue(claim.bootstrap);
+
             const resource = yield* provider.launch({
               name: claim.providerName,
               operationId: claim.bootstrap.operationId,
               config: claim.environment.config,
               bootstrap: { controlUrl: authority.controlUrl, credential },
             });
+
             return ProvisioningResult.cases.Assigned.make({
               operationId: claim.bootstrap.operationId,
               resource,
               verified: true,
             });
           }
+
           if (claim.work === "reconcile-create") {
             // A matching mutable description is not sufficient evidence to adopt a resource
             // after losing Create's result. Preserve the stable name for explicit intervention.
             yield* provider.recover(claim.providerName, claim.bootstrap.operationId);
             return ProvisioningResult.cases.Unproven.make({});
           }
+
           if (!claim.resource) return ProvisioningResult.cases.Rejected.make({});
+
           const observed =
             claim.work === "activate"
               ? yield* provider.wake(claim.resource)
               : yield* provider.fetch(claim.resource);
           const resource = observed.resource;
+
           if (resource.id !== claim.resource.id || resource.name !== claim.resource.name)
             return ProvisioningResult.cases.Lost.make({});
+
           if (observed.state === "ended")
             return ProvisioningResult.cases.ExternalExpire.make({ resourceId: resource.id });
+
           if (observed.state === "running" && resource.instanceId) {
             const result = { resourceId: resource.id, instanceId: resource.instanceId };
+
             return claim.work === "activate"
               ? ProvisioningResult.cases.Activated.make(result)
               : ProvisioningResult.cases.Running.make(result);
           }
+
           if (observed.state === "stopped" && claim.work !== "activate")
             return ProvisioningResult.cases.Stopped.make({
               resourceId: resource.id,
               verified: true,
             });
+
           return ProvisioningResult.cases.Lost.make({});
         },
         Effect.timeoutOrElse({
@@ -175,6 +200,7 @@ export const layerNoDeps = Layer.effect(
             ),
             Effect.catch((error): Effect.Effect<ProvisioningResult> => {
               if (refused(error)) return Effect.succeed(ProvisioningResult.cases.Rejected.make({}));
+
               if (Schema.is(ComputeError)(error)) {
                 if (error.outcome === "notFound")
                   return Effect.succeed(
@@ -182,9 +208,11 @@ export const layerNoDeps = Layer.effect(
                       ? ProvisioningResult.cases.Rejected.make({})
                       : ProvisioningResult.cases.NotFound.make({}),
                   );
+
                 if (error.outcome === "notSent" || error.outcome === "rejected")
                   return Effect.succeed(ProvisioningResult.cases.Rejected.make({}));
               }
+
               return Effect.succeed(ProvisioningResult.cases.Lost.make({}));
             }),
           ),

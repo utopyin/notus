@@ -28,7 +28,9 @@ export const run = Effect.fn("Operator.run")(function* (
       }),
     ),
   );
+
   let prompt = build(briefing);
+
   for (const encoded of priorParts) {
     const parts = yield* Schema.decodeUnknownEffect(Parts)(encoded).pipe(
       Effect.mapError((error) =>
@@ -39,20 +41,24 @@ export const run = Effect.fn("Operator.run")(function* (
         }),
       ),
     );
+
     prompt = Prompt.concat(prompt, Prompt.fromResponseParts(parts));
   }
+
   // Tool calls come back unresolved; the durable owner executes them and appends results.
   const response = yield* LanguageModel.generateText({
     prompt,
     toolkit: Tools.ready,
     disableToolCallResolution: true,
   });
+
   const invalidOutput = (description: string) =>
     AiError.make({
       module: "Operator",
       method: "run",
       reason: new AiError.InvalidOutputError({ description }),
     });
+
   const encoded = yield* Schema.encodeEffect(Parts)(response.content).pipe(
     Effect.mapError((error) => invalidOutput(error.message)),
   );
@@ -61,18 +67,24 @@ export const run = Effect.fn("Operator.run")(function* (
     Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Json))),
     Effect.mapError(() => invalidOutput("response parts are not JSON")),
   );
+
   const calls: Array<ToolCall> = [];
+
   for (const part of response.content) {
     if (part.type !== "tool-call") continue;
+
     const params = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown))(
       part.params,
     ).pipe(
       Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Json))),
       Effect.mapError(() => invalidOutput("tool parameters are not JSON")),
     );
+
     calls.push({ id: part.id, name: part.name, params });
   }
+
   const result: StepResult = { parts, text: response.text, calls, final: calls.length === 0 };
+
   return result;
 });
 
@@ -96,9 +108,11 @@ const backoff = (attempt: number) => Math.min(300_000, 5_000 * 2 ** Math.min(att
 export const classify = (error: AiError.AiError, attempt: number, now: number): Disposition => {
   const reason = error.cause;
   const failure = reason._tag;
+
   switch (reason._tag) {
     case "RateLimitError": {
       const hinted = reason.retryAfter ? Duration.toMillis(reason.retryAfter) : undefined;
+
       return {
         _tag: "Retry",
         retryAt: now + Math.max(1_000, Math.min(hinted ?? backoff(attempt), 600_000)),
@@ -120,9 +134,12 @@ export const classify = (error: AiError.AiError, attempt: number, now: number): 
 export const explain = (failure: string): string => {
   if (failure.startsWith("AuthenticationError"))
     return "the initiator's model connection is missing, revoked, or needs to be linked again";
+
   if (failure === "step-limit") return "the turn exceeded its step limit";
+
   if (failure === "RateLimitError" || failure === "QuotaExhaustedError")
     return "the model account is rate limited or out of quota";
+
   return `the model request failed (${failure})`;
 };
 

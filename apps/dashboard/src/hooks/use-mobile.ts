@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 const MOBILE_BREAKPOINT = 768;
 
 const query = () => window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+
 const subscribe = (onChange: () => void) => {
   const mql = query();
   mql.addEventListener("change", onChange);

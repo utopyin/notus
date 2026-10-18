@@ -1,10 +1,21 @@
 import { defineConfig, type DummyRuleMap } from "oxlint";
 import { recommended } from "@effect/tsgo/oxlint-presets";
 
+const statementPaddingFiles = ["apps", "domains", "entrypoints", "packages", "scripts"].flatMap(
+  (root) => ["ts", "mts", "cts"].map((extension) => `${root}/**/*.${extension}`),
+);
+
 export default defineConfig({
+  jsPlugins: ["./scripts/lint.ts"],
   ignorePatterns: ["repos", "**/routeTree.gen.ts", "**/dist/**"],
   extends: [recommended],
   overrides: [
+    {
+      files: statementPaddingFiles,
+      rules: {
+        "notus/statement-padding": "error",
+      },
+    },
     {
       // React and TanStack code, and Better Auth callbacks, are Promise-based by contract.
       files: ["apps/web/**/*", "packages/ui/**/*", "packages/db/**/*", "apps/dashboard/**/*"],

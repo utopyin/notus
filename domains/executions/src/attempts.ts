@@ -16,16 +16,19 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(taskId);
     yield* Schema.decodeEffect(Millis)(now);
     yield* Schema.decodeEffect(Mode)(mode);
+
     const [row] = yield* db
       .select()
       .from(attempts)
       .where(and(eq(attempts.taskId, taskId), eq(attempts.active, true)));
+
     if (row) {
       const active = yield* Schema.decodeEffect(Attempt)(row);
       // The persisted attempt mode is immutable; a deployment default never rewrites it.
       if (active.mode !== mode) return yield* new Conflict({ message: "Attempt mode mismatch" });
       return active;
     }
+
     const attempt: Attempt = {
       id: yield* crypto.randomUUIDv4(),
       taskId,
@@ -34,7 +37,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       active: true,
       createdAt: now,
     };
+
     yield* db.insert(attempts).values(attempt);
+
     return attempt;
   });
 
@@ -47,21 +52,27 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Schema.String)(content);
     yield* Schema.decodeEffect(Schema.NonEmptyString)(inputId);
     yield* Schema.decodeEffect(Millis)(dueAt);
+
     const [active] = yield* db
       .select()
       .from(attempts)
       .where(and(eq(attempts.id, attempt.id), eq(attempts.active, true)));
+
     if (!active || active.generation !== attempt.generation || active.taskId !== attempt.taskId) {
       return yield* new StaleAttempt({ attemptId: attempt.id });
     }
+
     const [existing] = yield* db.select().from(invocations).where(eq(invocations.inputId, inputId));
+
     if (existing) {
       if (existing.attemptId !== attempt.id || existing.generation !== attempt.generation) {
         return yield* new Conflict({ message: "Input already belongs to another invocation" });
       }
+
       // An admission replay must not move the original deadline or rewrite the payload.
       return yield* Schema.decodeEffect(Invocation)(existing);
     }
+
     const invocation: Invocation = {
       id: yield* crypto.randomUUIDv4(),
       attemptId: attempt.id,
@@ -75,24 +86,31 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       digest: digest(content),
       status: "pending",
     };
+
     yield* db.insert(invocations).values(invocation);
+
     return invocation;
   });
 
   const accept = Effect.fn("Attempts.accept")(function* (command: Observation, now: number) {
     const observation = yield* Schema.decodeEffect(Observation)(command);
+
     yield* Schema.decodeEffect(Millis)(now);
+
     const [attempt] = yield* db
       .select()
       .from(attempts)
       .where(eq(attempts.id, observation.attemptId));
+
     if (!attempt || !attempt.active || attempt.generation !== observation.generation) {
       return yield* new StaleAttempt({ attemptId: observation.attemptId });
     }
+
     const [invocation] = yield* db
       .select()
       .from(invocations)
       .where(eq(invocations.id, observation.invocationId));
+
     if (
       !invocation ||
       invocation.attemptId !== observation.attemptId ||
@@ -103,6 +121,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     ) {
       return yield* new Conflict({ message: "Outcome does not match its invocation" });
     }
+
     // Simulation mode cannot be used to inject arbitrary remote-generated content.
     if (
       attempt.mode === "simulation" &&
@@ -115,6 +134,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         message: "Outcome differs from the persisted simulation result or is premature",
       });
     }
+
     const existing = yield* db
       .select()
       .from(outcomes)
@@ -124,26 +144,34 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           eq(outcomes.invocationId, observation.invocationId),
         ),
       );
+
     if (existing.length > 0) {
       const row = existing[0];
+
       if (!row || existing.length !== 1 || !Equal.equals(row.observation, observation)) {
         return yield* new Conflict({ message: "Conflicting outcome replay" });
       }
+
       return yield* Schema.decodeEffect(Outcome)(row);
     }
+
     const outcome: Outcome = {
       id: observation.resultId,
       invocationId: observation.invocationId,
       observation,
       acceptedAt: now,
     };
+
     yield* db.insert(outcomes).values(outcome);
+
     yield* db
       .update(invocations)
       .set({ status: "accepted" })
       .where(eq(invocations.id, invocation.id));
+
     return outcome;
   });
+
   const scheduledInputIds = Effect.gen(function* () {
     return (yield* db.select({ id: invocations.inputId }).from(invocations)).map((row) => row.id);
   }).pipe(Effect.withSpan("Attempts.scheduledInputIds"));
@@ -152,8 +180,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* db.select().from(outcomes).orderBy(asc(outcomes.acceptedAt), asc(outcomes.id)),
     );
   }).pipe(Effect.withSpan("Attempts.accepted"));
+
   const due = Effect.fn("Attempts.due")(function* (now: number, limit: number) {
     yield* Schema.decodeEffect(Millis)(now);
+
     return yield* Schema.decodeEffect(Schema.Array(Invocation))(
       yield* db
         .select()
@@ -163,6 +193,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         .limit(limit),
     );
   });
+
   const nextWake = Effect.gen(function* () {
     const [row] = yield* db
       .select({ at: invocations.dueAt })
@@ -170,6 +201,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(eq(invocations.status, "pending"))
       .orderBy(asc(invocations.dueAt))
       .limit(1);
+
     return row?.at ?? null;
   }).pipe(Effect.withSpan("Attempts.nextWake"));
   const snapshot = Effect.gen(function* () {
@@ -183,6 +215,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       outcomes: yield* accepted,
     };
   }).pipe(Effect.withSpan("Attempts.snapshot"));
+
   return { ensure, schedule, accept, scheduledInputIds, accepted, due, nextWake, snapshot };
 };
 
@@ -225,6 +258,7 @@ export const layerNoDeps = Layer.effect(
     const db = yield* Sqlite.Service;
     const crypto = yield* Crypto.Crypto;
     const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+
     // Every service operation owns its transaction; Control repairs cross-owner handoffs.
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(
@@ -235,9 +269,11 @@ export const layerNoDeps = Layer.effect(
             Schema.isSchemaError(cause)
           )
             return cause;
+
           return new StorageFailure({ operation, cause });
         }),
       );
+
     return Service.of({
       ensure: Effect.fn("Attempts.ensureAtomic")((taskId, now, mode) =>
         wrap(

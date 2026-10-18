@@ -32,8 +32,10 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
     const dashboard = yield* dashboardConfig.pipe(Effect.orDie);
     const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
     const context = yield* CurrentRuntimeContext;
+
     if (!context)
       return yield* Effect.die("Connection initialization requires Alchemy RuntimeContext");
+
     return { host, credentialKey, dashboard, shared, context };
   }).pipe(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
@@ -41,6 +43,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
     Effect.map(({ host, credentialKey, dashboard, shared, context }) =>
       Effect.gen(function* () {
         const db = yield* Drizzle.DurableObject({ migrations });
+
         // Without the App's OAuth client nobody signs in with GitHub, so there is no login to serve.
         const githubLogins =
           dashboard.github === null
@@ -57,6 +60,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
                   ]),
                 ),
               ).pipe(Effect.orDie);
+
         const services = yield* Layer.build(
           Connections.layer.pipe(
             Layer.provide([
@@ -67,13 +71,16 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
             ]),
           ),
         ).pipe(Effect.orDie);
+
         const connections = yield* Connections.Service.pipe(Effect.provideContext(services));
+
         // Serializes refresh and replay decisions. Provider forwarding runs outside it.
         const gate = <A, E>(effect: Effect.Effect<A, E>) =>
           Effect.gen(function* () {
             const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
             return yield* exit;
           }).pipe(Effect.provideService(RuntimeContext, context));
+
         const result = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
           effect.pipe(
             Effect.map((value) => ({ ok: true as const, value })),
@@ -84,6 +91,7 @@ export class Connection extends Cloudflare.DurableObject<Connection>()(
               }),
             ),
           );
+
         return {
           status: (userId: string) => result(gate(connections.status(userId))),
           /** An explicit link with material in hand: the harness, or a pasted API key. */

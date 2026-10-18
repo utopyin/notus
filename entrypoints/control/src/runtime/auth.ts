@@ -7,6 +7,7 @@ import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 
 const KeyId = Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]{1,48}$/));
+
 export const Capability = Schema.TaggedUnion({
   Enrollment: {
     audience: Schema.NonEmptyString,
@@ -53,6 +54,7 @@ export class Service extends Context.Service<Service, Interface>()(
 const codec = Schema.fromJsonString(Capability);
 const invalid = () => new Failure({ reason: "invalid" });
 const configuration = () => new Failure({ reason: "configuration" });
+
 const decodeBytes = (value: string) =>
   Effect.fromResult(Base64Url.decode(value)).pipe(Effect.mapError(invalid));
 
@@ -72,17 +74,26 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const settings = yield* Configuration;
+
     yield* Schema.decodeEffect(Schema.NonEmptyString)(settings.audience).pipe(
       Effect.mapError(configuration),
     );
+
     yield* Schema.decodeEffect(KeyId)(settings.activeKeyId).pipe(Effect.mapError(configuration));
+
     if (!Object.hasOwn(settings.keys, settings.activeKeyId)) return yield* configuration();
+
     const keys = new Map<string, CryptoKey>();
+
     for (const [id, secret] of Object.entries(settings.keys)) {
       yield* Schema.decodeEffect(KeyId)(id).pipe(Effect.mapError(configuration));
+
       if (!Redacted.isRedacted(secret)) return yield* configuration();
+
       const bytes = yield* decodeBytes(Redacted.value(secret)).pipe(Effect.mapError(configuration));
+
       if (bytes.byteLength < 32) return yield* configuration();
+
       const key = yield* Effect.tryPromise({
         try: () =>
           globalThis.crypto.subtle.importKey(
@@ -94,46 +105,63 @@ export const layerNoDeps = Layer.effect(
           ),
         catch: configuration,
       });
+
       keys.set(id, key);
     }
+
     return Service.of({
       issue: Effect.fn("Runtime.Authentication.issue")(function* (input) {
         const capability = yield* Schema.decodeEffect(Capability)(input).pipe(
           Effect.mapError(invalid),
         );
+
         if (capability.audience !== settings.audience) return yield* invalid();
+
         const key = keys.get(settings.activeKeyId);
         if (!key) return yield* configuration();
+
         const payload = yield* Schema.encodeEffect(codec)(capability).pipe(
           Effect.mapError(invalid),
         );
+
         const message = `nr1.${settings.activeKeyId}.${Base64Url.encode(payload)}`;
+
         if (message.length > 6000) return yield* invalid();
+
         const signature = yield* Effect.tryPromise({
           try: () => globalThis.crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)),
           catch: invalid,
         });
+
         return Redacted.make(`${message}.${Base64Url.encode(new Uint8Array(signature))}`);
       }),
       verify: Effect.fn("Runtime.Authentication.verify")(function* (credential, now) {
         if (!Redacted.isRedacted(credential)) return yield* invalid();
+
         yield* Schema.decodeEffect(Millis)(now).pipe(Effect.mapError(invalid));
         const token = Redacted.value(credential);
+
         if (token.length > 6200) return yield* invalid();
+
         const [version, keyId, encoded, signature, ...rest] = token.split(".");
+
         if (version !== "nr1" || !keyId || !encoded || !signature || rest.length !== 0)
           return yield* invalid();
+
         yield* Schema.decodeEffect(KeyId)(keyId).pipe(Effect.mapError(invalid));
         const key = keys.get(keyId);
         if (!key) return yield* invalid();
+
         const bytes = yield* decodeBytes(signature);
         const payload = yield* decodeBytes(encoded);
+
         if (
           bytes.byteLength !== 32 ||
           Base64Url.encode(bytes) !== signature ||
           Base64Url.encode(payload) !== encoded
         )
           return yield* invalid();
+
         const matches = yield* Effect.tryPromise({
           try: () =>
             globalThis.crypto.subtle.verify(
@@ -145,14 +173,19 @@ export const layerNoDeps = Layer.effect(
           catch: invalid,
         });
         if (!matches) return yield* invalid();
+
         const text = yield* Effect.try({
           try: () => new TextDecoder("utf-8", { fatal: true }).decode(payload),
           catch: invalid,
         });
+
         const capability = yield* Schema.decodeEffect(codec)(text).pipe(Effect.mapError(invalid));
+
         if (capability.audience !== settings.audience) return yield* invalid();
+
         if (capability._tag === "Readiness" && capability.expiresAt <= now)
           return yield* new Failure({ reason: "expired" });
+
         return capability;
       }),
     });

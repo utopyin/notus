@@ -21,6 +21,7 @@ export interface DrainResult extends Schema.Schema.Type<typeof DrainResult> {}
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const Timestamp = Schema.String.check(Schema.isPattern(/^\d+\.\d{6}$/));
+
 export const MessageRow = createSelectSchema(messages, {
   startIntent: Schema.Literals([0, 1]),
   generation: Millis,

@@ -26,48 +26,62 @@ export interface Credentials {
 export const forward = Effect.fn("OpenAi.Backend.forward")(
   function* (credentials: Credentials, input: ForwardRequest) {
     const unsupported = () => new ForwardError({ reason: "unsupported-request" });
+
     const request = yield* Schema.decodeEffect(ForwardRequest)(input).pipe(
       Effect.mapError(unsupported),
     );
+
     if (
       request.url !== responsesUrl ||
       request.contentType.split(";")[0]?.trim().toLowerCase() !== "application/json" ||
       new TextEncoder().encode(request.body).byteLength > maxRequestBytes
     )
       return yield* unsupported();
+
     const http = yield* HttpClient.HttpClient;
+
     const authorized = HttpClientRequest.post(request.url).pipe(
       HttpClientRequest.setHeaders({ accept: "application/json" }),
       HttpClientRequest.bodyText(request.body, "application/json"),
       HttpClientRequest.bearerToken(credentials.key),
     );
+
     const response = yield* http
       .execute(authorized)
       .pipe(Effect.mapError(() => new ForwardError({ reason: "transport" })));
+
     let length = 0;
     const chunks: Uint8Array[] = [];
+
     yield* response.stream.pipe(
       Stream.runForEach((chunk) => {
         length += chunk.byteLength;
+
         if (length > maxResponseBytes)
           return Effect.fail(new ForwardError({ reason: "invalid-response" }));
+
         chunks.push(chunk);
+
         return Effect.void;
       }),
       Effect.mapError(() => new ForwardError({ reason: "invalid-response" })),
     );
+
     const body = yield* Effect.try({
       try: () => {
         const bytes = new Uint8Array(length);
         let offset = 0;
+
         for (const chunk of chunks) {
           bytes.set(chunk, offset);
           offset += chunk.byteLength;
         }
+
         return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       },
       catch: () => new ForwardError({ reason: "invalid-response" }),
     });
+
     return ForwardResponse.make({
       status: response.status,
       contentType: response.headers["content-type"] ?? null,

@@ -36,11 +36,13 @@ export const layerNoDeps = Layer.effect(
     const client = yield* Client.D1Client;
     const db = yield* Drizzle.makeWithDefaults({});
     const dialect = new SQLiteDialect();
+
     // Only this adapter constructs unsafe statements; Drizzle binds every SQL interpolation.
     const statement = (query: SQL) => {
       const compiled = dialect.sqlToQuery(query);
       return client.unsafe<Record<string, unknown>>(compiled.sql, compiled.params);
     };
+
     return Service.of({
       db,
       batch: Effect.fn("D1.batch")(function* (queries) {
@@ -63,5 +65,6 @@ const clientLayer = Layer.unwrap(
     return Client.layer({ db });
   }),
 );
+
 export const layer = layerNoDeps.pipe(Layer.provide(clientLayer));
 export * as D1 from "./d1";

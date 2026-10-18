@@ -108,6 +108,7 @@ const PullInput = Schema.Struct({
   title: Schema.NonEmptyString.check(Schema.isMaxLength(256)),
   body: Schema.String.check(Schema.isMaxLength(60_000)),
 });
+
 type Permissions =
   | { readonly contents: "read"; readonly metadata: "read" }
   | { readonly contents: "write"; readonly metadata: "read" }
@@ -116,31 +117,39 @@ type Permissions =
   | { readonly metadata: "read" };
 const PermissionResponse = Schema.Struct({ role_name: Schema.optionalKey(Schema.String) });
 const CommentResponse = Schema.Struct({ id: Schema.Int, html_url: Schema.NonEmptyString });
+
 export const Role = Schema.Literals(["admin", "maintain", "write", "triage", "read", "none"]);
 export type Role = typeof Role.Type;
+
 const ValidationBody = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   errors: Schema.optionalKey(
     Schema.Array(Schema.Struct({ message: Schema.optionalKey(Schema.String) })),
   ),
 });
+
 const fail = (operation: AppError["operation"], reason: AppError["reason"], status?: number) =>
   new AppError({ operation, reason, ...(status === undefined ? {} : { status }) });
+
 const base64url = (bytes: Uint8Array) => Base64Url.encode(bytes);
+
 const Header = Schema.fromJsonString(
   Schema.Struct({ alg: Schema.Literal("RS256"), typ: Schema.Literal("JWT") }),
 );
 const Claims = Schema.fromJsonString(
   Schema.Struct({ iat: Schema.Int, exp: Schema.Int, iss: Schema.String }),
 );
+
 const pem = (text: string) =>
   Effect.gen(function* () {
     const body = text
       .replace(/-----BEGIN PRIVATE KEY-----/, "")
       .replace(/-----END PRIVATE KEY-----/, "")
       .replace(/\s+/g, "");
+
     if (body.length === 0 || /RSA PRIVATE KEY/.test(text))
       return yield* fail("jwt", "configuration");
+
     return yield* Effect.fromResult(Base64.decode(body)).pipe(
       Effect.mapError(() => fail("jwt", "configuration")),
     );
@@ -151,9 +160,12 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const settings = yield* Configuration;
     const http = yield* HttpClient.HttpClient;
+
     if (!/^\d{1,20}$/.test(settings.appId)) return yield* fail("jwt", "configuration");
+
     const endpoint = settings.endpoint ?? "https://api.github.com";
     const der = yield* pem(Redacted.value(settings.privateKey));
+
     const key = yield* Effect.tryPromise({
       try: () =>
         globalThis.crypto.subtle.importKey(
@@ -165,9 +177,11 @@ export const layerNoDeps = Layer.effect(
         ),
       catch: () => fail("jwt", "configuration"),
     });
+
     const jwt = Effect.fn("GitHub.App.jwt")(function* () {
       const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
       const encoder = new TextEncoder();
+
       const header = base64url(
         encoder.encode(
           yield* Schema.encodeEffect(Header)({ alg: "RS256", typ: "JWT" }).pipe(
@@ -184,6 +198,7 @@ export const layerNoDeps = Layer.effect(
           }).pipe(Effect.mapError(() => fail("jwt", "configuration"))),
         ),
       );
+
       const signature = yield* Effect.tryPromise({
         try: () =>
           globalThis.crypto.subtle.sign(
@@ -193,34 +208,45 @@ export const layerNoDeps = Layer.effect(
           ),
         catch: () => fail("jwt", "configuration"),
       });
+
       return `${header}.${payload}.${base64url(new Uint8Array(signature))}`;
     });
+
     const headers = HttpClientRequest.setHeaders({
       accept: "application/vnd.github+json",
       "x-github-api-version": "2022-11-28",
       "user-agent": "notus",
     });
+
     const InstallationResponse = Schema.Struct({
       id: Schema.Int,
       account: Schema.Struct({ login: Schema.NonEmptyString }),
     });
+
     const installation = Effect.fn("GitHub.App.installation")(
       function* (installationId: string) {
         if (!/^\d{1,20}$/.test(installationId)) return yield* fail("token", "configuration");
+
         const bearer = yield* jwt();
+
         const request = HttpClientRequest.get(
           `${endpoint}/app/installations/${installationId}`,
         ).pipe(headers, HttpClientRequest.bearerToken(bearer));
+
         const response = yield* http
           .execute(request)
           .pipe(Effect.mapError(() => fail("token", "transport")));
+
         if (response.status !== 200) return yield* fail("token", "rejected", response.status);
+
         const body = yield* response.json.pipe(
           Effect.mapError(() => fail("token", "invalid-response")),
         );
+
         const decoded = yield* Schema.decodeUnknownEffect(InstallationResponse)(body).pipe(
           Effect.mapError(() => fail("token", "invalid-response")),
         );
+
         return { id: String(decoded.id), account: decoded.account.login };
       },
       Effect.scoped,
@@ -229,6 +255,7 @@ export const layerNoDeps = Layer.effect(
         orElse: () => Effect.fail(fail("token", "transport")),
       }),
     );
+
     const UserRepositoriesResponse = Schema.Struct({
       repositories: Schema.Array(
         Schema.Struct({
@@ -242,34 +269,44 @@ export const layerNoDeps = Layer.effect(
         }),
       ),
     });
+
     const userRepositories = Effect.fn("GitHub.App.userRepositories")(
       function* (installationId: string, userToken: Redacted.Redacted<string>) {
         if (!/^\d{1,20}$/.test(installationId)) return yield* fail("token", "configuration");
+
         const found: Array<UserRepository> = [];
+
         // The same ten-page ceiling as the installation's own listing.
         for (let page = 1; page <= 10; page++) {
           const request = HttpClientRequest.get(
             `${endpoint}/user/installations/${installationId}/repositories?per_page=100&page=${page}`,
           ).pipe(headers, HttpClientRequest.bearerToken(Redacted.value(userToken)));
+
           const response = yield* http
             .execute(request)
             .pipe(Effect.mapError(() => fail("token", "transport")));
+
           // GitHub answers 403/404 when the person has no access to the installation.
           if (response.status === 403 || response.status === 404) return null;
           if (response.status !== 200) return yield* fail("token", "rejected", response.status);
+
           const body = yield* response.json.pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           const decoded = yield* Schema.decodeUnknownEffect(UserRepositoriesResponse)(body).pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           for (const entry of decoded.repositories)
             found.push({
               fullName: entry.full_name,
               push: entry.permissions?.admin === true || entry.permissions?.push === true,
             });
+
           if (decoded.repositories.length < 100) break;
         }
+
         return found;
       },
       Effect.scoped,
@@ -278,6 +315,7 @@ export const layerNoDeps = Layer.effect(
         orElse: () => Effect.fail(fail("token", "transport")),
       }),
     );
+
     const bind = (installationId: string): Bound => {
       /** Mints a token; scoped to one repository unless the operation needs the whole installation. */
       const mint = Effect.fn("GitHub.App.token")(
@@ -285,13 +323,16 @@ export const layerNoDeps = Layer.effect(
           // The merge endpoint needs both; no Notus token may ever carry both.
           if ("pull_requests" in permissions && permissions.contents !== "read")
             return yield* fail("token", "configuration");
+
           const repository =
             input === null
               ? null
               : yield* Schema.decodeEffect(RepositoryName)(input).pipe(
                   Effect.mapError(() => fail("token", "configuration")),
                 );
+
           const bearer = yield* jwt();
+
           const request = yield* HttpClientRequest.post(
             `${endpoint}/app/installations/${installationId}/access_tokens`,
           ).pipe(
@@ -303,18 +344,25 @@ export const layerNoDeps = Layer.effect(
             }),
             Effect.mapError(() => fail("token", "configuration")),
           );
+
           const response = yield* http
             .execute(request)
             .pipe(Effect.mapError(() => fail("token", "transport")));
+
           if (response.status !== 201) return yield* fail("token", "rejected", response.status);
+
           const body = yield* response.json.pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           const decoded = yield* Schema.decodeUnknownEffect(TokenResponse)(body).pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           const expiresAt = Date.parse(decoded.expires_at);
+
           if (!Number.isFinite(expiresAt)) return yield* fail("token", "invalid-response");
+
           return InstallationToken.make({
             token: Redacted.make(decoded.token),
             expiresAt,
@@ -330,7 +378,9 @@ export const layerNoDeps = Layer.effect(
           orElse: () => Effect.fail(fail("token", "transport")),
         }),
       );
+
       const token = (input: RepositoryName, permissions: Permissions) => mint(permissions, input);
+
       const RepositoriesResponse = Schema.Struct({
         repositories: Schema.Array(
           Schema.Struct({
@@ -340,29 +390,38 @@ export const layerNoDeps = Layer.effect(
           }),
         ),
       });
+
       const repositories = Effect.gen(function* () {
         const grant = yield* mint({ metadata: "read" }, null);
         const found: Array<InstallationRepository> = [];
+
         // GitHub pages at 100; an installation larger than ten pages is not one Notus serves yet.
         for (let page = 1; page <= 10; page++) {
           const request = HttpClientRequest.get(
             `${endpoint}/installation/repositories?per_page=100&page=${page}`,
           ).pipe(headers, HttpClientRequest.bearerToken(Redacted.value(grant.token)));
+
           const response = yield* http
             .execute(request)
             .pipe(Effect.mapError(() => fail("token", "transport")));
+
           if (response.status !== 200) return yield* fail("token", "rejected", response.status);
+
           const body = yield* response.json.pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           const decoded = yield* Schema.decodeUnknownEffect(RepositoriesResponse)(body).pipe(
             Effect.mapError(() => fail("token", "invalid-response")),
           );
+
           for (const entry of decoded.repositories)
             if (entry.archived !== true)
               found.push({ fullName: entry.full_name, private: entry.private });
+
           if (decoded.repositories.length < 100) break;
         }
+
         return found.sort((a, b) => a.fullName.localeCompare(b.fullName));
       }).pipe(
         Effect.scoped,
@@ -372,6 +431,7 @@ export const layerNoDeps = Layer.effect(
         }),
         Effect.withSpan("GitHub.App.repositories"),
       );
+
       const createPullRequest = Effect.fn("GitHub.App.createPullRequest")(
         function* (
           repositoryInput: Repository,
@@ -383,13 +443,16 @@ export const layerNoDeps = Layer.effect(
           const pull = yield* Schema.decodeEffect(PullInput)(input).pipe(
             Effect.mapError(() => fail("pull-request", "configuration")),
           );
+
           if (pull.branch === repository.defaultBranch)
             return yield* fail("pull-request", "configuration");
+
           const grant = yield* token(repository, {
             pull_requests: "write",
             contents: "read",
             metadata: "read",
           });
+
           const request = yield* HttpClientRequest.post(
             `${endpoint}/repos/${repository.owner}/${repository.name}/pulls`,
           ).pipe(
@@ -403,9 +466,11 @@ export const layerNoDeps = Layer.effect(
             }),
             Effect.mapError(() => fail("pull-request", "configuration")),
           );
+
           const response = yield* http
             .execute(request)
             .pipe(Effect.mapError(() => fail("pull-request", "transport")));
+
           if (response.status !== 201) {
             const validation = yield* response.json.pipe(
               Effect.flatMap(Schema.decodeUnknownEffect(ValidationBody)),
@@ -421,6 +486,7 @@ export const layerNoDeps = Layer.effect(
                     .join(": ")
                     .slice(0, 300)
                 : "";
+
             return yield* new AppError({
               operation: "pull-request",
               reason: "rejected",
@@ -428,12 +494,15 @@ export const layerNoDeps = Layer.effect(
               ...(detail ? { detail } : {}),
             });
           }
+
           const body = yield* response.json.pipe(
             Effect.mapError(() => fail("pull-request", "invalid-response")),
           );
+
           const decoded = yield* Schema.decodeUnknownEffect(PullResponse)(body).pipe(
             Effect.mapError(() => fail("pull-request", "invalid-response")),
           );
+
           return yield* Schema.decodeEffect(PullRequest)({
             number: decoded.number,
             url: decoded.html_url,
@@ -446,7 +515,9 @@ export const layerNoDeps = Layer.effect(
           orElse: () => Effect.fail(fail("pull-request", "transport")),
         }),
       );
+
       const discussion = { pull_requests: "write", contents: "read", metadata: "read" } as const;
+
       const send = Effect.fn("GitHub.App.send")(
         function* (
           operation: "permission" | "comment" | "reaction",
@@ -459,21 +530,26 @@ export const layerNoDeps = Layer.effect(
           const repository = yield* Schema.decodeEffect(RepositoryName)(repositoryInput).pipe(
             Effect.mapError(() => fail(operation, "configuration")),
           );
+
           const grant = yield* token(repository, permissions);
           const url = `${endpoint}/repos/${repository.owner}/${repository.name}${path}`;
+
           const base = (
             method === "GET" ? HttpClientRequest.get(url) : HttpClientRequest.post(url)
           ).pipe(headers, HttpClientRequest.bearerToken(grant.token));
+
           const request =
             body === undefined
               ? base
               : yield* HttpClientRequest.bodyJson(base, body).pipe(
                   Effect.mapError(() => fail(operation, "configuration")),
                 );
+
           const response = yield* http
             .execute(request)
             .pipe(Effect.mapError(() => fail(operation, "transport")));
           const json = yield* response.json.pipe(Effect.orElseSucceed(() => null));
+
           return { status: response.status, json };
         },
         Effect.scoped,
@@ -487,6 +563,7 @@ export const layerNoDeps = Layer.effect(
         login: string,
       ) {
         if (!/^[A-Za-z0-9-]{1,39}(\[bot\])?$/.test(login)) return "none" as const;
+
         const result = yield* send(
           "permission",
           repository,
@@ -495,13 +572,17 @@ export const layerNoDeps = Layer.effect(
           `/collaborators/${login}/permission`,
           undefined,
         );
+
         if (result.status === 404) return "none" as const;
         if (result.status !== 200) return yield* fail("permission", "rejected", result.status);
+
         const decoded = yield* Schema.decodeUnknownEffect(PermissionResponse)(result.json).pipe(
           Effect.mapError(() => fail("permission", "invalid-response")),
         );
+
         return Schema.is(Role)(decoded.role_name) ? decoded.role_name : ("none" as const);
       });
+
       const posted = (operation: "comment", result: { status: number; json: unknown }) =>
         result.status === 201
           ? Schema.decodeUnknownEffect(CommentResponse)(result.json).pipe(
@@ -509,6 +590,7 @@ export const layerNoDeps = Layer.effect(
               Effect.mapError(() => fail(operation, "invalid-response")),
             )
           : Effect.fail(fail(operation, "rejected", result.status));
+
       const comment = Effect.fn("GitHub.App.comment")(function* (
         repository: RepositoryName,
         input: { readonly pullNumber: number; readonly body: string },
@@ -519,6 +601,7 @@ export const layerNoDeps = Layer.effect(
           input.body.length > 60_000
         )
           return yield* fail("comment", "configuration");
+
         return yield* posted(
           "comment",
           yield* send(
@@ -544,6 +627,7 @@ export const layerNoDeps = Layer.effect(
           input.body.length > 60_000
         )
           return yield* fail("comment", "configuration");
+
         return yield* posted(
           "comment",
           yield* send(
@@ -561,17 +645,21 @@ export const layerNoDeps = Layer.effect(
         input: { readonly kind: "issue-comment" | "review-comment"; readonly commentId: string },
       ) {
         if (!/^\d{1,20}$/.test(input.commentId)) return yield* fail("reaction", "configuration");
+
         const path =
           input.kind === "issue-comment"
             ? `/issues/comments/${input.commentId}/reactions`
             : `/pulls/comments/${input.commentId}/reactions`;
+
         const result = yield* send("reaction", repository, discussion, "POST", path, {
           content: "eyes",
         });
+
         // 200 means the same reaction already existed, which is the idempotent outcome.
         if (result.status !== 201 && result.status !== 200)
           return yield* fail("reaction", "rejected", result.status);
       });
+
       return {
         repositories,
         collaboratorRole,
@@ -583,6 +671,7 @@ export const layerNoDeps = Layer.effect(
         createPullRequest,
       } satisfies Bound;
     };
+
     return Service.of({
       forInstallation: (installationId) =>
         /^\d{1,20}$/.test(installationId)

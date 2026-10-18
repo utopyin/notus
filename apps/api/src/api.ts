@@ -82,8 +82,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
     // Alchemy supplies this during initialization, not in event contexts.
     const runtime = yield* CurrentRuntimeContext;
     if (!runtime) return yield* Effect.die("Api initialization requires Alchemy RuntimeContext");
+
     // Every source goes through the registry: ingress, delivery, installs and the dashboard's scope lists.
     const d1 = Layer.effect(D1.Binding, binding.raw);
+
     // An install's proof of GitHub ownership is the installer's own sign-in, refreshed under
     // their Connection object's gate like every other use of it.
     const githubInstaller =
@@ -111,6 +113,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
                         ),
                 ),
               );
+
     const platforms = platformsLayer(config, github, {
       webhookSecret,
       slack: dashboard.slack,
@@ -122,11 +125,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
       // The credential store's database client is deployment configuration; failing it is a defect.
       Layer.orDie,
     );
+
     // Build this graph in each execution, never in the isolate constructor.
     // A waitUntil pass opens its own scope rather than retaining fetch's D1 client.
     const inboxLayer = Layer.mergeAll(Inbox.layer, Environments.layer, Roles.layer).pipe(
       Layer.provide([d1, cryptoLayer, platforms]),
     );
+
     const withInbox = <A, E, R>(run: (inbox: Inbox.Interface) => Effect.Effect<A, E, R>) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -138,23 +143,29 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Effect.gen(function* () {
         const environments = yield* Environments.Service;
         const roles = yield* Roles.Service;
+
         return yield* inbox.drain((command) =>
           Effect.gen(function* () {
             const task = tasks.getByName(command.reservation.taskId);
             const result = yield* task.admit(command);
+
             if (!result.ok) return yield* Effect.fail("task_admission_rejected");
+
             if (result.needsEnvironment) {
               const environment = yield* environments.get(command.reservation.workspaceId);
+
               // What the workspace covers now; the task keeps this list and chooses from it.
               const repositories = yield* inbox.repositories(
                 command.reservation.workspaceId,
                 command.reservation.initiatorId,
               );
+
               const prepared = yield* task.prepareEnvironment(
                 Option.getOrNull(environment),
                 repositories,
                 yield* roles.resolve(command.reservation.workspaceId),
               );
+
               if (!prepared.ok) return yield* Effect.fail("task_configuration_rejected");
             }
           }).pipe(Effect.provideService(RuntimeContext, runtime)),
@@ -166,9 +177,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
       // Alchemy's cron wrapper catches defects; log before that boundary.
       Effect.tapCause(() => Effect.logError("inbox.drain_defect")),
     );
+
     yield* Cloudflare.Workers.cron("* * * * *", () => drain);
+
     const callback = Callback.handler((capability, request) => {
       const task = tasks.getByName(capability.bootstrap.taskId);
+
       switch (request._tag) {
         case "Assignment":
           return task.runtimeAssignment(capability);
@@ -188,12 +202,14 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Effect.provideService(RuntimeContext, runtime),
       Effect.orElseSucceed(() => HttpServerResponse.empty({ status: 503 })),
     );
+
     // Ingress dependencies: one tagged failure, with the runtime context provided up front.
     const failing = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(
         Effect.mapError(() => new Ingress.IngressFailure({})),
         Effect.provideService(RuntimeContext, runtime),
       );
+
     const ingressDependencies: Ingress.Dependencies = {
       workspaceOf: (ref) => failing(withInbox((inbox) => inbox.workspaceOf(ref))),
       covers: (workspaceId, source) =>
@@ -212,10 +228,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
         ),
       kick: failing(execution.waitUntil(drain)),
     };
+
     const ingress = {
       slack: Ingress.handler("slack", ingressDependencies).pipe(Effect.provide(platforms)),
       github: Ingress.handler("github", ingressDependencies).pipe(Effect.provide(platforms)),
     };
+
     // Dashboard services: workspace administration, identity adoption and the platforms' scope lists.
     const dashboardLayer = Layer.mergeAll(
       Workspaces.layer,
@@ -227,15 +245,18 @@ export default class Api extends Cloudflare.Worker<Api>()(
       Inbox.layer.pipe(Layer.provide(platforms)),
       platforms,
     ).pipe(Layer.provide([d1, cryptoLayer, sealed]));
+
     // The platform's redirect after an install; it moves on to the dashboard's origin.
     const install = dashboard.origin
       ? Install.bounce(dashboard.origin)
       : Effect.succeed(HttpServerResponse.empty({ status: 404 }));
+
     /** Which platforms this deployment can install; the dashboard offers exactly these. */
     const installable: ReadonlyArray<Platform> = [
       ...(dashboard.slack ? (["slack"] as const) : []),
       ...(dashboard.githubAppSlug ? (["github"] as const) : []),
     ];
+
     type DashboardDeps =
       | Workspaces.Service
       | Roles.Service
@@ -245,6 +266,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       | Identities.Service
       | Inbox.Service
       | Platforms.Service;
+
     /**
      * Resolves the signed-in dashboard user from the forwarded cookie: the Better Auth session,
      * its linked provider accounts as verified identities, and the canonical Notus user those
@@ -255,8 +277,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
         const headers = new Headers({ cookie });
         const session = yield* auth.getSession(headers);
         if (session === null) return null;
+
         const accounts = yield* auth.api.listUserAccounts({ headers });
         const actors: Array<Actor> = [];
+
         for (const account of accounts) {
           if (account.providerId === "slack" && session.user.slackTeamId)
             actors.push({
@@ -264,6 +288,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
               installationId: InstallationId.make(session.user.slackTeamId),
               externalId: PlatformId.make(account.accountId),
             });
+
           if (account.providerId === "github")
             actors.push({
               platform: "github",
@@ -271,7 +296,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
               externalId: PlatformId.make(account.accountId),
             });
         }
+
         const now = yield* Clock.currentTimeMillis;
+
         const userId = yield* Identities.Service.pipe(
           Effect.flatMap((identities) =>
             identities.adopt({
@@ -287,9 +314,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
             }),
           ),
         );
+
         return { session, accounts, userId, now };
       }).pipe(Effect.provideService(RuntimeContext, runtime));
+
     type SignedIn = NonNullable<Effect.Success<ReturnType<typeof signedIn>>>;
+
     /** Member rows carry the display profile of their user, when one has signed in. */
     const withProfiles = (view: WorkspaceView) =>
       Identities.Service.pipe(
@@ -319,6 +349,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
           invites: view.invites,
           members: view.members.map((member) => {
             const profile = profiles.get(member.userId);
+
             return {
               workspaceId: member.workspaceId,
               userId: member.userId,
@@ -331,6 +362,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
           }),
         })),
       );
+
     /** What the dashboard sees of a scope, an installation and a source: plain strings, no brands crossing the RPC. */
     interface ScopeSummary {
       readonly id: string;
@@ -357,6 +389,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
       readonly scope: string;
       readonly label: string;
     }
+
     /** One call on the user's Connection object, its refusal turned into a dashboard failure. */
     const connection = <A>(
       userId: string,
@@ -376,8 +409,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
             : Effect.fail<DashboardFailure>({ _tag: "Connection", reason: result.reason }),
         ),
       );
+
     /** How many of a workspace's latest tasks the list reads, one object call each. */
     const taskListLimit = 50;
+
     const initiatorOf = (
       profiles: ReadonlyMap<string, Profile>,
       task: { readonly initiatorId: string },
@@ -385,11 +420,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
       const profile = profiles.get(task.initiatorId);
       return profile ? { name: profile.name, image: profile.image } : null;
     };
+
     /** RPC results carry a reason string instead of an error class the dashboard cannot decode. */
     interface DashboardFailure {
       readonly _tag: string;
       readonly reason?: string;
     }
+
     const dashboardResult = <A>(effect: Effect.Effect<A, DashboardFailure, DashboardDeps>) =>
       effect.pipe(
         Effect.map((value) => ({ ok: true as const, value })),
@@ -402,9 +439,11 @@ export default class Api extends Cloudflare.Worker<Api>()(
         Effect.provide(dashboardLayer),
         Effect.orElseSucceed(() => ({ ok: false as const, reason: "failed" })),
       );
+
     /** The checks of a provider this deployment runs; any other key is refused before storage. */
     const compute = (provider: string) => {
       const configuration = configurationOf(computeProviders, provider);
+
       return configuration
         ? Effect.succeed(configuration)
         : Effect.fail<DashboardFailure>({
@@ -412,10 +451,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
             reason: "This deployment runs no such devbox provider.",
           });
     };
+
     /** The workspace's template build with one provider; null where the provider builds none. */
     const builder = (workspaceId: string, provider: string) => {
       if (!descriptorOf(provider)?.capabilities.has("template:build")) return null;
       const object = builds.getByName(`${workspaceId}:${provider}`);
+
       return {
         status: object.status().pipe(Effect.provideService(RuntimeContext, runtime)),
         start: (actorId: string) =>
@@ -429,6 +470,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
           ),
       };
     };
+
     const authorized = <A>(
       cookie: string,
       run: (me: SignedIn) => Effect.Effect<A, DashboardFailure, DashboardDeps>,
@@ -441,21 +483,27 @@ export default class Api extends Cloudflare.Worker<Api>()(
               reason: "unauthorized",
             })),
           );
+
           if (me === null)
             return yield* Effect.fail<DashboardFailure>({
               _tag: "Anonymous",
               reason: "unauthorized",
             });
+
           return yield* run(me);
         }),
       );
+
     return {
       fetch: Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const path = new URL(request.url, "https://notus.invalid").pathname;
+
         if (request.method === "GET" && path === "/health") return HttpServerResponse.text("ok");
+
         // Every platform's deliveries arrive at /<platform>/events.
         const events = /^\/([a-z]+)\/events$/.exec(path)?.[1];
+
         if (events !== undefined && Schema.is(Platform)(events)) return yield* ingress[events];
         if (path === "/auth" || path.startsWith("/auth/")) return yield* auth.fetch;
         if (/^\/platforms\/[a-z]+\/install$/.test(path)) return yield* install;
@@ -509,6 +557,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Effect.gen(function* () {
             const sessions = yield* auth.api.listSessions({ headers: new Headers({ cookie }) });
+
             return sessions
               .map((session) => ({
                 id: session.id,
@@ -528,8 +577,10 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const headers = new Headers({ cookie });
             const sessions = yield* auth.api.listSessions({ headers });
             const session = sessions.find((candidate) => candidate.id === sessionId);
+
             if (session === undefined)
               return yield* Effect.fail<DashboardFailure>({ _tag: "Session", reason: "not-found" });
+
             yield* auth.api.revokeSession({ headers, body: { token: session.token } });
           }).pipe(Effect.provideService(RuntimeContext, runtime)),
         ),
@@ -608,6 +659,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 _tag: "Unconfigured",
                 reason: "unconfigured",
               });
+
             const workspaces = yield* Workspaces.Service;
             const intent = yield* workspaces.beginInstall(workspaceId, me.userId, platform, me.now);
             const platforms = yield* Platforms.Service;
@@ -617,6 +669,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
               redirectUri: Install.redirectUriOf(dashboard.origin, platform),
               userId: me.userId,
             });
+
             return { url };
           }),
         ),
@@ -673,6 +726,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const workspaces = yield* Workspaces.Service;
             const view = yield* workspaces.view(workspaceId, me.userId);
             const ref = { platform, installationId: InstallationId.make(installationId) };
+
             if (
               !view.installations.some(
                 (i) => i.platform === ref.platform && i.installationId === ref.installationId,
@@ -682,9 +736,11 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 _tag: "NotInstalled",
                 reason: "not-installed",
               });
+
             const platforms = yield* Platforms.Service;
             const port = yield* platforms.forInstallation(ref);
             const scopes = yield* port.scopes.list;
+
             return {
               scopes: scopes.map((scope): ScopeSummary => ({
                 id: scope.id,
@@ -705,10 +761,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
             yield* Workspaces.Service.pipe(
               Effect.flatMap((workspaces) => workspaces.role(workspaceId, me.userId)),
             );
+
             const refs = yield* Inbox.Service.pipe(
               Effect.flatMap((inbox) => inbox.tasks(workspaceId, taskListLimit)),
               Effect.mapError((): DashboardFailure => ({ _tag: "Tasks", reason: "failed" })),
             );
+
             const rows = yield* Effect.forEach(
               refs,
               (ref) =>
@@ -725,11 +783,13 @@ export default class Api extends Cloudflare.Worker<Api>()(
               (row): row is NonNullable<typeof row> =>
                 row !== null && row.workspaceId === workspaceId,
             );
+
             const profiles = yield* Identities.Service.pipe(
               Effect.flatMap((identities) =>
                 identities.profiles([...new Set(listed.map((row) => row.initiatorId))]),
               ),
             );
+
             return listed.map((row) => ({ ...row, initiator: initiatorOf(profiles, row) }));
           }),
         ),
@@ -740,6 +800,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
             yield* Workspaces.Service.pipe(
               Effect.flatMap((workspaces) => workspaces.role(workspaceId, me.userId)),
             );
+
             // Only tasks routed in this workspace are opened, so no object is created for a guess.
             const owned = yield* Inbox.Service.pipe(
               Effect.flatMap((inbox) => inbox.owns(workspaceId, taskId)),
@@ -751,11 +812,14 @@ export default class Api extends Cloudflare.Worker<Api>()(
                   .view()
                   .pipe(Effect.provideService(RuntimeContext, runtime))
               : null;
+
             if (detail === null || detail.workspaceId !== workspaceId)
               return yield* Effect.fail<DashboardFailure>({ _tag: "Task", reason: "not-found" });
+
             const profiles = yield* Identities.Service.pipe(
               Effect.flatMap((identities) => identities.profiles([detail.initiatorId])),
             );
+
             return { ...detail, initiator: initiatorOf(profiles, detail) };
           }),
         ),
@@ -804,12 +868,15 @@ export default class Api extends Cloudflare.Worker<Api>()(
             const templates = yield* Templates.Service;
             const connections = yield* Compute.Service;
             const environment = yield* environments.view(workspaceId, me.userId);
+
             // The page asked for one, or shows the provider the workspace runs on, or the first.
             const provider =
               requested ?? Option.getOrUndefined(environment)?.provider ?? registered[0] ?? "";
+
             const configuration = yield* compute(provider);
             const own = yield* templates.list(workspaceId, me.userId);
             const mine = own.filter((template) => template.provider === provider);
+
             return {
               provider,
               /** Every provider this deployment runs; the page offers a choice when there are several. */
@@ -855,7 +922,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 reason: error.message,
               })),
             );
+
             const environments = yield* Environments.Service;
+
             return yield* environments.save(workspaceId, me.userId, provider, config, me.now);
           }),
         ),
@@ -879,7 +948,9 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 reason: error.message,
               })),
             );
+
             const templates = yield* Templates.Service;
+
             return yield* templates.add(
               workspaceId,
               me.userId,
@@ -931,6 +1002,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 reason: error.message,
               })),
             );
+
             const connections = yield* Compute.Service;
             const connected = yield* connections.connect(
               workspaceId,
@@ -940,10 +1012,12 @@ export default class Api extends Cloudflare.Worker<Api>()(
               normalized,
               me.now,
             );
+
             // A newly connected account holds none of the old one's snapshots, so every connect
             // builds the Notus template afresh where the provider builds one.
             // The account is connected either way; an admin can start a build that failed to.
             const build = builder(workspaceId, provider);
+
             if (build !== null)
               yield* build.start(me.userId).pipe(
                 Effect.tapError((error) =>
@@ -951,6 +1025,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
                 ),
                 Effect.ignore,
               );
+
             return connected.find((connection) => connection.provider === provider) ?? null;
           }),
         ),
@@ -963,13 +1038,17 @@ export default class Api extends Cloudflare.Worker<Api>()(
           Effect.gen(function* () {
             yield* compute(provider);
             const build = builder(workspaceId, provider);
+
             if (build === null)
               return yield* Effect.fail<DashboardFailure>({
                 _tag: "Template",
                 reason: "This provider builds no template; add one of your own.",
               });
+
             const connections = yield* Compute.Service;
+
             yield* connections.authorizeBuild(workspaceId, me.userId, provider);
+
             return yield* build.start(me.userId);
           }),
         ),
@@ -996,19 +1075,23 @@ export default class Api extends Cloudflare.Worker<Api>()(
         authorized(cookie, (me) =>
           Effect.gen(function* () {
             const trimmed = key.trim();
+
             if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(trimmed))
               return yield* Effect.fail<DashboardFailure>({
                 _tag: "InvalidKey",
                 reason: "invalid-input",
               });
+
             const digest = yield* Effect.tryPromise({
               try: () =>
                 globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(trimmed)),
               catch: (): DashboardFailure => ({ _tag: "Digest", reason: "failed" }),
             });
+
             const fingerprint = Array.from(new Uint8Array(digest), (b) =>
               b.toString(16).padStart(2, "0"),
             ).join("");
+
             return yield* connection(me.userId, (c) =>
               c.link(me.userId, {
                 userId: me.userId,
@@ -1032,6 +1115,7 @@ export default class Api extends Cloudflare.Worker<Api>()(
               environment,
               yield* Clock.currentTimeMillis,
             );
+
             return {
               workspaceId: stored.workspaceId,
               provider: stored.provider,

@@ -19,6 +19,7 @@ import * as Protocol from "./protocol";
 type EnrollmentCapability = Extract<Auth.Capability, { readonly _tag: "Enrollment" }>;
 type ReadinessCapability = Extract<Auth.Capability, { readonly _tag: "Readiness" }>;
 const fail = (reason: Failure["reason"]) => new Failure({ reason });
+
 const identity = (capability: EnrollmentCapability, request: Protocol.EnrollmentRequest) =>
   EnrollmentIdentity.make({
     bootstrap: capability.bootstrap,
@@ -29,6 +30,7 @@ const identity = (capability: EnrollmentCapability, request: Protocol.Enrollment
     runId: request.runId,
     kernelBootId: request.kernelBootId,
   });
+
 const map = (error: unknown): Failure => {
   if (Schema.is(ProvisioningFailure)(error)) {
     switch (error.reason) {
@@ -45,6 +47,7 @@ const map = (error: unknown): Failure => {
         return fail("unauthorized");
     }
   }
+
   return fail("unavailable");
 };
 
@@ -53,6 +56,7 @@ export const context = Effect.fn("Runtime.Server.context")(function* (capability
   const state = yield* State.Service;
   const execution = yield* Provisioning.Service;
   const snapshot = yield* state.snapshot;
+
   if (
     !snapshot.task ||
     (snapshot.task.mode !== "readiness" && snapshot.task.mode !== "operator") ||
@@ -60,6 +64,7 @@ export const context = Effect.fn("Runtime.Server.context")(function* (capability
     snapshot.task.id !== capability.bootstrap.taskId
   )
     return yield* fail("unauthorized");
+
   return yield* execution.context(capability.bootstrap).pipe(Effect.mapError(map));
 });
 
@@ -67,9 +72,12 @@ export const assignment = Effect.fn("Runtime.Server.assignment")(function* (
   capability: EnrollmentCapability,
 ) {
   const current = yield* context(capability);
+
   if (capability.recoveryRevision !== current.recoveryRevision) return yield* fail("unauthorized");
+
   if (!current.enrollmentExpected || !current.activationConfirmed || !current.resource?.instanceId)
     return yield* fail("pending");
+
   return Protocol.Assignment.make({
     resourceId: current.resource.id,
     instanceId: current.resource.instanceId,
@@ -83,6 +91,7 @@ export const replay = Effect.fn("Runtime.Server.replay")(function* (
 ) {
   yield* context(capability);
   const execution = yield* Provisioning.Service;
+
   return yield* execution
     .replayEnrollment(identity(capability, request))
     .pipe(Effect.mapError(map));
@@ -95,25 +104,32 @@ export const verify = Effect.fn("Runtime.Server.verify")(function* (
   current: EnrollmentContext,
 ) {
   if (capability.recoveryRevision !== current.recoveryRevision) return yield* fail("unauthorized");
+
   if (!current.enrollmentExpected || !current.activationConfirmed || !current.resource?.instanceId)
     return yield* fail("pending");
+
   if (
     request.resourceId !== current.resource.id ||
     request.instanceId !== current.resource.instanceId
   )
     return yield* fail("pending");
+
   const provider = yield* Devbox.Service;
+
   const previousTermination = current.previous
     ? yield* provider
         .verifyReplacement(current.environment, current.previous, current.resource)
         .pipe(Effect.mapError(() => fail("pending")))
     : null;
+
   if (!current.previous) {
     const observed = yield* provider
       .fetch(current.environment, current.resource)
       .pipe(Effect.mapError(() => fail("unavailable")));
+
     if (observed.instanceId !== request.instanceId) return yield* fail("pending");
   }
+
   return Enrollment.make({
     ...identity(capability, request),
     bootEvidence: current.previous ? "verified-new-boot" : "initial",
@@ -141,6 +157,7 @@ export const reply = Effect.fn("Runtime.Server.reply")(function* (
 ) {
   const authentication = yield* Auth.Service;
   const expiresAt = now + 15 * 60_000;
+
   const recoveryCredential = yield* authentication
     .issue(
       Auth.Capability.cases.Enrollment.make({
@@ -164,6 +181,7 @@ export const reply = Effect.fn("Runtime.Server.reply")(function* (
       }),
     )
     .pipe(Effect.mapError(() => fail("unavailable")));
+
   return Protocol.EnrollmentReply.make({
     grant,
     recoveryCredential,
@@ -183,10 +201,12 @@ export const verifyReadiness = Effect.fn("Runtime.Server.verifyReadiness")(funct
     current.resource.instanceId !== capability.instanceId
   )
     return yield* fail("unauthorized");
+
   const provider = yield* Devbox.Service;
   const observed = yield* provider
     .fetch(current.environment, current.resource)
     .pipe(Effect.mapError(() => fail("unavailable")));
+
   if (observed.instanceId !== capability.instanceId) return yield* fail("pending");
 });
 
@@ -209,6 +229,7 @@ export const poll = Effect.fn("Runtime.Server.poll")(function* (
   const command = yield* commands
     .claim(capability.epoch, now)
     .pipe(Effect.mapError(() => fail("unavailable")));
+
   return { command };
 });
 
@@ -218,8 +239,11 @@ export const observe = Effect.fn("Runtime.Server.observe")(function* (
   now: number,
 ) {
   yield* context(capability);
+
   if (now >= capability.expiresAt) return yield* fail("unauthorized");
+
   const commands = yield* Commands.Service;
+
   yield* commands
     .observe({ commandId: request.commandId, result: request.result }, capability.epoch, now)
     .pipe(
@@ -227,6 +251,7 @@ export const observe = Effect.fn("Runtime.Server.observe")(function* (
         Schema.is(RuntimeConflict)(error) ? fail("conflict") : fail("unavailable"),
       ),
     );
+
   return Protocol.ObserveReply.make({ acceptedAt: now });
 });
 
@@ -236,7 +261,9 @@ export const accept = Effect.fn("Runtime.Server.accept")(function* (
   now: number,
 ) {
   yield* context(capability);
+
   if (now >= capability.expiresAt) return yield* fail("unauthorized");
+
   const execution = yield* Provisioning.Service;
   const receipt = yield* execution
     .acceptReadiness(
@@ -255,5 +282,6 @@ export const accept = Effect.fn("Runtime.Server.accept")(function* (
       now,
     )
     .pipe(Effect.mapError(map));
+
   return Protocol.ReadinessReply.make({ acceptedAt: receipt.acceptedAt });
 });

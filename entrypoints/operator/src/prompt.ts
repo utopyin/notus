@@ -11,6 +11,7 @@ const instructions = (briefing: Briefing): string => {
             ? ""
             : `, last confirmed ready at ${DateTime.formatIso(DateTime.makeUnsafe(briefing.devbox.lastReadyAt))}`
         }).`;
+
   const repository =
     briefing.repository === null
       ? briefing.repositories.length === 0
@@ -30,6 +31,7 @@ const instructions = (briefing: Briefing): string => {
                   : ` on branch ${briefing.repository.branch}`
               }.`
         }`;
+
   const roles =
     briefing.roles.length === 0
       ? "The workspace defines no specialist roles; run_specialist takes your instructions alone."
@@ -38,6 +40,7 @@ const instructions = (briefing: Briefing): string => {
           .join(
             "; ",
           )}. Name the role that fits the round; its text is given to the agent before your instructions, so do not repeat it.`;
+
   return [
     "You are Notus, a shared-team coding-agent operator, replying inside a Slack thread.",
     "You coordinate planning, implementation, review and QA for a team; humans approve plans and merge code.",

@@ -32,6 +32,7 @@ import {
 } from "./connection";
 
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
 /** An explicit link by the user (or the harness). Possession of a login file is not a link. */
 export const Seed = Schema.Union([
   Schema.Struct({
@@ -138,6 +139,7 @@ export const layerNoDeps = Layer.effect(
     const http = yield* HttpClient.HttpClient;
     const sealed = yield* Sealed.Service;
     const crypto = yield* Crypto.Crypto;
+
     const storage = <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(
         Effect.mapError((error) =>
@@ -146,13 +148,16 @@ export const layerNoDeps = Layer.effect(
             : fail(Schema.isSchemaError(error) ? "invalid-input" : "storage"),
         ),
       );
+
     const seal = (text: string) => sealed.seal(text).pipe(Effect.mapError(() => fail("storage")));
     const open = (text: string) => sealed.open(text).pipe(Effect.mapError(() => fail("storage")));
+
     const fingerprintOf = (material: string) =>
       crypto.digest("SHA-256", new TextEncoder().encode(material)).pipe(
         Effect.map(Hex.encode),
         Effect.mapError(() => fail("storage")),
       );
+
     const project = (row: ConnectionRow): ConnectionStatus => ({
       userId: row.userId,
       provider: row.provider,
@@ -164,10 +169,12 @@ export const layerNoDeps = Layer.effect(
       revokedAt: row.revokedAt,
       seedFingerprint: row.seedFingerprint,
     });
+
     const rows = Effect.fn("Connections.rows")(function* (userId: string) {
       yield* Schema.decodeEffect(Schema.NonEmptyString)(userId);
       const found = yield* db.select().from(connections);
       const decoded = yield* Schema.decodeEffect(Schema.Array(ConnectionRow))(found);
+
       // The object name selects the user; every stored row must agree with the caller.
       if (decoded.some((row) => row.userId !== userId)) return yield* fail("unauthorized");
       return decoded;
@@ -182,11 +189,14 @@ export const layerNoDeps = Layer.effect(
       const seed = yield* Schema.decodeEffect(Seed)(input).pipe(
         Effect.mapError(() => fail("invalid-input")),
       );
+
       const now = yield* Clock.currentTimeMillis;
       const existing = yield* storage(load(seed.userId, seed.provider));
+
       // The same explicit link is idempotent; a new one replaces whatever the provider had.
       if (existing && existing.seedFingerprint === seed.fingerprint && existing.revokedAt === null)
         return project(existing);
+
       const material =
         seed.provider === "openai-chatgpt"
           ? {
@@ -203,6 +213,7 @@ export const layerNoDeps = Layer.effect(
               idToken: null,
               expiresAt: 0,
             };
+
       yield* storage(
         db
           .insert(connections)
@@ -227,6 +238,7 @@ export const layerNoDeps = Layer.effect(
             },
           }),
       );
+
       const saved = yield* storage(load(seed.userId, seed.provider));
       if (!saved) return yield* fail("storage");
       return project(saved);
@@ -240,6 +252,7 @@ export const layerNoDeps = Layer.effect(
       const row = yield* storage(load(userId, provider));
       if (!row) return yield* fail("not-linked");
       if (row.revokedAt !== null) return project(row);
+
       // Revocation empties the material; the row stays as a record of when.
       yield* storage(
         db
@@ -247,6 +260,7 @@ export const layerNoDeps = Layer.effect(
           .set({ revokedAt: now, access: "", refresh: "", idToken: null })
           .where(eq(connections.provider, provider)),
       );
+
       return project({ ...row, revokedAt: now });
     });
     /** The row's material, opened; rotated first when a subscription login is about to expire. */
@@ -260,9 +274,11 @@ export const layerNoDeps = Layer.effect(
         refresh: yield* open(row.refresh),
         idToken: row.idToken === null ? null : yield* open(row.idToken),
       };
+
       // API keys do not rotate; only subscription logins expire.
       if (row.provider !== "openai-chatgpt" || row.expiresAt - now > window)
         return { ...opened, accountId: row.accountId, expiresAt: row.expiresAt };
+
       const rotated = yield* OAuth.refresh(Redacted.make(opened.refresh)).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.mapError((error) =>
@@ -275,8 +291,11 @@ export const layerNoDeps = Layer.effect(
           ),
         ),
       );
+
       if (rotated.accountId !== row.accountId) return yield* fail("conflict");
+
       const idToken = rotated.idToken ?? opened.idToken;
+
       // Rotation is persisted before the new access token is ever used.
       yield* storage(
         db
@@ -290,6 +309,7 @@ export const layerNoDeps = Layer.effect(
           })
           .where(eq(connections.provider, row.provider)),
       );
+
       return {
         access: rotated.access,
         refresh: rotated.refresh,
@@ -307,19 +327,24 @@ export const layerNoDeps = Layer.effect(
       yield* Schema.decodeEffect(Schema.NonEmptyString)(operationId).pipe(
         Effect.mapError(() => fail("invalid-input")),
       );
+
       const request = yield* Schema.decodeEffect(ForwardRequest)(input).pipe(
         Effect.mapError(() => fail("invalid-input")),
       );
+
       const authorized = yield* gate(
         Effect.gen(function* () {
           const row = yield* storage(load(userId, "openai-api"));
           if (!row) return yield* fail("not-linked");
           if (row.revokedAt !== null) return yield* fail("revoked");
+
           const [replay] = yield* storage(
             db.select().from(forwards).where(eq(forwards.operationId, operationId)),
           );
+
           if (replay) {
             const saved = yield* storage(Schema.decodeEffect(ForwardRow)(replay));
+
             return {
               _tag: "Replay" as const,
               response: ForwardResponse.make({
@@ -330,29 +355,36 @@ export const layerNoDeps = Layer.effect(
               }),
             };
           }
+
           const now = yield* Clock.currentTimeMillis;
           const current = yield* fresh(row, now);
           const credentials: Backend.Credentials = { key: Redacted.make(current.access) };
+
           return { _tag: "Grant" as const, credentials };
         }),
       );
+
       if (authorized._tag === "Replay") return authorized.response;
+
       const response = yield* Backend.forward(authorized.credentials, request).pipe(
         Effect.provideService(HttpClient.HttpClient, http),
         Effect.mapError((error) =>
           fail(error.reason === "unsupported-request" ? "invalid-input" : "provider-unavailable"),
         ),
       );
+
       // Only definitive provider answers are replayable. Pacing responses and transport
       // failures are not recorded, so a retry legitimately sends the request again.
       if (replayable(response.status)) {
         yield* gate(
           Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
+
             yield* storage(
               db.transaction((tx) =>
                 Effect.gen(function* () {
                   yield* tx.delete(forwards).where(lt(forwards.createdAt, now - forwardRetention));
+
                   yield* tx
                     .insert(forwards)
                     .values({
@@ -369,6 +401,7 @@ export const layerNoDeps = Layer.effect(
           }),
         );
       }
+
       return response;
     });
     const agentLogin = Effect.fn("Connections.agentLogin")(function* (
@@ -379,9 +412,12 @@ export const layerNoDeps = Layer.effect(
       const row = yield* storage(load(userId, "openai-chatgpt"));
       if (!row) return yield* fail("not-linked");
       if (row.revokedAt !== null) return yield* fail("revoked");
+
       // The box cannot refresh, so the access token must outlive the whole round.
       const current = yield* fresh(row, yield* Clock.currentTimeMillis, minimumLifetimeMs);
+
       if (current.idToken === null) return yield* fail("reconnect-required");
+
       return AgentLogin.make({
         access: current.access,
         idToken: current.idToken,
@@ -389,6 +425,7 @@ export const layerNoDeps = Layer.effect(
         expiresAt: current.expiresAt,
       });
     });
+
     const issuer = <A>(
       effect: Effect.Effect<A, { readonly reason: string }, HttpClient.HttpClient>,
     ) =>
@@ -398,6 +435,7 @@ export const layerNoDeps = Layer.effect(
           fail(error.reason === "rejected" ? "provider-rejected" : "provider-unavailable"),
         ),
       );
+
     const pendingOf = (row: DeviceLoginRow): DeviceLogin => ({
       state: "pending",
       userCode: row.userCode,
@@ -405,12 +443,15 @@ export const layerNoDeps = Layer.effect(
       expiresAt: row.startedAt + Device.lifetimeMs,
       interval: row.interval,
     });
+
     const beginDeviceLogin = Effect.fn("Connections.beginDeviceLogin")(function* (userId: string) {
       yield* Schema.decodeEffect(Schema.NonEmptyString)(userId).pipe(
         Effect.mapError(() => fail("invalid-input")),
       );
+
       const code = yield* issuer(Device.requestCode());
       const now = yield* Clock.currentTimeMillis;
+
       yield* storage(
         db
           .insert(deviceLogins)
@@ -433,6 +474,7 @@ export const layerNoDeps = Layer.effect(
             },
           }),
       );
+
       return pendingOf({
         singleton: 1,
         userId,
@@ -445,14 +487,19 @@ export const layerNoDeps = Layer.effect(
     const pollDeviceLogin = Effect.fn("Connections.pollDeviceLogin")(function* (userId: string) {
       const [found] = yield* storage(db.select().from(deviceLogins));
       if (!found) return { state: "none" } as const;
+
       const row = yield* storage(Schema.decodeEffect(DeviceLoginRow)(found));
+
       if (row.userId !== userId) return yield* fail("unauthorized");
+
       const now = yield* Clock.currentTimeMillis;
       const forget = storage(db.delete(deviceLogins).where(eq(deviceLogins.singleton, 1)));
+
       if (now > row.startedAt + Device.lifetimeMs) {
         yield* forget;
         return { state: "expired" } as const;
       }
+
       const granted = yield* issuer(
         Device.poll({
           deviceAuthId: row.deviceAuthId,
@@ -460,17 +507,23 @@ export const layerNoDeps = Layer.effect(
           interval: row.interval,
         }),
       );
+
       if (Option.isNone(granted)) return pendingOf(row);
+
       const tokens = yield* issuer(Device.exchange(granted.value));
+
       const connection = yield* link({
         userId,
         provider: "openai-chatgpt",
         tokens,
         fingerprint: yield* fingerprintOf(`openai-chatgpt:${tokens.accountId}:${tokens.refresh}`),
       });
+
       yield* forget;
+
       return { state: "linked", connection } as const;
     });
+
     return Service.of({
       status,
       link,

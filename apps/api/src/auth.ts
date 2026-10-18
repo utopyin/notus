@@ -29,17 +29,21 @@ const slackProvider = (credentials: {
   clientSecret: string;
 }): GenericOAuthConfig<"slack"> => {
   const base = slack(credentials);
+
   return {
     ...base,
     // Better Auth calls this as a plain Promise outside any Effect runtime.
     // oxlint-disable-next-line effecttsgo/async-function
     getUserInfo: async (tokens): Promise<GenericOAuthUserInfo | null> => {
       if (!tokens.accessToken) return null;
+
       // oxlint-disable-next-line effecttsgo/global-fetch
       const response = await fetch(slackUserInfo, {
         headers: { authorization: `Bearer ${tokens.accessToken}` },
       });
+
       if (!response.ok) return null;
+
       const profile: {
         sub?: string;
         name?: string;
@@ -48,7 +52,9 @@ const slackProvider = (credentials: {
         picture?: string;
         [teamClaim]?: string;
       } = await response.json();
+
       if (!profile.sub) return null;
+
       return {
         sub: profile.sub,
         id: profile.sub,

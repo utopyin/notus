@@ -16,6 +16,7 @@ import { TokenSet } from "./types";
  */
 export const issuer = "https://auth.openai.com";
 const accounts = `${issuer}/api/accounts`;
+
 export const verificationUrl = `${issuer}/codex/device`;
 /** The issuer stops accepting the code after this. */
 export const lifetimeMs = 15 * 60_000;
@@ -45,6 +46,7 @@ const TokenResponse = Schema.Struct({
   expires_in: Schema.optionalKey(Schema.Finite),
   id_token: Schema.optionalKey(Schema.NonEmptyString),
 });
+
 const fail = (reason: OAuthError["reason"], status?: number) =>
   new OAuthError({ operation: "device", reason, ...(status === undefined ? {} : { status }) });
 
@@ -52,21 +54,28 @@ const fail = (reason: OAuthError["reason"], status?: number) =>
 export const requestCode = Effect.fn("OpenAi.Device.requestCode")(
   function* () {
     const http = yield* HttpClient.HttpClient;
+
     const request = yield* HttpClientRequest.post(`${accounts}/deviceauth/usercode`).pipe(
       HttpClientRequest.acceptJson,
       HttpClientRequest.bodyJson({ client_id: clientId }),
       Effect.mapError(() => fail("invalid-response")),
     );
+
     const response = yield* http.execute(request).pipe(Effect.mapError(() => fail("transport")));
+
     if (response.status !== 200) return yield* fail("rejected", response.status);
+
     const body = yield* response.json.pipe(Effect.mapError(() => fail("invalid-response")));
+
     const decoded = yield* Schema.decodeUnknownEffect(UserCodeResponse)(body).pipe(
       Effect.mapError(() => fail("invalid-response")),
     );
     const userCode = decoded.user_code ?? decoded.usercode;
     const interval = Number(decoded.interval ?? 5);
+
     if (userCode === undefined || !Number.isInteger(interval) || interval < 1)
       return yield* fail("invalid-response");
+
     return DeviceCode.make({ deviceAuthId: decoded.device_auth_id, userCode, interval });
   },
   Effect.scoped,
@@ -77,20 +86,27 @@ export const requestCode = Effect.fn("OpenAi.Device.requestCode")(
 export const poll = Effect.fn("OpenAi.Device.poll")(
   function* (code: DeviceCode) {
     const http = yield* HttpClient.HttpClient;
+
     const request = yield* HttpClientRequest.post(`${accounts}/deviceauth/token`).pipe(
       HttpClientRequest.acceptJson,
       HttpClientRequest.bodyJson({ device_auth_id: code.deviceAuthId, user_code: code.userCode }),
       Effect.mapError(() => fail("invalid-response")),
     );
+
     const response = yield* http.execute(request).pipe(Effect.mapError(() => fail("transport")));
+
     // 403 and 404 are "not yet", per the CLI; anything else besides success is a refusal.
     if (response.status === 403 || response.status === 404)
       return Option.none<{ readonly authorizationCode: string; readonly codeVerifier: string }>();
+
     if (response.status !== 200) return yield* fail("rejected", response.status);
+
     const body = yield* response.json.pipe(Effect.mapError(() => fail("invalid-response")));
+
     const decoded = yield* Schema.decodeUnknownEffect(CodeResponse)(body).pipe(
       Effect.mapError(() => fail("invalid-response")),
     );
+
     return Option.some({
       authorizationCode: decoded.authorization_code,
       codeVerifier: decoded.code_verifier,
@@ -104,6 +120,7 @@ export const poll = Effect.fn("OpenAi.Device.poll")(
 export const exchange = Effect.fn("OpenAi.Device.exchange")(
   function* (grant: { readonly authorizationCode: string; readonly codeVerifier: string }) {
     const http = yield* HttpClient.HttpClient;
+
     const request = HttpClientRequest.post(tokenUrl).pipe(
       HttpClientRequest.acceptJson,
       HttpClientRequest.bodyUrlParams({
@@ -114,14 +131,20 @@ export const exchange = Effect.fn("OpenAi.Device.exchange")(
         code_verifier: grant.codeVerifier,
       }),
     );
+
     const response = yield* http.execute(request).pipe(Effect.mapError(() => fail("transport")));
+
     if (response.status !== 200) return yield* fail("rejected", response.status);
+
     const body = yield* response.json.pipe(Effect.mapError(() => fail("invalid-response")));
+
     const tokens = yield* Schema.decodeUnknownEffect(TokenResponse)(body).pipe(
       Effect.mapError(() => fail("invalid-response")),
     );
+
     const accountId = yield* accountIdFromJwt(tokens.access_token);
     const now = yield* Clock.currentTimeMillis;
+
     return TokenSet.make({
       access: tokens.access_token,
       refresh: tokens.refresh_token,

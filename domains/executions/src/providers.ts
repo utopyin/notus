@@ -41,12 +41,15 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const adapters = yield* ProviderAdapters;
+
     const adapterFor = (provider: string) => {
       const adapter = adapters.get(provider);
+
       return adapter === undefined
         ? Effect.fail(new ProviderNotRegisteredError({ provider }))
         : Effect.succeed(adapter);
     };
+
     return Service.of({
       forProvider: Effect.fn("Providers.forProvider")(function* (provider: string) {
         const adapter = yield* adapterFor(provider);
@@ -73,11 +76,14 @@ export const layerAdapters = <E, R>(
     Effect.gen(function* () {
       const built = yield* adapters;
       const registered = new Map<Provider, ProviderAdapter>();
+
       for (const adapter of built) {
         if (registered.has(adapter.provider))
           return yield* new DuplicateProviderRegistrationError({ provider: adapter.provider });
+
         registered.set(adapter.provider, adapter);
       }
+
       return registered;
     }),
   );

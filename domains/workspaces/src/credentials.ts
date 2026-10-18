@@ -21,6 +21,7 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const store = yield* D1.Service;
     const sealed = yield* Sealed.Service;
+
     const get = Effect.fn("Credentials.get")(
       function* (ref: InstallationRef) {
         const rows = yield* store.db
@@ -43,6 +44,7 @@ export const layerNoDeps = Layer.effect(
       },
       Effect.mapError((cause) => new CredentialError({ operation: "put", cause })),
     );
+
     return InstallationCredentials.of({ get, put });
   }),
 );

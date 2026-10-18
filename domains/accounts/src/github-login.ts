@@ -51,6 +51,7 @@ export class Service extends Context.Service<Service, Interface>()(
 ) {}
 
 const fail = (reason: ConnectionError["reason"]) => new ConnectionError({ reason });
+
 const millisOf = (iso: string | null) => {
   if (iso === null) return null;
   const parsed = Date.parse(iso);
@@ -63,8 +64,10 @@ export const layerNoDeps = Layer.effect(
     const shared = yield* D1.Service;
     const http = yield* HttpClient.HttpClient;
     const oauth = yield* OAuth.Configuration;
+
     const storage = <A, E>(effect: Effect.Effect<A, E>) =>
       effect.pipe(Effect.mapError(() => fail("storage")));
+
     const login = Effect.fn("GithubLogins.login")(function* (
       userId: string,
       minimumLifetimeMs: number,
@@ -72,6 +75,7 @@ export const layerNoDeps = Layer.effect(
       yield* Schema.decodeEffect(Schema.NonEmptyString)(userId).pipe(
         Effect.mapError(() => fail("invalid-input")),
       );
+
       const [user] = yield* storage(
         shared.db
           .select({ name: users.name, githubLogin: users.githubLogin })
@@ -79,7 +83,9 @@ export const layerNoDeps = Layer.effect(
           .where(eq(users.id, userId))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(UserRow)))),
       );
+
       if (!user || user.githubLogin === null) return null;
+
       // Every dashboard sign-in that acts as this user; usually exactly one.
       const signIns = yield* storage(
         shared.db
@@ -88,7 +94,9 @@ export const layerNoDeps = Layer.effect(
           .where(eq(logins.userId, userId))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(LoginRow)))),
       );
+
       if (signIns.length === 0) return null;
+
       const [row] = yield* storage(
         shared.db
           .select({
@@ -111,14 +119,19 @@ export const layerNoDeps = Layer.effect(
           )
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(AccountRow)))),
       );
+
       if (!row || row.accessToken === null) return null;
+
       const now = yield* Clock.currentTimeMillis;
+
       const identity = {
         login: user.githubLogin,
         name: user.name ?? user.githubLogin,
         email: `${row.accountId}+${user.githubLogin}@users.noreply.github.com`,
       };
+
       const expiresAt = millisOf(row.accessTokenExpiresAt);
+
       // A token GitHub never expires (no expiry recorded) stands as it is.
       if (expiresAt === null || expiresAt - now > minimumLifetimeMs)
         return GithubLogin.make({
@@ -126,9 +139,12 @@ export const layerNoDeps = Layer.effect(
           expiresAt: expiresAt ?? now + 365 * 24 * 60 * 60_000,
           ...identity,
         });
+
       const refreshExpiresAt = millisOf(row.refreshTokenExpiresAt);
+
       if (row.refreshToken === null || (refreshExpiresAt !== null && refreshExpiresAt <= now))
         return yield* fail("reconnect-required");
+
       const rotated = yield* OAuth.refresh(Redacted.make(row.refreshToken)).pipe(
         Effect.provideService(OAuth.Configuration, oauth),
         Effect.provideService(HttpClient.HttpClient, http),
@@ -142,6 +158,7 @@ export const layerNoDeps = Layer.effect(
           ),
         ),
       );
+
       // Rotation is persisted before the new access token is ever used.
       yield* storage(
         shared.db
@@ -157,12 +174,14 @@ export const layerNoDeps = Layer.effect(
           })
           .where(eq(accounts.id, row.id)),
       );
+
       return GithubLogin.make({
         access: rotated.access,
         expiresAt: rotated.expiresAt,
         ...identity,
       });
     });
+
     return Service.of({ login });
   }),
 );

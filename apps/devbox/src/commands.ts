@@ -20,6 +20,7 @@ const collect = (stream: Stream.Stream<Uint8Array, unknown>) =>
     const chunks: Array<Uint8Array> = [];
     let length = 0;
     let truncated = false;
+
     yield* stream.pipe(
       Stream.runForEach((chunk) =>
         Effect.sync(() => {
@@ -27,21 +28,27 @@ const collect = (stream: Stream.Stream<Uint8Array, unknown>) =>
             truncated = true;
             return;
           }
+
           const room = outputCap - length;
           const slice = chunk.byteLength > room ? chunk.subarray(0, room) : chunk;
+
           if (chunk.byteLength > room) truncated = true;
+
           chunks.push(slice);
           length += slice.byteLength;
         }),
       ),
       Effect.ignore,
     );
+
     const bytes = new Uint8Array(length);
     let offset = 0;
+
     for (const chunk of chunks) {
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
+
     return { text: new TextDecoder("utf-8", { fatal: false }).decode(bytes), truncated };
   });
 
@@ -77,6 +84,7 @@ const checkoutScript = (spec: Extract<RuntimeCommand["spec"], { kind: "checkout"
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
   const pull = spec.pullRequest;
+
   return [
     "set -eu",
     `path=${quote(spec.path)}`,
@@ -118,6 +126,7 @@ const specialistScript = (
 ) => {
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
   const promptTimeout = Math.max(60_000, spec.timeoutMs - 60_000);
+
   return [
     "set -u",
     `path=${quote(spec.path)}`,
@@ -162,6 +171,7 @@ const specialistScript = (
 const pushScript = (spec: Extract<RuntimeCommand["spec"], { kind: "push" }>) => {
   const url = `https://github.com/${spec.repository.owner}/${spec.repository.name}.git`;
   const quote = (value: string) => `'${value.replace(/'/g, "'\\''")}'`;
+
   return [
     "set -eu",
     `path=${quote(spec.path)}`,
@@ -193,6 +203,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const fs = yield* FileSystem.FileSystem;
   const settings = yield* Settings.Service;
+
   // `busy start|end <command id>`, supplied by the provider's template; absent means nothing to do.
   const busy = (phase: "start" | "end", id: string) =>
     fs.exists(busyHook).pipe(
@@ -219,7 +230,9 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
           : Effect.void,
       ),
     );
+
   const startedAt = yield* Clock.currentTimeMillis;
+
   const failure = (durationMs: number, stderr: string): CommandResult => ({
     exitCode: null,
     stdout: "",
@@ -228,10 +241,14 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
     timedOut: false,
     truncated: false,
   });
+
   const spec = command.spec;
+
   if (spec.kind === "pull-request" || spec.kind === "update")
     return failure(0, "control-plane commands never run on the box");
+
   const asPerson = spec.kind === "push" && (yield* Git.signedIn());
+
   const script =
     spec.kind === "shell"
       ? spec.script
@@ -240,7 +257,9 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         : spec.kind === "specialist"
           ? specialistScript(spec, command.id)
           : pushScript(spec);
+
   const cwd = spec.kind === "shell" ? spec.cwd : "/workspaces";
+
   const env =
     spec.kind === "shell"
       ? baseEnv
@@ -253,6 +272,7 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
             NOTUS_INSTRUCTIONS: spec.instructions,
           }
         : gitEnv(asPerson ? null : command.credential);
+
   return yield* Effect.scoped(
     Effect.gen(function* () {
       // The provider's template tells it the box is busy, so work is never stopped as idle
@@ -260,7 +280,9 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
       yield* busy("start", command.id).pipe(
         Effect.catch(() => Effect.logWarning("devbox.busy_signal_unavailable")),
       );
+
       yield* Effect.addFinalizer(() => busy("end", command.id).pipe(Effect.ignore));
+
       const child = yield* spawner.spawn(
         ChildProcess.make("/bin/bash", ["-c", script], {
           cwd,
@@ -273,13 +295,16 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
           env,
         }),
       );
+
       yield* Effect.addFinalizer(() =>
         signalGroup(child.pid, "SIGTERM").pipe(
           Effect.andThen(signalGroup(child.pid, "SIGKILL")),
           Effect.ignore,
         ),
       );
+
       let timedOut = false;
+
       const [stdout, stderr, exit] = yield* Effect.all(
         [
           collect(child.stdout),
@@ -306,7 +331,9 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         ],
         { concurrency: "unbounded" },
       );
+
       const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
+
       const base = {
         exitCode: exit,
         stdout: stdout.text,
@@ -316,16 +343,22 @@ export const run = Effect.fn("Devbox.Commands.run")(function* (
         truncated: stdout.truncated || stderr.truncated,
       };
       const result: CommandResult = base;
+
       // The report is what the round printed; a non-zero exit carries the diagnostics in stderr.
       if (spec.kind === "specialist")
         return exit === 0 ? { ...base, specialist: { report: stdout.text } } : result;
+
       if (spec.kind === "shell" || exit !== 0) return result;
+
       const lines = stdout.text.trim().split("\n");
       const headSha = lines.at(-1) ?? "";
+
       if (!/^[0-9a-f]{40}$/.test(headSha)) return result;
+
       // The checkout script prints the default branch, then the branch, then HEAD.
       const branch = lines.at(-2) ?? "";
       const defaultBranch = lines.at(-3) ?? "";
+
       return spec.kind === "checkout"
         ? {
             ...base,

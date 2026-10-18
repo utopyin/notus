@@ -15,10 +15,12 @@ export const isObject = (value: Json | undefined): value is JsonObject =>
 export const canonical = (value: Json | undefined): string => {
   if (value === undefined) return "";
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+
   if (isObject(value))
     return `{${Object.keys(value)
       .sort()
       .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
       .join(",")}}`;
+
   return JSON.stringify(value);
 };

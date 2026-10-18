@@ -61,8 +61,10 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const host = yield* Cloudflare.DurableObjectState;
     const config = yield* deploymentConfig.pipe(Effect.orDie);
     const runtime = yield* runtimeConfig.pipe(Effect.orDie);
+
     if (config.mode === "readiness" && !runtime)
       return yield* Effect.die("Readiness mode requires runtime authentication configuration");
+
     const operator = yield* operatorConfig.pipe(Effect.orDie);
     const github = yield* githubConfig.pipe(Effect.orDie);
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
@@ -73,6 +75,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
     const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
     const context = yield* CurrentRuntimeContext;
     if (!context) return yield* Effect.die("Task initialization requires Alchemy RuntimeContext");
+
     return {
       host,
       config,
@@ -104,13 +107,16 @@ export class Task extends Cloudflare.DurableObject<Task>()(
         Effect.gen(function* () {
           const db = yield* Drizzle.DurableObject({ migrations });
           const database = Sqlite.layer(db);
+
           const stateLayer = State.layer.pipe(
             Layer.provide([database, State.configuration(config)]),
           );
+
           const attemptsLayer = Attempts.layer.pipe(Layer.provide(database));
           const provisioningLayer = Provisioning.layer.pipe(Layer.provide(database));
           const stepsLayer = Steps.layer.pipe(Layer.provide(database));
           const commandsLayer = Commands.layer.pipe(Layer.provide(database));
+
           // Deliveries reach their platform through the registry; this host never verifies webhooks or installs.
           const sourcesLayer = platformsLayer(config, github, {
             webhookSecret: null,
@@ -124,11 +130,13 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ),
             ),
           );
+
           // Routes live in the shared database; the task moves one when it takes a conversation over.
           const inboxLayer = Inbox.layer.pipe(
             Layer.provide(sourcesLayer),
             Layer.provide(Layer.effect(D1.Binding, shared.raw)),
           );
+
           const services = yield* Layer.build(
             Layer.merge(
               Layer.merge(Layer.merge(stateLayer, sourcesLayer), inboxLayer),
@@ -150,16 +158,20 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               Layer.provide(cryptoLayer),
             ),
           ).pipe(Effect.orDie);
+
           const state = yield* State.Service.pipe(Effect.provideContext(services));
           const provisioning = yield* Provisioning.Service.pipe(Effect.provideContext(services));
           const devbox = yield* Devbox.Service.pipe(Effect.provideContext(services));
+
           // Built once per object: what it holds lives as long as the object does.
           const activity = yield* Activity.Service.pipe(
             Effect.provide(Activity.layer),
             Effect.provideContext(services),
           );
+
           const steps = yield* Steps.Service.pipe(Effect.provideContext(services));
           const commands = yield* Commands.Service.pipe(Effect.provideContext(services));
+
           // Built lazily per claim; absent configuration fails the checkout, never the object.
           const githubLayer = github
             ? GithubApp.layer.pipe(
@@ -169,6 +181,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 ]),
               )
             : null;
+
           const mint = (repository: RepositoryRef, kind: "checkout" | "push") =>
             githubLayer
               ? GithubApp.Service.pipe(
@@ -198,6 +211,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   Effect.option,
                 )
               : Effect.succeedNone;
+
           /**
            * A Codex login file for one specialist round, from the initiator's agent connection. The
            * refresh token stays in the Connection object; the file is returned once, never persisted.
@@ -215,6 +229,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               last_refresh: Schema.NonEmptyString,
             }),
           );
+
           const initiator = Effect.suspend(() =>
             gate(
               State.Service.pipe(
@@ -224,35 +239,45 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               ),
             ).pipe(Effect.orElseSucceed(() => null)),
           );
+
           /** The initiator's GitHub sign-in for git on the box; null when they have none or it cannot be refreshed. */
           const githubAuth = (minimumLifetimeMs: number) =>
             Effect.gen(function* () {
               const initiatorId = yield* initiator;
               if (initiatorId === null) return null;
+
               const login = yield* connections
                 .getByName(initiatorId)
                 .githubLogin(initiatorId, minimumLifetimeMs);
+
               if (!login.ok) {
                 yield* Effect.logWarning(`task.github_login_failed ${login.reason}`);
                 return null;
               }
+
               return login.value;
             }).pipe(Effect.catchCause(() => Effect.succeed(null)));
+
           const agentAuth = (lifetimeMs: number) =>
             Effect.gen(function* () {
               const initiatorId = yield* initiator;
               if (initiatorId === null) return Option.none<string>();
+
               const login = yield* connections
                 .getByName(initiatorId)
                 .agentLogin(initiatorId, lifetimeMs);
+
               if (!login.ok) {
                 yield* Effect.logWarning(`task.agent_login_failed ${login.reason}`);
                 return Option.none<string>();
               }
+
               const now = yield* Clock.currentTimeMillis;
+
               yield* Effect.logInfo(
                 `task.agent_login expires_in_min=${Math.floor((login.value.expiresAt - now) / 60_000)}`,
               );
+
               const file = yield* Schema.encodeEffect(CodexAuthFile)({
                 OPENAI_API_KEY: null,
                 tokens: {
@@ -263,8 +288,10 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 },
                 last_refresh: DateTime.formatIso(DateTime.makeUnsafe(now)),
               });
+
               return Option.some(file);
             }).pipe(Effect.catchCause(() => Effect.succeed(Option.none<string>())));
+
           /** Opening a pull request: a control-plane action with the App's token, never on the box. */
           const openPullRequest = (command: {
             readonly id: string;
@@ -331,6 +358,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   timedOut: false,
                   truncated: false,
                 });
+
           /** A message in the origin conversation, sent through its platform; the command id keeps it idempotent. */
           const postUpdate = (command: {
             readonly id: string;
@@ -364,6 +392,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 }),
               ),
             );
+
           const performControl = (command: {
             readonly id: string;
             readonly spec: Extract<CommandSpec, { readonly kind: "pull-request" | "update" }>;
@@ -371,21 +400,26 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             command.spec.kind === "update"
               ? postUpdate({ id: command.id, spec: command.spec })
               : openPullRequest({ id: command.id, spec: command.spec });
+
           // Built once per object lifetime; each model request selects its operation at call time.
           const model = yield* Layer.build(
             Broker.languageModel(connections, context, operator),
           ).pipe(Effect.orDie);
+
           const mode = state.snapshot.pipe(
             Effect.map((snapshot) => snapshot.task?.mode ?? config.mode),
           );
+
           const advance = Effect.fn("Task.advance")((now: number) =>
             Effect.gen(function* () {
               const selected = yield* mode;
+
               if (selected === "readiness") return yield* ReadinessControl.advance(now);
               if (selected === "operator") return yield* OperatorControl.advance(now);
               return yield* Control.advance(now, config.simulationDelayMs);
             }).pipe(Effect.provideContext(services)),
           );
+
           // Expected domain failures leave the gate as values, never rejected
           // promises that reset the object. Restore the error channel outside it.
           const gate = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -393,10 +427,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               const exit = yield* host.blockConcurrencyWhile(() => Effect.exit(effect));
               return yield* exit;
             });
+
           const arm = Effect.fn("Task.arm")(function* (at: number) {
             const existing = yield* host.storage.getAlarm();
             if (existing === null || existing > at) yield* host.storage.setAlarm(at);
           });
+
           const recompute = Effect.gen(function* () {
             const now = yield* Clock.currentTimeMillis;
             const selected = yield* mode;
@@ -406,12 +442,15 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 : selected === "operator"
                   ? yield* OperatorControl.nextWake(now).pipe(Effect.provideContext(services))
                   : yield* Control.nextWake(now).pipe(Effect.provideContext(services));
+
             // A working box's hold is renewed by this alarm too.
             const held = selected === "operator" ? yield* activity.nextWake(now) : null;
             const at = next === null ? held : held === null ? next : Math.min(next, held);
+
             if (at === null) yield* host.storage.deleteAlarm();
             else yield* host.storage.setAlarm(Math.max(now + 1, at));
           });
+
           const alarm = Effect.gen(function* () {
             yield* gate(
               Effect.gen(function* () {
@@ -421,6 +460,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 yield* advance(now);
               }),
             );
+
             // Readiness tasks always provision; operator tasks provision once the operator asked.
             if ((yield* mode) !== "simulation") {
               for (let index = 0; index < 2; index++) {
@@ -432,12 +472,15 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   }),
                 );
                 if (!claim) break;
+
                 yield* Effect.gen(function* () {
                   const result = yield* devbox.perform(claim);
                   yield* Effect.logInfo(`task.provisioning ${claim.work} -> ${result._tag}`);
+
                   yield* gate(
                     Effect.gen(function* () {
                       const now = yield* Clock.currentTimeMillis;
+
                       yield* arm(now + 1);
                       yield* provisioning.record(claim, result, now);
                       yield* advance(now);
@@ -447,6 +490,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 }).pipe(Effect.catchCause(() => Effect.logError("task.provisioning_failed")));
               }
             }
+
             if ((yield* mode) === "operator") {
               for (let index = 0; index < 4; index++) {
                 const claimed = yield* gate(
@@ -458,6 +502,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   }),
                 );
                 if (!claimed) break;
+
                 // The model round runs outside the gate; the Connection object owns credentials.
                 const outcome = yield* Operator.run(claimed.briefing, claimed.step.priorParts).pipe(
                   Effect.provideService(Broker.Operation, {
@@ -478,23 +523,29 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                       yield* Effect.logWarning(
                         `task.operator_step_failed ${error.cause._tag}: ${error.message.slice(0, 500)}`,
                       );
+
                       const now = yield* Clock.currentTimeMillis;
                       return Operator.classify(error, claimed.step.attempts, now) as StepOutcome;
                     }),
                   ),
                 );
+
                 yield* gate(
                   Effect.gen(function* () {
                     const now = yield* Clock.currentTimeMillis;
+
                     yield* arm(now + 1);
+
                     yield* OperatorControl.record(claimed.step, outcome, now).pipe(
                       Effect.provideContext(services),
                     );
+
                     yield* recompute;
                   }),
                 ).pipe(Effect.catchCause(() => Effect.logError("task.operator_record_failed")));
               }
             }
+
             if ((yield* mode) === "operator") {
               yield* Effect.gen(function* () {
                 const due = yield* gate(
@@ -502,26 +553,35 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                     return yield* activity.due(yield* Clock.currentTimeMillis);
                   }),
                 );
+
                 // Provider call outside the gate; a lost hold runs out by itself.
                 if (due !== null) yield* activity.perform(due, yield* Clock.currentTimeMillis);
               }).pipe(Effect.catchCause(() => Effect.logError("task.activity_failed")));
+
               for (let index = 0; index < 2; index++) {
                 const claimed = yield* gate(
                   Effect.gen(function* () {
                     const now = yield* Clock.currentTimeMillis;
+
                     yield* arm(now + 60_000);
                     const command = yield* commands.claimControl(now);
+
                     return command ? { command, claimedAt: now } : null;
                   }),
                 );
                 if (!claimed) break;
+
                 const spec = claimed.command.spec;
+
                 if (spec.kind !== "pull-request" && spec.kind !== "update") break;
+
                 // Provider call outside the gate; the lease fences a lost isolate.
                 const result = yield* performControl({ id: claimed.command.id, spec });
+
                 yield* gate(
                   Effect.gen(function* () {
                     const now = yield* Clock.currentTimeMillis;
+
                     yield* arm(now + 1);
                     yield* commands.complete(claimed.command.id, claimed.claimedAt, result, now);
                     yield* advance(now);
@@ -530,7 +590,9 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 ).pipe(Effect.catchCause(() => Effect.logError("task.control_action_failed")));
               }
             }
+
             const counts = { claimed: 0, confirmed: 0, rateLimited: 0, rejected: 0, ambiguous: 0 };
+
             for (let index = 0; index < 16; index++) {
               const claim = yield* gate(
                 Effect.gen(function* () {
@@ -540,21 +602,27 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 }),
               );
               if (claim === null) break;
+
               counts.claimed++;
+
               yield* Effect.gen(function* () {
                 // Network work must never enter the local gate.
                 const outcome = yield* Control.deliver(claim).pipe(Effect.provideContext(services));
+
                 yield* gate(
                   Effect.gen(function* () {
                     yield* arm((yield* Clock.currentTimeMillis) + 1);
+
                     yield* state.recordDeliveryOutcome(
                       claim,
                       outcome,
                       yield* Clock.currentTimeMillis,
                     );
+
                     yield* recompute;
                   }),
                 );
+
                 switch (outcome._tag) {
                   case "Confirmed":
                     counts.confirmed++;
@@ -575,6 +643,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 ),
               );
             }
+
             // Even an empty scan must account for concurrent admission and all
             // outstanding sending claims before deleting the alarm.
             yield* gate(recompute);
@@ -588,6 +657,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
             // Alchemy serializes typed errors. A defect rejects the alarm for CF retry.
             Effect.orDie,
           );
+
           const runtimeResult = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
             effect.pipe(
               Effect.map((value) => ({ ok: true as const, value })),
@@ -600,11 +670,13 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 }),
               ),
             );
+
           return {
             admit: (command: Admission) =>
               gate(
                 Effect.gen(function* () {
                   const selected = yield* mode;
+
                   const receipt = yield* (
                     selected === "readiness"
                       ? ReadinessControl.admit(command)
@@ -612,15 +684,18 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                         ? OperatorControl.admit(command)
                         : Control.admit(command, config.simulationDelayMs)
                   ).pipe(Effect.provideContext(services));
+
                   const needsEnvironment =
                     selected === "readiness"
                       ? (yield* provisioning.current) === null
                       : selected === "operator"
                         ? (yield* provisioning.captured) === null
                         : false;
+
                   // A task still waiting for its environment and repositories must not take its
                   // first step before prepareEnvironment stored them; that call arms the alarm.
                   if (!needsEnvironment) yield* arm((yield* Clock.currentTimeMillis) + 1);
+
                   return { receipt, needsEnvironment };
                 }),
               ).pipe(
@@ -638,10 +713,13 @@ export class Task extends Cloudflare.DurableObject<Task>()(
               gate(
                 Effect.gen(function* () {
                   const now = yield* Clock.currentTimeMillis;
+
                   yield* arm(now + 1);
                   const task = (yield* state.snapshot).task;
+
                   if (!task || task.closedAt !== null)
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   if (task.mode === "operator") {
                     yield* OperatorControl.prepare(
                       environment,
@@ -659,8 +737,10 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                       now,
                     );
                   } else return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   yield* advance(now);
                   yield* recompute;
+
                   return { ok: true as const };
                 }),
               ).pipe(Effect.orElseSucceed(() => ({ ok: false as const }))),
@@ -669,6 +749,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   const now = yield* Clock.currentTimeMillis;
                   yield* arm(now + 1);
+
                   return yield* Control.acceptOutcome(observation, now).pipe(
                     Effect.provideContext(services),
                   );
@@ -680,6 +761,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                   Effect.gen(function* () {
                     if (capability._tag !== "Enrollment")
                       return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                     return yield* Runtime.assignment(capability);
                   }).pipe(Effect.provideContext(services)),
                 ),
@@ -692,35 +774,45 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   if (capability._tag !== "Enrollment")
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   const replay = yield* gate(
                     Runtime.replay(capability, request).pipe(Effect.provideContext(services)),
                   );
                   let grant = replay;
+
                   if (!grant) {
                     const current = yield* gate(
                       Runtime.context(capability).pipe(Effect.provideContext(services)),
                     );
+
                     const verified = yield* Runtime.verify(capability, request, current).pipe(
                       Effect.provideContext(services),
                     );
+
                     grant = yield* gate(
                       Effect.gen(function* () {
                         const now = yield* Clock.currentTimeMillis;
+
                         yield* arm(now + 1);
+
                         const accepted = yield* Runtime.enroll(capability, verified, now).pipe(
                           Effect.provideContext(services),
                         );
+
                         yield* recompute;
+
                         return accepted;
                       }),
                     );
                   }
+
                   const reply = yield* Runtime.reply(
                     capability,
                     request,
                     grant,
                     yield* Clock.currentTimeMillis,
                   ).pipe(Effect.provideContext(services));
+
                   return yield* Schema.encodeEffect(Protocol.EnrollmentReply)(reply);
                 }),
               ),
@@ -732,21 +824,28 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   if (capability._tag !== "Readiness")
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   const current = yield* gate(
                     Runtime.context(capability).pipe(Effect.provideContext(services)),
                   );
+
                   yield* Runtime.verifyReadiness(capability, current).pipe(
                     Effect.provideContext(services),
                   );
+
                   return yield* gate(
                     Effect.gen(function* () {
                       const now = yield* Clock.currentTimeMillis;
+
                       yield* arm(now + 1);
+
                       const reply = yield* Runtime.accept(capability, request, now).pipe(
                         Effect.provideContext(services),
                       );
+
                       yield* advance(now);
                       yield* recompute;
+
                       return reply;
                     }),
                   );
@@ -757,23 +856,30 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   if (capability._tag !== "Readiness")
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   // Wait outside the gate; each attempt is one short claim inside it.
                   const deadline = (yield* Clock.currentTimeMillis) + request.waitMs;
+
                   while (true) {
                     const reply = yield* gate(
                       Effect.gen(function* () {
                         const now = yield* Clock.currentTimeMillis;
+
                         const reply = yield* Runtime.poll(capability, now).pipe(
                           Effect.provideContext(services),
                         );
+
                         // A command now runs on the box; the alarm holds it awake at once.
                         if (reply.command !== null) yield* arm(now + 1);
+
                         return reply;
                       }),
                     );
+
                     if (reply.command !== null) {
                       const command = reply.command;
                       let credential: string | null = null;
+
                       if (
                         command.spec.kind === "checkout" ||
                         command.spec.kind === "push" ||
@@ -785,10 +891,12 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                             ? // Refresh first if the login would expire before the round's deadline.
                               yield* agentAuth(command.spec.timeoutMs + 10 * 60_000)
                             : yield* mint(command.spec.repository, command.spec.kind);
+
                         if (token._tag === "None") {
                           yield* gate(
                             Effect.gen(function* () {
                               const now = yield* Clock.currentTimeMillis;
+
                               yield* commands.fail(
                                 command.id,
                                 command.spec.kind === "specialist"
@@ -796,20 +904,26 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                                   : "github-credential-unavailable",
                                 now,
                               );
+
                               yield* advance(now);
                               yield* recompute;
                             }),
                           );
+
                           return yield* Schema.encodeEffect(Protocol.PollReply)({ command: null });
                         }
+
                         credential = token.value;
                       }
+
                       return yield* Schema.encodeEffect(Protocol.PollReply)({
                         command: { id: command.id, spec: command.spec, credential },
                       });
                     }
+
                     if ((yield* Clock.currentTimeMillis) >= deadline)
                       return yield* Schema.encodeEffect(Protocol.PollReply)({ command: null });
+
                     yield* Effect.sleep("1 second");
                   }
                 }),
@@ -819,16 +933,20 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   if (capability._tag !== "Readiness")
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   yield* gate(
                     Effect.gen(function* () {
                       const now = yield* Clock.currentTimeMillis;
+
                       yield* Runtime.authorize(capability, now).pipe(
                         Effect.provideContext(services),
                       );
                     }),
                   );
+
                   // Fetched outside the gate, returned once, never persisted by this object.
                   const login = yield* githubAuth(60 * 60_000);
+
                   return yield* Schema.encodeEffect(Protocol.LoginReply)({
                     github:
                       login === null
@@ -851,15 +969,20 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   if (capability._tag !== "Readiness")
                     return yield* new RuntimeFailure({ reason: "unauthorized" });
+
                   return yield* gate(
                     Effect.gen(function* () {
                       const now = yield* Clock.currentTimeMillis;
+
                       yield* arm(now + 1);
+
                       const reply = yield* Runtime.observe(capability, request, now).pipe(
                         Effect.provideContext(services),
                       );
+
                       yield* advance(now);
                       yield* recompute;
+
                       return reply;
                     }),
                   );
@@ -870,6 +993,7 @@ export class Task extends Cloudflare.DurableObject<Task>()(
                 Effect.gen(function* () {
                   const snapshot = yield* Control.snapshot().pipe(Effect.provideContext(services));
                   const selected = yield* mode;
+
                   return selected === "readiness"
                     ? { ...snapshot, provisioning: yield* provisioning.current }
                     : selected === "operator"

@@ -17,6 +17,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@notus/namespace/Instances") {}
 
 const maxResponseBytes = 1024 * 1024;
+
 // Deliberately project only proof fields. DescribeInstance can also return credentials.
 const responseSchema = Schema.fromJsonString(
   Schema.Struct({
@@ -33,10 +34,12 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const settings = yield* Config.Service;
     const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+
     const endpoint = yield* Effect.try({
       try: () => {
         const input = settings.computeEndpoint ?? Config.defaultComputeEndpoint;
         const url = new URL(input);
+
         if (
           !/^https:\/\/[^/]+\/?$/.test(input) ||
           /[\s\\?#]/.test(input) ||
@@ -49,6 +52,7 @@ export const layerNoDeps = Layer.effect(
           url.pathname !== "/"
         )
           throw new Error();
+
         return url.origin;
       },
       catch: () =>
@@ -57,6 +61,7 @@ export const layerNoDeps = Layer.effect(
             "Namespace computeEndpoint must be a trusted HTTPS origin without credentials, path, query or fragment",
         }),
     });
+
     if (
       !Number.isSafeInteger(settings.timeoutMs) ||
       settings.timeoutMs <= 0 ||
@@ -66,6 +71,7 @@ export const layerNoDeps = Layer.effect(
         message: "Namespace timeoutMs must be a positive bounded integer",
       });
     }
+
     if (
       !Redacted.isRedacted(settings.credential) ||
       !/^[\x21-\x7e]+$/.test(Redacted.value(settings.credential))
@@ -80,6 +86,7 @@ export const layerNoDeps = Layer.effect(
         yield* Schema.decodeEffect(DestroyedReceipt.fields.instanceId)(instanceId).pipe(
           Effect.mapError(() => new InstancesError({ reason: "invalidInput" })),
         );
+
         const request = yield* HttpClientRequest.post(
           `${endpoint}/namespace.cloud.compute.v1beta.ComputeService/DescribeInstance`,
         ).pipe(
@@ -89,9 +96,11 @@ export const layerNoDeps = Layer.effect(
           HttpClientRequest.bodyJson({ instanceId }),
           Effect.mapError(() => new InstancesError({ reason: "invalidInput" })),
         );
+
         const response = yield* http
           .execute(request)
           .pipe(Effect.mapError(() => new InstancesError({ reason: "transport" })));
+
         if (response.status !== 200) {
           // NotFound is absence of evidence, never a destruction receipt.
           return yield* new InstancesError({
@@ -99,32 +108,41 @@ export const layerNoDeps = Layer.effect(
             status: response.status,
           });
         }
+
         if (
           response.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !==
           "application/json"
         ) {
           return yield* new InstancesError({ reason: "invalidResponse" });
         }
+
         let size = 0;
         const chunks: Uint8Array[] = [];
+
         yield* response.stream.pipe(
           Stream.runForEach((chunk) => {
             size += chunk.byteLength;
+
             if (size > maxResponseBytes)
               return Effect.fail(new InstancesError({ reason: "invalidResponse" }));
+
             chunks.push(chunk);
+
             return Effect.void;
           }),
           Effect.mapError(() => new InstancesError({ reason: "invalidResponse" })),
         );
+
         const { metadata } = yield* Effect.try({
           try: () => {
             const bytes = new Uint8Array(size);
             let offset = 0;
+
             for (const chunk of chunks) {
               bytes.set(chunk, offset);
               offset += chunk.byteLength;
             }
+
             return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
           },
           catch: () => new InstancesError({ reason: "invalidResponse" }),
@@ -132,15 +150,20 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeEffect(responseSchema)),
           Effect.mapError(() => new InstancesError({ reason: "invalidResponse" })),
         );
+
         if (metadata.instanceId !== instanceId)
           return yield* new InstancesError({ reason: "identityMismatch" });
+
         if (metadata.status !== "DESTROYED")
           return yield* new InstancesError({ reason: "notDestroyed" });
+
         if (metadata.destroyedAt === undefined)
           return yield* new InstancesError({ reason: "missingDestroyedAt" });
+
         const destroyedAt = yield* Schema.decodeUnknownEffect(DestroyedReceipt.fields.destroyedAt)(
           metadata.destroyedAt,
         ).pipe(Effect.mapError(() => new InstancesError({ reason: "invalidDestroyedAt" })));
+
         return { instanceId, destroyedAt };
       },
       (effect) =>
@@ -156,6 +179,7 @@ export const layerNoDeps = Layer.effect(
           }),
         ),
     );
+
     return Service.of({ destroyed });
   }),
 );

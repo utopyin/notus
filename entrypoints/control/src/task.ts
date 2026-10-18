@@ -13,15 +13,19 @@ export const deliver = Effect.fn("Control.deliver")(function* (
   claim: DeliveryClaim,
 ): Effect.fn.Return<DeliveryOutcome, never, Platforms.Service> {
   const platforms = yield* Platforms.Service;
+
   return yield* Effect.gen(function* () {
     const port = yield* platforms.forInstallation(claim.target.source);
     const handle = yield* port.conversations.resolveReply(claim.target);
+
     if (claim.kind === "answer" && claim.text === null) {
       return { _tag: "Rejected", code: "missing_answer" } as const;
     }
+
     const receipt = yield* claim.kind === "reaction"
       ? handle.react(claim.deliveryId)
       : handle.reply(claim.text ?? "", claim.deliveryId);
+
     return { _tag: "Confirmed", receipt: receipt.reference } as const;
   }).pipe(
     Effect.catch((error) =>
@@ -29,6 +33,7 @@ export const deliver = Effect.fn("Control.deliver")(function* (
         // An unregistered platform or unknown installation is a rejection like any other.
         if (error._tag !== "Sources.SourceError")
           return { _tag: "Rejected", code: "provider_rejected" } as const;
+
         switch (error.classification) {
           case "rate-limited":
             return {
@@ -46,8 +51,10 @@ export const deliver = Effect.fn("Control.deliver")(function* (
 });
 
 const batchSize = 16;
+
 const record = Effect.fn("Control.record")(function* (outcome: Outcome, now: number) {
   const state = yield* State.Service;
+
   return yield* state.recordResponse(
     {
       id: outcome.id,
@@ -72,6 +79,7 @@ const schedule = Effect.fn("Control.schedule")(function* (now: number, simulatio
   const state = yield* State.Service;
   const attempts = yield* Attempts.Service;
   const missing = yield* state.missingHandoffs(yield* attempts.scheduledInputIds, batchSize);
+
   for (const input of missing) {
     const attempt = yield* attempts.ensure(input.taskId, now, "simulation");
     yield* attempts.schedule(
@@ -81,6 +89,7 @@ const schedule = Effect.fn("Control.schedule")(function* (now: number, simulatio
       `Simulation completed for input ${input.inputId}. No coding agent was run.`,
     );
   }
+
   return missing.length;
 });
 
@@ -91,7 +100,9 @@ export const admit = Effect.fn("Control.admit")(function* (
 ) {
   const state = yield* State.Service;
   const receipt = yield* state.admit(command);
+
   yield* schedule(yield* Clock.currentTimeMillis, simulationDelayMs);
+
   return receipt;
 });
 
@@ -103,14 +114,17 @@ export const advance = Effect.fn("Control.advance")(function* (
   const attempts = yield* Attempts.Service;
   const scheduled = yield* schedule(now, simulationDelayMs);
   const accepted = yield* attempts.accepted;
+
   const missing = new Set(
     yield* state.missingResponses(
       accepted.map((row) => row.id),
       batchSize,
     ),
   );
+
   for (const outcome of accepted) if (missing.has(outcome.id)) yield* record(outcome, now);
   const due = yield* attempts.due(now, batchSize);
+
   for (const invocation of due) {
     yield* acceptOutcome(
       {
@@ -126,13 +140,16 @@ export const advance = Effect.fn("Control.advance")(function* (
       now,
     );
   }
+
   return scheduled + missing.size + due.length;
 });
 
 export const nextWake = Effect.fn("Control.nextWake")(function* (now: number) {
   const state = yield* State.Service;
   const attempts = yield* Attempts.Service;
+
   if ((yield* state.missingHandoffs(yield* attempts.scheduledInputIds, 1)).length > 0) return now;
+
   if (
     (yield* state.missingResponses(
       (yield* attempts.accepted).map((row) => row.id),
@@ -140,9 +157,11 @@ export const nextWake = Effect.fn("Control.nextWake")(function* (now: number) {
     )).length > 0
   )
     return now;
+
   const times = [yield* state.nextWake(now), yield* attempts.nextWake].filter(
     (at): at is number => at !== null,
   );
+
   return times.length === 0 ? null : Math.max(now, Math.min(...times));
 });
 
@@ -151,6 +170,7 @@ export const snapshot = Effect.fn("Control.snapshot")(function* () {
   const attempts = yield* Attempts.Service;
   const task = yield* state.snapshot;
   const execution = yield* attempts.snapshot;
+
   return {
     task: task.task,
     sources: task.sources,

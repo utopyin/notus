@@ -31,9 +31,11 @@ const randomBytes = (length: number) => crypto.getRandomValues(new Uint8Array(le
 
 const pkce = Effect.gen(function* () {
   const verifier = base64url(randomBytes(64));
+
   const digest = yield* Effect.promise(() =>
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
   );
+
   return { verifier, challenge: base64url(new Uint8Array(digest)) };
 });
 
@@ -45,6 +47,7 @@ const program = Effect.gen(function* () {
   const received = yield* Deferred.make<string, Token.TokenError>();
 
   const url = new URL(AUTHORIZE_URL);
+
   for (const [key, value] of Object.entries({
     response_type: "code",
     client_id: Token.CLIENT_ID,
@@ -65,11 +68,14 @@ const program = Effect.gen(function* () {
     "/auth/callback",
     Effect.gen(function* () {
       const params = yield* HttpServerRequest.schemaSearchParams(Callback);
+
       if (params.state !== state) {
         yield* Deferred.fail(received, new Token.TokenError({ message: "state mismatch" }));
         return HttpServerResponse.text("State mismatch. Close this tab.", { status: 400 });
       }
+
       yield* Deferred.succeed(received, params.code);
+
       return HttpServerResponse.text("Signed in. You can close this tab.");
     }),
   );
@@ -82,12 +88,14 @@ const program = Effect.gen(function* () {
   yield* Effect.promise(() => Bun.spawn(["open", url.href]).exited).pipe(Effect.ignore);
 
   const code = yield* Deferred.await(received);
+
   const stored = yield* Token.exchange({
     grant_type: "authorization_code",
     code,
     redirect_uri: REDIRECT_URI,
     code_verifier: verifier,
   });
+
   yield* Token.save(stored);
   yield* Console.log(`Saved ${Token.FILE} for account ${stored.accountId}.`);
 }).pipe(Effect.scoped);

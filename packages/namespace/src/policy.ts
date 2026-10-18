@@ -17,6 +17,7 @@ const empty = Schema.Record(Schema.String, Schema.Never);
 const emptyList = Schema.Array(Schema.Never);
 const fields = CreateSettings.fields;
 const imageRef = Schema.String.check(Schema.isMaxLength(1024), Schema.isPattern(imageRefPattern));
+
 // Deliberately small: loader, shell, runtime, proxy and model environment overrides are unsafe.
 const environment = Schema.Struct({
   name: Schema.Literals(environmentNames),
@@ -59,6 +60,7 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
   input: RestrictedInput,
 ): Effect.fn.Return<Configuration, ConfigError> {
   const config = yield* Config.decode(input.config);
+
   yield* Schema.decodeEffect(Schema.Array(imageRef))(input.approvedImageRefs).pipe(
     Effect.mapError(
       () =>
@@ -67,17 +69,20 @@ export const validateRestricted = Effect.fn("Namespace.validateRestricted")(func
         }),
     ),
   );
+
   yield* Schema.decodeUnknownEffect(restricted)(config.raw, { onExcessProperty: "error" }).pipe(
     Effect.mapError(
       () =>
         new ConfigError({ message: "Unsupported or conflicting restricted native configuration" }),
     ),
   );
+
   if (!input.approvedImageRefs.includes(config.raw.imageRef as string)) {
     return yield* new ConfigError({
       message: "Configuration must select one of the workspace's images",
     });
   }
+
   return config;
 });
 

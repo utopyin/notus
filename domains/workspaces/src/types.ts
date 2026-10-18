@@ -62,6 +62,7 @@ export interface InstallIntent extends Schema.Schema.Type<typeof InstallIntent> 
 export const Role = Schema.Literals(["admin", "member"]);
 export type Role = typeof Role.Type;
 const Millis = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+
 export const WorkspaceName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80));
 /** Path segments that are pages of their own, never a workspace. */
 export const reservedSlugs = new Set([

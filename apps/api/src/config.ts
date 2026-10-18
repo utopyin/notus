@@ -11,6 +11,7 @@ import * as Schema from "effect/Schema";
 // from Worker secret bindings at runtime. Never read process.env in handlers.
 export const deploymentConfig = Effect.gen(function* () {
   const mode = yield* Config.schema(Mode, "NOTUS_MODE").pipe(Config.withDefault("simulation"));
+
   return {
     mode,
     /** The Slack app's signing secret: one app, installed per workspace from the dashboard. */
@@ -24,13 +25,17 @@ export type DeploymentConfig = Effect.Success<typeof deploymentConfig>;
 /** Separate from Slack configuration and never spread into task-domain settings. */
 export const runtimeConfig = Effect.gen(function* () {
   const url = yield* Config.option(Config.String("NOTUS_CONTROL_URL"));
+
   if (Option.isNone(url)) return null;
+
   const encodedKeys = yield* Config.Redacted("NOTUS_RUNTIME_KEYS");
+
   const decoded = yield* Schema.decodeEffect(
     Schema.fromJsonString(Schema.Record(Schema.String, Schema.NonEmptyString)),
   )(Redacted.value(encodedKeys)).pipe(
     Effect.mapError(() => new AuthenticationFailure({ reason: "configuration" })),
   );
+
   return {
     controlUrl: url.value,
     activeKeyId: yield* Config.schema(Schema.NonEmptyString, "NOTUS_RUNTIME_KEY_ID"),
@@ -69,9 +74,11 @@ export const credentialKeyConfig = Config.Redacted("NOTUS_CREDENTIAL_KEY");
  */
 // Numeric identifiers may arrive as numbers or strings depending on how the value was packed.
 const Identifier = Schema.Union([Schema.String, Schema.Int]);
+
 export const githubConfig = Effect.gen(function* () {
   const appId = yield* Config.option(Config.schema(Identifier, "GITHUB_APP_ID"));
   if (Option.isNone(appId)) return null;
+
   return {
     appId: String(appId.value),
     privateKey: yield* Config.Redacted("GITHUB_APP_PRIVATE_KEY"),
@@ -89,6 +96,7 @@ export const dashboardConfig = Effect.gen(function* () {
   const githubSecret = yield* Config.option(Config.Redacted("GITHUB_OAUTH_CLIENT_SECRET"));
   const origin = yield* Config.option(Config.String("NOTUS_DASHBOARD_URL"));
   const githubAppSlug = yield* Config.option(Config.String("GITHUB_APP_SLUG"));
+
   return {
     /** The public name of the GitHub App, for its installation page; absent means no install offer. */
     githubAppSlug: Option.getOrNull(githubAppSlug),
@@ -117,6 +125,7 @@ export const computeConfig = Effect.gen(function* () {
   const listed = yield* Config.String("NOTUS_COMPUTE_PROVIDERS").pipe(
     Config.withDefault("namespace"),
   );
+
   return yield* Schema.decodeUnknownEffect(Schema.Array(Provider))(
     listed
       .split(",")

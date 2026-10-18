@@ -51,13 +51,17 @@ export class Service extends Context.Service<Service, Interface>()(
 
 const View = Schema.Struct({ key: Schema.String, ...ComputeConnection.fields });
 const MemberRow = createSelectSchema(memberships);
+
 const Input = Schema.Struct({
   workspaceId: ComputeConnection.fields.workspaceId,
   provider: ComputeConnection.fields.provider,
   label: ComputeConnection.fields.label,
 });
+
 const credentialJson = Schema.fromJsonString(Schema.Json);
+
 type Operation = ComputeConnectionError["operation"];
+
 const fail = (operation: Operation, reason: ComputeConnectionError["reason"]) =>
   new ComputeConnectionError({ operation, reason });
 
@@ -66,6 +70,7 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const store = yield* D1.Service;
     const sealed = yield* Sealed.Service;
+
     const storage =
       (operation: Operation) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -76,6 +81,7 @@ export const layerNoDeps = Layer.effect(
               : fail(operation, Schema.isSchemaError(error) ? "invalid-record" : "storage"),
           ),
         );
+
     const roleOf = (operation: Operation, workspaceId: string, userId: string) =>
       store.db
         .select()
@@ -90,12 +96,14 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0].role),
           ),
         );
+
     const requireAdmin = (operation: Operation, workspaceId: string, actorId: string) =>
       roleOf(operation, workspaceId, actorId).pipe(
         Effect.flatMap((role) =>
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
+
     // The credential column is never selected here.
     const read = (operation: Operation, workspaceId: string) =>
       store.db
@@ -139,19 +147,23 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       yield* requireAdmin("connect", workspaceId, actorId);
+
       const input = yield* Schema.decodeEffect(Input)({ workspaceId, provider, label }).pipe(
         Effect.mapError(() => fail("connect", "invalid-input")),
       );
+
       const encoded = yield* Schema.encodeEffect(credentialJson)(credential).pipe(
         Effect.flatMap(sealed.seal),
         Effect.mapError(() => fail("connect", "invalid-input")),
       );
+
       const row = {
         label: input.label,
         connectedBy: actorId,
         connectedAt: now,
         credential: encoded,
       };
+
       yield* store.db
         .insert(computeConnections)
         .values({
@@ -162,6 +174,7 @@ export const layerNoDeps = Layer.effect(
         })
         .onConflictDoUpdate({ target: computeConnections.key, set: row })
         .pipe(storage("connect"));
+
       return yield* read("connect", input.workspaceId);
     });
     const disconnect = Effect.fn("Compute.disconnect")(function* (
@@ -170,10 +183,12 @@ export const layerNoDeps = Layer.effect(
       provider: string,
     ) {
       yield* requireAdmin("disconnect", workspaceId, actorId);
+
       yield* store.db
         .delete(computeConnections)
         .where(eq(computeConnections.key, key(workspaceId, provider)))
         .pipe(storage("disconnect"));
+
       return yield* read("disconnect", workspaceId);
     });
     const authorizeBuild = Effect.fn("Compute.authorizeBuild")(function* (
@@ -182,13 +197,16 @@ export const layerNoDeps = Layer.effect(
       provider: string,
     ) {
       yield* requireAdmin("build", workspaceId, actorId);
+
       const rows = yield* store.db
         .select({ key: computeConnections.key })
         .from(computeConnections)
         .where(eq(computeConnections.key, key(workspaceId, provider)))
         .pipe(storage("build"));
+
       if (rows.length === 0) return yield* fail("build", "missing");
     });
+
     return Service.of({ list, connect, disconnect, authorizeBuild });
   }),
 );
@@ -203,6 +221,7 @@ export const credentialsNoDeps = Layer.effect(
   Effect.gen(function* () {
     const store = yield* D1.Service;
     const sealed = yield* Sealed.Service;
+
     return ComputeCredentials.of({
       get: Effect.fn("Compute.credential")(function* (workspaceId, provider) {
         const rows = yield* store.db
@@ -212,10 +231,12 @@ export const credentialsNoDeps = Layer.effect(
           .pipe(Effect.mapError(() => new ConnectionError({ provider, reason: "storage" })));
         const stored = rows[0]?.credential;
         if (stored === undefined) return Option.none();
+
         const opened = yield* sealed.open(stored).pipe(
           Effect.flatMap(Schema.decodeEffect(credentialJson)),
           Effect.mapError(() => new ConnectionError({ provider, reason: "invalid" })),
         );
+
         return Option.some(opened);
       }),
     });

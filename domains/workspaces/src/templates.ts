@@ -57,13 +57,16 @@ export class Service extends Context.Service<Service, Interface>()(
 
 const Row = createSelectSchema(templates, WorkspaceTemplate.fields);
 const MemberRow = createSelectSchema(memberships);
+
 const Input = Schema.Struct({
   workspaceId: WorkspaceTemplate.fields.workspaceId,
   provider: WorkspaceTemplate.fields.provider,
   ref: WorkspaceTemplate.fields.ref,
   label: WorkspaceTemplate.fields.label,
 });
+
 type Operation = TemplateError["operation"];
+
 const fail = (operation: Operation, reason: TemplateError["reason"]) =>
   new TemplateError({ operation, reason });
 
@@ -71,6 +74,7 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+
     const storage =
       (operation: Operation) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -81,6 +85,7 @@ export const layerNoDeps = Layer.effect(
               : fail(operation, Schema.isSchemaError(error) ? "invalid-record" : "storage"),
           ),
         );
+
     const roleOf = (operation: Operation, workspaceId: string, userId: string) =>
       store.db
         .select()
@@ -95,12 +100,14 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0].role),
           ),
         );
+
     const requireAdmin = (operation: Operation, workspaceId: string, actorId: string) =>
       roleOf(operation, workspaceId, actorId).pipe(
         Effect.flatMap((role) =>
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
+
     const read = (operation: Operation, workspaceId: string) =>
       store.db
         .select()
@@ -132,6 +139,7 @@ export const layerNoDeps = Layer.effect(
       const rows = (yield* read("approved", workspaceId)).filter(
         (row) => row.provider === provider,
       );
+
       return {
         refs: rows.map((row) => row.ref),
         default: rows.find((row) => row.isDefault)?.ref ?? null,
@@ -150,9 +158,11 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       yield* requireAdmin("add", workspaceId, actorId);
+
       const input = yield* Schema.decodeEffect(Input)({ workspaceId, provider, ref, label }).pipe(
         Effect.mapError(() => fail("add", "invalid-input")),
       );
+
       yield* store.db
         .insert(templates)
         .values({
@@ -167,6 +177,7 @@ export const layerNoDeps = Layer.effect(
         })
         .onConflictDoNothing()
         .pipe(storage("add"));
+
       return yield* read("add", input.workspaceId);
     });
     const remove = Effect.fn("Templates.remove")(function* (
@@ -176,6 +187,7 @@ export const layerNoDeps = Layer.effect(
       ref: string,
     ) {
       yield* requireAdmin("remove", workspaceId, actorId);
+
       yield* store.db
         .delete(templates)
         .where(
@@ -185,6 +197,7 @@ export const layerNoDeps = Layer.effect(
           ),
         )
         .pipe(storage("remove"));
+
       return yield* read("remove", workspaceId);
     });
     const setDefault = Effect.fn("Templates.setDefault")(function* (
@@ -194,12 +207,14 @@ export const layerNoDeps = Layer.effect(
       ref: string | null,
     ) {
       yield* requireAdmin("default", workspaceId, actorId);
+
       if (ref !== null) {
         const known = (yield* read("default", workspaceId)).some(
           (row) => row.provider === provider && row.ref === ref,
         );
         if (!known) return yield* fail("default", "not-found");
       }
+
       // One batch, so the partial unique index never sees two defaults and a reader never none
       // in between.
       yield* store
@@ -214,8 +229,10 @@ export const layerNoDeps = Layer.effect(
               ]),
         ])
         .pipe(storage("default"));
+
       return yield* read("default", workspaceId);
     });
+
     return Service.of({ approved, list, add, remove, setDefault });
   }),
 );

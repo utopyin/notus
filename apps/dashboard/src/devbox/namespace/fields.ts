@@ -54,24 +54,29 @@ export const emptyFields: Fields = {
 
 const objectAt = (value: Json | undefined, key: string): JsonObject | null =>
   isObject(value) && isObject(value[key]) ? value[key] : null;
+
 const stringAt = (value: JsonObject | null, key: string): string => {
   const field = value?.[key];
   return typeof field === "string" ? field : "";
 };
+
 /** Numbers and the string form of int64 both read as the digits typed. */
 const numberAt = (value: JsonObject | null, key: string): string => {
   const field = value?.[key];
   return typeof field === "number" ? String(field) : typeof field === "string" ? field : "";
 };
+
 const secondsOf = (duration: string): string => {
   const match = /^(-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,9})?)s$/.exec(duration);
   return match?.[1] ?? "";
 };
+
 const isArchitecture = (value: string): value is Architecture =>
   (architectures as ReadonlyArray<string>).includes(value);
 
 export const fieldsOf = (config: Json | null | undefined): Fields => {
   if (!isObject(config)) return emptyFields;
+
   const shape = objectAt(config, "instanceShape");
   const arch = stringAt(shape, "machineArch");
   const network = objectAt(config, "networkPolicy");
@@ -79,6 +84,7 @@ export const fieldsOf = (config: Json | null | undefined): Fields => {
   const policy = objectAt(network, "egressPolicy");
   const allowed = domains?.allowed;
   const environment = config.environment;
+
   return {
     imageRef: stringAt(config, "imageRef"),
     site: stringAt(config, "site"),
@@ -107,8 +113,10 @@ export const fieldsOf = (config: Json | null | undefined): Fields => {
 
 const integer = (text: string): number | null =>
   /^(0|[1-9][0-9]*)$/.test(text.trim()) ? Number(text.trim()) : null;
+
 const seconds = (text: string): string | null =>
   /^(0|[1-9][0-9]*)(\.[0-9]{1,9})?$/.test(text.trim()) ? `${text.trim()}s` : null;
+
 const lines = (text: string): ReadonlyArray<string> =>
   text
     .split(/\r?\n/)
@@ -118,9 +126,12 @@ const lines = (text: string): ReadonlyArray<string> =>
 /** The document the fields describe. Blank fields are absent, so the provider's defaults apply. */
 export const configOf = (fields: Fields): Json => {
   const config: Record<string, Json> = { imageRef: fields.imageRef };
+
   if (fields.site.trim()) config.site = fields.site.trim();
+
   const cpu = integer(fields.virtualCpu);
   const memory = integer(fields.memoryMegabytes);
+
   if (cpu !== null || memory !== null || fields.machineArch) {
     config.instanceShape = {
       ...(cpu !== null ? { virtualCpu: cpu } : {}),
@@ -129,31 +140,44 @@ export const configOf = (fields: Fields): Json => {
       os: "linux",
     };
   }
+
   const volume = integer(fields.volumeSizeGb);
+
   if (volume !== null) config.volumeSizeGb = volume;
+
   const cache = integer(fields.cacheVolumeSizeGb);
+
   if (cache !== null) config.cacheVolumeSizeGb = cache;
+
   const busy = seconds(fields.busyMinimumSeconds);
+
   if (busy !== null) config.busyEnsureMinimumDuration = busy;
+
   const retention = seconds(fields.stoppedRetentionSeconds);
+
   if (retention !== null) config.ephemeral = { stoppedRetentionDuration: retention };
+
   if (fields.egress === "allowed")
     config.networkPolicy = {
       egressDomains: { allowed: lines(fields.allowedDomains), advisory: fields.advisory },
     };
+
   if (fields.egress === "policy")
     config.networkPolicy = { egressPolicy: { tag: fields.policyTag.trim() } };
+
   if (fields.variables.length > 0)
     config.environment = fields.variables.map((item) => ({
       name: item.name,
       value: item.value,
     }));
+
   return config;
 };
 
 /** What keeps the form from saving, in the words the field shows; null when nothing does. */
 export const problemOf = (fields: Fields): string | null => {
   if (!fields.imageRef) return "No image is approved.";
+
   for (const [label, text] of [
     ["vCPUs", fields.virtualCpu],
     ["Memory", fields.memoryMegabytes],
@@ -167,13 +191,18 @@ export const problemOf = (fields: Fields): string | null => {
   ] as const)
     if (text.trim() !== "" && seconds(text) === null)
       return `${label} must be a number of seconds.`;
+
   if (fields.egress === "allowed" && lines(fields.allowedDomains).length === 0)
     return "List at least one allowed domain.";
+
   if (fields.egress === "policy" && fields.policyTag.trim() === "")
     return "Name the egress policy.";
+
   const names = fields.variables.map((item) => item.name);
+
   if (names.some((name) => !(environmentNames as ReadonlyArray<string>).includes(name)))
     return "Choose a name for every variable.";
+
   if (new Set(names).size !== names.length) return "Each variable can be set once.";
   return null;
 };
@@ -195,6 +224,7 @@ const labels: Readonly<Record<string, string>> = {
   "networkPolicy.egressDomains.advisory": "Advisory egress",
   "networkPolicy.egressPolicy.tag": "Egress policy",
 };
+
 export const labelOf = (path: string): string => {
   const variable = /^environment\.(\d+)\.(name|value)$/.exec(path);
   if (variable) return `Variable ${Number(variable[1]) + 1} ${variable[2]}`;
@@ -207,5 +237,6 @@ export const shortValue = (value: string): string => {
     const [name = "", digest = ""] = value.split("@sha256:");
     return `${name.slice(name.lastIndexOf("/") + 1)}@${digest.slice(0, 7)}`;
   }
+
   return value;
 };

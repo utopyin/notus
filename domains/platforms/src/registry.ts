@@ -43,14 +43,18 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const adapters = yield* PlatformAdapters;
+
     const adapterFor = (platform: Platform) => {
       const adapter = adapters.get(platform);
+
       return adapter === undefined
         ? Effect.fail(new PlatformNotRegisteredError({ platform }))
         : Effect.succeed(adapter);
     };
+
     const forPlatform = Effect.fn("Platforms.forPlatform")(function* (platform: Platform) {
       const adapter = yield* adapterFor(platform);
+
       return {
         descriptor: adapter.descriptor,
         ingress: adapter.ingress,
@@ -64,6 +68,7 @@ export const layerNoDeps = Layer.effect(
       const surfaces = yield* adapter.forInstallation(ref);
       return { ...surfaces, descriptor: adapter.descriptor } satisfies InstallationPort;
     });
+
     return Service.of({ forPlatform, forInstallation });
   }),
 );
@@ -80,11 +85,14 @@ export const layerAdapters = <E, R>(
     Effect.gen(function* () {
       const built = yield* adapters;
       const registered = new Map<Platform, PlatformAdapter>();
+
       for (const adapter of built) {
         if (registered.has(adapter.platform))
           return yield* new DuplicatePlatformRegistrationError({ platform: adapter.platform });
+
         registered.set(adapter.platform, adapter);
       }
+
       return registered;
     }),
   );

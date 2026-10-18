@@ -70,9 +70,11 @@ const aliases = new Set(
     .filter((key) => /[A-Z]/.test(key))
     .map((key) => key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)),
 );
+
 const containsUnsafeKey = (value: RawJson): boolean => {
   if (value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(containsUnsafeKey);
+
   return Object.entries(value).some(
     ([key, child]) => sensitive.has(key) || aliases.has(key) || containsUnsafeKey(child),
   );
@@ -84,6 +86,7 @@ export const decode = Effect.fn("Namespace.Config.decode")(function* (
   const independent = yield* snapshot(input).pipe(
     Effect.mapError(() => new ConfigError({ message: "Expected inert JSON settings" })),
   );
+
   if (
     independent === null ||
     typeof independent !== "object" ||
@@ -93,18 +96,23 @@ export const decode = Effect.fn("Namespace.Config.decode")(function* (
       message: "Expected a JSON object for Namespace CreateRequest settings",
     });
   }
+
   const raw = independent;
+
   if (Object.keys(raw).some((key) => forbidden.has(key)) || containsUnsafeKey(raw)) {
     return yield* new ConfigError({
       message:
         "Runtime identity, activation, templates, hooks, bootstrap credentials and noncanonical field aliases are not reusable CreateRequest settings",
     });
   }
+
   // Model-account integration is not part of base-image startup authority.
   const integrations = raw.integrations;
+
   if (integrations !== null && typeof integrations === "object" && "claude" in integrations) {
     return yield* new ConfigError({ message: "Model integrations are unsupported" });
   }
+
   yield* Schema.decodeEffect(CreateSettings)(raw).pipe(
     Effect.mapError(
       () =>
@@ -114,6 +122,7 @@ export const decode = Effect.fn("Namespace.Config.decode")(function* (
         }),
     ),
   );
+
   return Object.freeze({ raw });
 });
 

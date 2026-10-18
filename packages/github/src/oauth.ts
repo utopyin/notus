@@ -45,6 +45,7 @@ export const refresh = Effect.fn("Github.OAuth.refresh")(function* (
 ): Effect.fn.Return<UserToken, RefreshError, Configuration | HttpClient.HttpClient> {
   const config = yield* Configuration;
   const http = yield* HttpClient.HttpClient;
+
   const request = HttpClientRequest.post(
     `${config.endpoint ?? "https://github.com"}/login/oauth/access_token`,
   ).pipe(
@@ -56,21 +57,28 @@ export const refresh = Effect.fn("Github.OAuth.refresh")(function* (
       refresh_token: Redacted.value(refreshToken),
     }),
   );
+
   const response = yield* http
     .execute(request)
     .pipe(Effect.mapError(() => new RefreshError({ reason: "transport" })));
+
   if (response.status !== 200) return yield* new RefreshError({ reason: "rejected" });
+
   const json = yield* response.json.pipe(
     Effect.mapError(() => new RefreshError({ reason: "invalid-response" })),
   );
+
   if (Schema.is(Refused)(json))
     return yield* new RefreshError({
       reason: json.error === "bad_refresh_token" ? "reconnect-required" : "rejected",
     });
+
   const decoded = yield* Schema.decodeUnknownEffect(Refreshed)(json).pipe(
     Effect.mapError(() => new RefreshError({ reason: "invalid-response" })),
   );
+
   const now = yield* Clock.currentTimeMillis;
+
   return {
     access: decoded.access_token,
     refresh: decoded.refresh_token,

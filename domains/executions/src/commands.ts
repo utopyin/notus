@@ -26,14 +26,19 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(stepId);
     yield* Schema.decodeEffect(Schema.NonEmptyString)(callId);
     const spec = yield* Schema.decodeEffect(CommandSpec)(input);
+
     yield* Schema.decodeEffect(Millis)(now);
+
     const [existing] = yield* db
       .select()
       .from(commands)
       .where(and(eq(commands.stepId, stepId), eq(commands.callId, callId)));
+
     if (existing) return yield* Schema.decodeEffect(CommandRow)(existing);
+
     const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (!attempt) return yield* new Conflict({ message: "No active attempt for command" });
+
     const row = {
       id: yield* crypto.randomUUIDv4(),
       attemptId: attempt.id,
@@ -50,23 +55,29 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       createdAt: now,
       updatedAt: now,
     };
+
     yield* db.insert(commands).values(row);
+
     return yield* Schema.decodeEffect(CommandRow)(row);
   });
   /** A newer runtime epoch proves the old process is gone; its claimed commands cannot report. */
   const claim = Effect.fn("Commands.claim")(function* (epoch: number, now: number) {
     yield* Schema.decodeEffect(Millis)(epoch);
     yield* Schema.decodeEffect(Millis)(now);
+
     yield* db
       .insert(polls)
       .values({ singleton: 1, epoch, polledAt: now })
       .onConflictDoUpdate({ target: polls.singleton, set: { epoch, polledAt: now } });
+
     yield* db
       .update(commands)
       .set({ status: "failed", failure: "runtime-restarted", updatedAt: now })
       .where(and(eq(commands.status, "claimed"), ne(commands.claimEpoch, epoch)));
+
     const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (!attempt) return null;
+
     const [row] = yield* db
       .select()
       .from(commands)
@@ -81,11 +92,14 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .orderBy(asc(commands.createdAt), asc(commands.id))
       .limit(1);
     if (!row) return null;
+
     const command = yield* Schema.decodeEffect(CommandRow)(row);
+
     yield* db
       .update(commands)
       .set({ status: "claimed", claimEpoch: epoch, claimedAt: now, updatedAt: now })
       .where(eq(commands.id, command.id));
+
     return Command.make({ id: command.id, spec: command.spec });
   });
   /** Control-plane actions are leased to one alarm pass at a time; the lease is the fence. */
@@ -93,6 +107,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [attempt] = yield* db.select().from(attempts).where(eq(attempts.active, true));
     if (!attempt) return null;
+
     const [row] = yield* db
       .select()
       .from(commands)
@@ -110,11 +125,14 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .orderBy(asc(commands.createdAt), asc(commands.id))
       .limit(1);
     if (!row) return null;
+
     const command = yield* Schema.decodeEffect(CommandRow)(row);
+
     yield* db
       .update(commands)
       .set({ status: "claimed", claimEpoch: null, claimedAt: now, updatedAt: now })
       .where(eq(commands.id, command.id));
+
     return Command.make({ id: command.id, spec: command.spec });
   });
   const complete = Effect.fn("Commands.complete")(function* (
@@ -127,10 +145,14 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [row] = yield* db.select().from(commands).where(eq(commands.id, id));
     if (!row) return yield* new Conflict({ message: "Unknown command" });
+
     const command = yield* Schema.decodeEffect(CommandRow)(row);
+
     if (command.status === "done") return;
+
     if (command.status !== "claimed" || command.claimedAt !== claimedAt)
       return yield* new Conflict({ message: "Stale control action lease" });
+
     yield* db
       .update(commands)
       .set({ status: "done", result, updatedAt: now })
@@ -142,22 +164,29 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     now: number,
   ) {
     const observation = yield* Schema.decodeEffect(CommandObservation)(input);
+
     yield* Schema.decodeEffect(Millis)(epoch);
     yield* Schema.decodeEffect(Millis)(now);
     const [row] = yield* db.select().from(commands).where(eq(commands.id, observation.commandId));
     if (!row) return yield* new Conflict({ message: "Unknown command" });
+
     const command = yield* Schema.decodeEffect(CommandRow)(row);
+
     if (command.status === "done") {
       if (!Equal.equals(command.result, observation.result))
         return yield* new Conflict({ message: "Conflicting command observation" });
+
       return command;
     }
+
     if (command.status !== "claimed" || command.claimEpoch !== epoch)
       return yield* new Conflict({ message: "Observation does not match the claimed runtime" });
+
     yield* db
       .update(commands)
       .set({ status: "done", result: observation.result, updatedAt: now })
       .where(eq(commands.id, command.id));
+
     return yield* Schema.decodeEffect(CommandRow)({
       ...row,
       status: "done",
@@ -168,6 +197,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   const fail = Effect.fn("Commands.fail")(function* (id: string, failure: string, now: number) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(id);
     yield* Schema.decodeEffect(Millis)(now);
+
     yield* db
       .update(commands)
       .set({ status: "failed", failure, updatedAt: now })
@@ -183,6 +213,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* db.select().from(commands).where(eq(commands.stepId, stepId)),
     );
   });
+
   const lastPoll = Effect.gen(function* () {
     const [row] = yield* db.select().from(polls).where(eq(polls.singleton, 1));
     return row ? Poll.make({ epoch: row.epoch, polledAt: row.polledAt }) : null;
@@ -192,6 +223,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* db.select().from(commands).orderBy(asc(commands.createdAt)),
     );
   }).pipe(Effect.withSpan("Commands.snapshot"));
+
   return { enqueue, claim, claimControl, complete, observe, fail, ofStep, lastPoll, snapshot };
 };
 
@@ -231,6 +263,7 @@ export const layerNoDeps = Layer.effect(
     const db = yield* Sqlite.Service;
     const crypto = yield* Crypto.Crypto;
     const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(
         Effect.mapError((cause): ExecutionError => {
@@ -238,6 +271,7 @@ export const layerNoDeps = Layer.effect(
           return new StorageFailure({ operation, cause });
         }),
       );
+
     return Service.of({
       enqueue: Effect.fn("Commands.enqueueAtomic")((stepId, callId, spec, now) =>
         wrap(

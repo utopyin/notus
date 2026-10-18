@@ -62,22 +62,28 @@ export const layerNoDeps = Layer.effect(
       const box = yield* provisioning.box;
       if (box === null) return null;
       if (!descriptorOf(box.environment.provider)?.capabilities.has("activity:lease")) return null;
+
       const working = (yield* commands.snapshot).some(
         (row) => row.executor === "runtime" && row.status === "claimed",
       );
+
       return { ...box, working };
     });
+
     const plan = Effect.fn("Activity.plan")(function* (now: number) {
       const box = yield* observe;
       const stored = yield* Ref.get(held);
       // A held box that is gone, blocked or replaced is left to its own deadline.
       const current = box !== null && stored?.resourceId === box.resource.id ? stored : null;
+
       if (current !== stored) yield* Ref.set(held, null);
       if (box === null) return null;
+
       if (box.working) {
         const at = current === null ? now : current.renewAt;
         return { at, due: { ...box, seconds: leaseSeconds } };
       }
+
       return current === null ? null : { at: now, due: { ...box, seconds: null } };
     });
 
@@ -85,6 +91,7 @@ export const layerNoDeps = Layer.effect(
       due: Effect.fn("Activity.due")(function* (now) {
         const next = yield* plan(now);
         if (next === null || next.at > now || (yield* Ref.get(retryAt)) > now) return null;
+
         return {
           environment: next.due.environment,
           resource: next.due.resource,
@@ -101,11 +108,13 @@ export const layerNoDeps = Layer.effect(
           Effect.orElseSucceed(() => false),
         );
         if (!ok) return yield* Ref.set(retryAt, now + retryMs);
+
         yield* Ref.set(retryAt, 0);
         yield* Ref.set(
           held,
           due.seconds === null ? null : { resourceId: due.resource.id, renewAt: now + renewMs },
         );
+
         yield* Effect.logInfo(
           `devbox.activity ${due.seconds === null ? "released" : `held ${due.seconds}s`}`,
         );

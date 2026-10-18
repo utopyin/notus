@@ -145,14 +145,17 @@ const installIntentLifetimeMs = 15 * 60_000;
 const credentialJson = Schema.fromJsonString(Schema.Json);
 const InviteRow = createSelectSchema(invites);
 const inviteLifetimeMs = 7 * 24 * 60 * 60_000;
+
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
   new WorkspaceError({ operation, reason });
+
 const ScopeInput = Schema.Struct({
   platform: Platform,
   installationId: InstallationId,
   scope: PlatformId,
   label: Schema.optionalKey(Schema.String),
 });
+
 /** What a caller supplies; the brands are applied by decoding. */
 export interface ScopeInput {
   readonly platform: Platform;
@@ -167,6 +170,7 @@ export const layerNoDeps = Layer.effect(
     const store = yield* D1.Service;
     const crypto = yield* Crypto.Crypto;
     const sealed = yield* Sealed.Service;
+
     const storage =
       (operation: string) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -177,10 +181,12 @@ export const layerNoDeps = Layer.effect(
               : fail(operation, Schema.isSchemaError(error) ? "invalid-input" : "storage"),
           ),
         );
+
     const decodeInput = <A, I>(schema: Schema.Codec<A, I>, value: I, operation: string) =>
       Schema.decodeEffect(schema)(value).pipe(
         Effect.mapError(() => fail(operation, "invalid-input")),
       );
+
     const workspace = (operation: string, workspaceId: string) =>
       store.db
         .select()
@@ -194,12 +200,14 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0]),
           ),
         );
+
     const members = (workspaceId: string) =>
       store.db
         .select()
         .from(memberships)
         .where(eq(memberships.workspaceId, workspaceId))
         .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(MemberRow))));
+
     const roleOf = (operation: string, workspaceId: string, userId: string) =>
       store.db
         .select()
@@ -213,20 +221,24 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0].role),
           ),
         );
+
     const requireAdmin = (operation: string, workspaceId: string, actorId: string) =>
       roleOf(operation, workspaceId, actorId).pipe(
         Effect.flatMap((role) =>
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
+
     const slugTaken = (slug: string) =>
       store.db
         .select({ id: workspaces.id })
         .from(workspaces)
         .where(eq(workspaces.slug, slug))
         .pipe(Effect.map((rows) => rows.length > 0));
+
     // Web Crypto's UUID cannot fail on a Worker; a failure here would be a defect, not a result.
     const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+
     const tokenHash = (token: string) =>
       crypto
         .digest("SHA-256", new TextEncoder().encode(token))
@@ -239,8 +251,11 @@ export const layerNoDeps = Layer.effect(
     ) {
       const name = yield* decodeInput(WorkspaceName, input.name.trim(), "create");
       const slug = yield* decodeInput(Slug, (input.slug ?? slugOf(name)).trim(), "create");
+
       if (yield* slugTaken(slug).pipe(storage("create"))) return yield* fail("create", "conflict");
+
       const id = yield* uuid;
+
       yield* store
         .batch([
           sql`INSERT INTO workspaces (id, name, slug, createdBy, createdAt)
@@ -250,6 +265,7 @@ export const layerNoDeps = Layer.effect(
           ...defaultRoleStatements(id, actorId, now),
         ])
         .pipe(storage("create"));
+
       return Workspace.make({ id, name, slug, createdBy: actorId, createdAt: now });
     });
 
@@ -260,21 +276,26 @@ export const layerNoDeps = Layer.effect(
     ) {
       yield* requireAdmin("update", workspaceId, actorId).pipe(storage("update"));
       const current = yield* workspace("update", workspaceId).pipe(storage("update"));
+
       const name =
         input.name === undefined
           ? current.name
           : yield* decodeInput(WorkspaceName, input.name.trim(), "update");
+
       const slug =
         input.slug === undefined
           ? current.slug
           : yield* decodeInput(Slug, input.slug.trim(), "update");
+
       if (slug !== current.slug && (yield* slugTaken(slug).pipe(storage("update"))))
         return yield* fail("update", "conflict");
+
       yield* store.db
         .update(workspaces)
         .set({ name, slug })
         .where(eq(workspaces.id, workspaceId))
         .pipe(storage("update"));
+
       return Workspace.make({ ...current, name, slug });
     });
 
@@ -310,6 +331,7 @@ export const layerNoDeps = Layer.effect(
           ),
           storage("listMine"),
         );
+
       return rows;
     });
 
@@ -321,6 +343,7 @@ export const layerNoDeps = Layer.effect(
       const role = yield* roleOf("view", workspaceId, userId).pipe(storage("view"));
       const row = yield* workspace("view", workspaceId).pipe(storage("view"));
       const memberRows = yield* members(workspaceId).pipe(storage("view"));
+
       const installationRows = yield* store.db
         .select()
         .from(installations)
@@ -334,6 +357,7 @@ export const layerNoDeps = Layer.effect(
         .from(scopes)
         .where(eq(scopes.workspaceId, workspaceId))
         .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(ScopeRow))), storage("view"));
+
       const inviteRows =
         role === "admin"
           ? yield* store.db
@@ -345,6 +369,7 @@ export const layerNoDeps = Layer.effect(
                 storage("view"),
               )
           : [];
+
       return WorkspaceView.make({
         workspace: Workspace.make(row),
         role,
@@ -382,6 +407,7 @@ export const layerNoDeps = Layer.effect(
       members(workspaceId).pipe(
         Effect.flatMap((rows) => {
           const admins = rows.filter((m) => m.role === "admin");
+
           return admins.length === 1 && admins[0]?.userId === userId
             ? Effect.fail(fail(operation, "last-admin"))
             : Effect.void;
@@ -395,12 +421,16 @@ export const layerNoDeps = Layer.effect(
       value: Role,
     ) {
       const role = yield* decodeInput(Role, value, "setRole");
+
       yield* requireAdmin("setRole", workspaceId, actorId).pipe(storage("setRole"));
+
       yield* roleOf("setRole", workspaceId, userId).pipe(
         Effect.mapError(() => fail("setRole", "not-found")),
       );
+
       if (role === "member")
         yield* lastAdminGuard("setRole", workspaceId, userId).pipe(storage("setRole"));
+
       yield* store.db
         .update(memberships)
         .set({ role })
@@ -415,6 +445,7 @@ export const layerNoDeps = Layer.effect(
     ) {
       yield* requireAdmin("removeMember", workspaceId, actorId).pipe(storage("removeMember"));
       yield* lastAdminGuard("removeMember", workspaceId, userId).pipe(storage("removeMember"));
+
       yield* store.db
         .delete(memberships)
         .where(eq(memberships.key, key(workspaceId, userId)))
@@ -428,11 +459,13 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       const role = yield* decodeInput(Role, value, "createInvite");
+
       yield* requireAdmin("createInvite", workspaceId, actorId).pipe(storage("createInvite"));
       const id = yield* uuid;
       // Two UUIDs' worth of randomness, hex, as the bearer token shown once to the admin.
       const token = `${yield* uuid}${yield* uuid}`.replace(/-/g, "");
       const hash = yield* tokenHash(token);
+
       const invite = Invite.make({
         id,
         workspaceId,
@@ -444,12 +477,14 @@ export const layerNoDeps = Layer.effect(
         acceptedAt: null,
         revokedAt: null,
       });
+
       yield* store
         .batch([
           sql`INSERT INTO workspace_invites (id, workspaceId, tokenHash, role, invitedBy, createdAt, expiresAt)
           VALUES (${id}, ${workspaceId}, ${hash}, ${role}, ${actorId}, ${now}, ${invite.expiresAt})`,
         ])
         .pipe(storage("createInvite"));
+
       return { invite, token };
     });
 
@@ -460,6 +495,7 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       yield* requireAdmin("revokeInvite", workspaceId, actorId).pipe(storage("revokeInvite"));
+
       yield* store.db
         .update(invites)
         .set({ revokedAt: now })
@@ -477,7 +513,9 @@ export const layerNoDeps = Layer.effect(
         value,
         "acceptInvite",
       );
+
       const hash = yield* tokenHash(token);
+
       const rows = yield* store.db
         .select()
         .from(invites)
@@ -488,11 +526,14 @@ export const layerNoDeps = Layer.effect(
         );
       const invite = rows[0];
       if (invite === undefined) return yield* fail("acceptInvite", "not-found");
+
       if (invite.revokedAt !== null || invite.acceptedAt !== null || invite.expiresAt < now)
         return yield* fail("acceptInvite", "expired");
+
       const row = yield* workspace("acceptInvite", invite.workspaceId).pipe(
         storage("acceptInvite"),
       );
+
       // One transaction: the claim on the invite decides, so of two concurrent accepts only the
       // one whose update landed gains a membership.
       yield* store
@@ -506,6 +547,7 @@ export const layerNoDeps = Layer.effect(
           ON CONFLICT DO NOTHING`,
         ])
         .pipe(storage("acceptInvite"));
+
       const claimed = yield* store.db
         .select()
         .from(invites)
@@ -514,8 +556,10 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(InviteRow))),
           storage("acceptInvite"),
         );
+
       if (claimed[0]?.acceptedBy !== userId || claimed[0]?.acceptedAt !== now)
         return yield* fail("acceptInvite", "expired");
+
       return Workspace.make(row);
     });
 
@@ -527,12 +571,14 @@ export const layerNoDeps = Layer.effect(
     ) {
       yield* requireAdmin("beginInstall", workspaceId, actorId).pipe(storage("beginInstall"));
       const nonce = yield* crypto.randomUUIDv4().pipe(storage("beginInstall"));
+
       yield* store
         .batch([
           sql`INSERT INTO workspace_install_intents (nonce, workspaceId, userId, platform, createdAt, expiresAt)
           VALUES (${nonce}, ${workspaceId}, ${actorId}, ${platform}, ${now}, ${now + installIntentLifetimeMs})`,
         ])
         .pipe(storage("beginInstall"));
+
       return InstallIntent.make({ nonce, workspaceId, userId: actorId, platform });
     });
 
@@ -550,12 +596,15 @@ export const layerNoDeps = Layer.effect(
         );
       const row = rows[0];
       if (!row) return yield* fail("takeInstallIntent", "not-found");
+
       // Single use: gone whether or not it was still valid.
       yield* store.db
         .delete(installIntents)
         .where(eq(installIntents.nonce, nonce))
         .pipe(storage("takeInstallIntent"));
+
       if (row.expiresAt < now) return yield* fail("takeInstallIntent", "expired");
+
       return yield* decodeInput(
         InstallIntent,
         { nonce, workspaceId: row.workspaceId, userId: row.userId, platform: row.platform },
@@ -573,6 +622,7 @@ export const layerNoDeps = Layer.effect(
       now: number,
     ) {
       const installationKey = key(intent.platform, installed.installationId);
+
       const existing = yield* store.db
         .select()
         .from(installations)
@@ -584,12 +634,15 @@ export const layerNoDeps = Layer.effect(
       // An installation belongs to one workspace. Another workspace's admin cannot take it over;
       // moving it starts with uninstalling it there.
       const previous = existing[0]?.workspaceId;
+
       if (previous !== undefined && previous !== intent.workspaceId)
         return yield* fail("install", "installed-elsewhere");
+
       const credential = yield* Schema.encodeEffect(credentialJson)(installed.credential).pipe(
         Effect.flatMap((json) => sealed.seal(json)),
         Effect.mapError(() => fail("install", "invalid-input")),
       );
+
       yield* store
         .batch([
           sql`INSERT INTO workspace_installations (key, workspaceId, platform, installationId, label, installedBy, installedAt, credential)
@@ -597,6 +650,7 @@ export const layerNoDeps = Layer.effect(
           ON CONFLICT(key) DO UPDATE SET workspaceId = excluded.workspaceId, label = excluded.label, installedBy = excluded.installedBy, installedAt = excluded.installedAt, credential = excluded.credential`,
         ])
         .pipe(storage("install"));
+
       const rows = yield* store.db
         .select()
         .from(installations)
@@ -641,14 +695,17 @@ export const layerNoDeps = Layer.effect(
               : Effect.fail(fail(operation, "not-installed")),
           ),
         );
+
     const addScope = Effect.fn("Workspaces.addScope")(function* (
       workspaceId: string,
       actorId: string,
       value: ScopeInput,
     ) {
       const source = yield* decodeInput(ScopeInput, value, "addScope");
+
       yield* requireAdmin("addScope", workspaceId, actorId).pipe(storage("addScope"));
       yield* installedHere("addScope", workspaceId, source);
+
       yield* store
         .batch([
           sql`INSERT INTO workspace_scopes (key, workspaceId, platform, installationId, scope, label)
@@ -665,6 +722,7 @@ export const layerNoDeps = Layer.effect(
     ) {
       const source = yield* decodeInput(ScopeInput, value, "removeScope");
       yield* requireAdmin("removeScope", workspaceId, actorId).pipe(storage("removeScope"));
+
       yield* store.db
         .delete(scopes)
         .where(

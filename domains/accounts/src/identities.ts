@@ -35,69 +35,86 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+
     const resolve = Effect.fn("Identities.resolve")(
       function* (value: Actor) {
         const actor = yield* Schema.decodeEffect(Actor)(value);
+
         const rows = yield* store.db
           .select()
           .from(identities)
           .where(eq(identities.key, key(actor.platform, actor.installationId, actor.externalId)));
+
         const decoded = yield* Schema.decodeEffect(Schema.Array(Row))(rows);
+
         return Option.fromNullishOr(decoded[0]?.userId);
       },
       Effect.mapError((cause) => new IdentityError({ operation: "resolve", cause })),
     );
 
     const LoginRow = createSelectSchema(logins);
+
     const adopt = Effect.fn("Identities.adopt")(
       function* (value: Login) {
         const login = yield* Schema.decodeEffect(Login)(value);
+
         const existing = yield* store.db
           .select()
           .from(logins)
           .where(eq(logins.authUserId, login.authUserId))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(LoginRow))));
         let userId = existing[0]?.userId;
+
         if (userId === undefined) {
           // Adopt whichever existing user already owns one of the proven identities.
           for (const actor of login.actors) {
             const owner = yield* resolve(actor);
+
             if (Option.isSome(owner)) {
               userId = owner.value;
               break;
             }
           }
+
           userId ??= login.authUserId;
+
           yield* store.batch([
             sql`INSERT INTO account_users (id) VALUES (${userId}) ON CONFLICT DO NOTHING`,
             sql`INSERT INTO account_logins (authUserId, userId, linkedAt)
             VALUES (${login.authUserId}, ${userId}, ${login.now}) ON CONFLICT DO NOTHING`,
           ]);
         }
+
         const owner = userId;
+
         // The latest sign-in's profile is what member lists show.
         yield* store.batch([
           sql`UPDATE account_users SET name = ${login.profile.name}, email = ${login.profile.email},
           image = ${login.profile.image}, githubLogin = COALESCE(${login.profile.githubLogin}, githubLogin),
           updatedAt = ${login.now} WHERE id = ${owner}`,
         ]);
+
         for (const actor of login.actors)
           yield* store.batch([
             sql`INSERT INTO account_identities (key, kind, installationId, externalId, userId, provenance)
             VALUES (${key(actor.platform, actor.installationId, actor.externalId)}, ${actor.platform}, ${actor.installationId}, ${actor.externalId}, ${owner}, 'oauth')
             ON CONFLICT DO NOTHING`,
           ]);
+
         return owner;
       },
       Effect.mapError((cause) => new IdentityError({ operation: "adopt", cause })),
     );
+
     const UserRow = createSelectSchema(users);
+
     const githubLogin = Effect.fn("Identities.githubLogin")(
       function* (userId: string) {
         const rows = yield* store.db
           .select({ githubLogin: users.githubLogin })
           .from(users)
           .where(eq(users.id, userId));
+
         return rows[0]?.githubLogin ?? null;
       },
       Effect.mapError((cause) => new IdentityError({ operation: "githubLogin", cause })),
@@ -105,12 +122,15 @@ export const layerNoDeps = Layer.effect(
     const profiles = Effect.fn("Identities.profiles")(
       function* (userIds: ReadonlyArray<string>) {
         const result = new Map<string, Profile>();
+
         if (userIds.length === 0) return result;
+
         const rows = yield* store.db
           .select()
           .from(users)
           .where(inArray(users.id, [...userIds]))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(UserRow))));
+
         for (const row of rows)
           if (row.name !== null && row.email !== null)
             result.set(row.id, {
@@ -119,10 +139,12 @@ export const layerNoDeps = Layer.effect(
               image: row.image,
               githubLogin: row.githubLogin,
             });
+
         return result;
       },
       Effect.mapError((cause) => new IdentityError({ operation: "profiles", cause })),
     );
+
     return Service.of({ resolve, adopt, githubLogin, profiles });
   }),
 );

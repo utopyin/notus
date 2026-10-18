@@ -49,6 +49,7 @@ export class Service extends Context.Service<Service, Interface>()("@notus/slack
 
 const rejected = () => new DeliveryError({ classification: "rejected" });
 const ambiguous = () => new DeliveryError({ classification: "ambiguous" });
+
 const classify = (error: unknown): DeliveryError => {
   if (HttpClientError.isHttpClientError(error) && error.response?.status === 429) {
     // Slack specifies Retry-After in seconds. Invalid/missing hints use the
@@ -56,18 +57,22 @@ const classify = (error: unknown): DeliveryError => {
     const header = error.response.headers["retry-after"];
     const delay =
       header !== undefined && /^\d+(?:\.\d+)?$/.test(header.trim()) ? Number(header) * 1000 : NaN;
+
     return new DeliveryError({
       classification: "rate-limited",
       retryAfter: Number.isFinite(delay) ? delay : 60_000,
     });
   }
+
   if (Schema.is(Errors.SlackRateLimited)(error)) {
     const delay = error.retryAfter === undefined ? 60_000 : Duration.toMillis(error.retryAfter);
+
     return new DeliveryError({
       classification: "rate-limited",
       retryAfter: Number.isFinite(delay) && delay >= 0 ? delay : 60_000,
     });
   }
+
   if (
     Schema.is(Errors.Unauthorized)(error) ||
     Schema.is(Errors.Forbidden)(error) ||
@@ -76,6 +81,7 @@ const classify = (error: unknown): DeliveryError => {
     Schema.is(Errors.UnprocessableEntity)(error)
   )
     return rejected();
+
   // Only documented pre-send rejection slugs are safe to classify as not sent.
   if (
     Schema.is(Errors.SlackError)(error) &&
@@ -101,6 +107,7 @@ const classify = (error: unknown): DeliveryError => {
     ]).has(error.code)
   )
     return rejected();
+
   return ambiguous();
 };
 
@@ -108,12 +115,15 @@ const classify = (error: unknown): DeliveryError => {
 export const make = (token: Redacted.Redacted<string>) =>
   Effect.gen(function* () {
     const config = { token };
+
     // Distilled reads the body with orDie before checking status. Reject 429
     // here so a broken or stalled body cannot erase known rate-limit evidence.
     const http = (yield* HttpClient.HttpClient).pipe(
       HttpClient.filterStatus((status) => status !== 429),
     );
+
     const credentials = Effect.succeed({ token: config.token, apiBaseUrl: DEFAULT_API_BASE_URL });
+
     const run = <A, E>(operation: Effect.Effect<A, E, Credentials | HttpClient.HttpClient>) =>
       operation.pipe(
         Retry.none,
@@ -127,8 +137,10 @@ export const make = (token: Redacted.Redacted<string>) =>
         // A broken response may follow a successful mutation. Never retry it here.
         Effect.catchDefect(() => Effect.fail(ambiguous())),
       );
+
     const validate = (channel: string, ts: string) =>
       channel.length > 0 && Schema.is(Timestamp)(ts);
+
     const ChannelItem = Schema.Struct({
       id: Schema.NonEmptyString,
       name: Schema.optionalKey(Schema.String),
@@ -136,6 +148,7 @@ export const make = (token: Redacted.Redacted<string>) =>
       is_private: Schema.optionalKey(Schema.Boolean),
       is_archived: Schema.optionalKey(Schema.Boolean),
     });
+
     const listChannels = Effect.gen(function* () {
       const result = yield* run(
         listConversations({
@@ -144,11 +157,15 @@ export const make = (token: Redacted.Redacted<string>) =>
           limit: 1000,
         }),
       );
+
       if (!result.ok) return yield* ambiguous();
+
       const channels: Array<ChannelSummary> = [];
+
       for (const item of result.channels) {
         const decoded = yield* Schema.decodeUnknownEffect(ChannelItem)(item).pipe(Effect.option);
         if (decoded._tag === "None" || decoded.value.is_archived === true) continue;
+
         channels.push({
           id: decoded.value.id,
           name: decoded.value.name ?? decoded.value.id,
@@ -156,12 +173,15 @@ export const make = (token: Redacted.Redacted<string>) =>
           isPrivate: decoded.value.is_private ?? false,
         });
       }
+
       return channels.sort((a, b) => a.name.localeCompare(b.name));
     }).pipe(Effect.withSpan("Slack.listChannels"));
+
     return {
       listChannels,
       react: Effect.fn("Slack.react")(function* (channel, ts) {
         if (!validate(channel, ts)) return yield* rejected();
+
         const result = yield* run(
           addReaction({ channel, timestamp: ts, name: "eyes" }).pipe(
             Effect.catchIf(
@@ -170,6 +190,7 @@ export const make = (token: Redacted.Redacted<string>) =>
             ),
           ),
         );
+
         if (!result.ok) return yield* ambiguous();
         return { channel, ts };
       }),
@@ -181,6 +202,7 @@ export const make = (token: Redacted.Redacted<string>) =>
           /@(?:here|channel|everyone)\b|<!(?:here|channel|everyone)\b/i.test(text)
         )
           return yield* rejected();
+
         const result = yield* run(
           postMessage({
             channel,
@@ -194,8 +216,10 @@ export const make = (token: Redacted.Redacted<string>) =>
             reply_broadcast: false,
           }),
         );
+
         if (!result.ok || result.channel !== channel || !Schema.is(Timestamp)(result.ts))
           return yield* ambiguous();
+
         return { channel: result.channel, ts: result.ts, deliveryId };
       }),
     } satisfies Interface;

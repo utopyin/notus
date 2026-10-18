@@ -36,17 +36,21 @@ export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
+
     const stateRoot = yield* Config.String("NOTUS_STATE_DIR").pipe(
       Config.withDefault("/home/devbox/.local/state/notus"),
     );
+
     // Read once per runtime graph from Linux, never from launch configuration.
     // A boot ID selects local state; it is not proof that a copied-volume VM is dead.
     const kernelBootId = yield* fs.readFileString("/proc/sys/kernel/random/boot_id").pipe(
       Effect.flatMap((value) => Schema.decodeEffect(KernelBootId)(value.trimEnd())),
       Effect.mapError(() => new Failure({ reason: "state" })),
     );
+
     const directory = `${stateRoot}/boots/${kernelBootId}`;
     const socketPath = `${directory}/owner/herdr.sock`;
+
     // Linux sockaddr_un has 108 bytes, including the NUL. Bound the full UTF-8 path.
     if (
       !stateRoot.startsWith("/home/devbox/") ||
@@ -59,6 +63,7 @@ export const layer = Layer.effect(
     ) {
       return yield* new Failure({ reason: "state" });
     }
+
     return Service.of({ stateRoot, kernelBootId, directory, socketPath });
   }),
 );

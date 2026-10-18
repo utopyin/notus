@@ -25,8 +25,10 @@ export const bounce = (dashboardOrigin: string) =>
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = new URL(request.url, "https://notus.invalid");
     const platform = /^\/platforms\/([a-z]+)\/install$/.exec(url.pathname)?.[1];
+
     if (request.method !== "GET" || platform === undefined || !Schema.is(Platform)(platform))
       return HttpServerResponse.empty({ status: 404 });
+
     return redirect(`${dashboardOrigin}/platforms/${platform}/install${url.search}`);
   });
 
@@ -46,22 +48,31 @@ export const complete = (
     const platforms = yield* Platforms.Service;
     const workspaces = yield* Workspaces.Service;
     const home = `${dashboardOrigin}/`;
+
     if (!Schema.is(Platform)(platform)) return `${home}?install=wrong-platform`;
+
     const query = new URLSearchParams(search);
     const state = query.get("state");
     if (!state) return `${home}?install=missing-state`;
+
     const now = yield* Clock.currentTimeMillis;
+
     const intent = yield* workspaces
       .takeInstallIntent(state, now)
       .pipe(Effect.mapError(() => "expired-intent" as const));
+
     if (intent.platform !== platform) return `${home}?install=wrong-platform`;
     if (intent.userId !== userId) return `${home}?install=wrong-user`;
+
     const view = yield* workspaces
       .view(intent.workspaceId, intent.userId)
       .pipe(Effect.mapError(() => "unknown-workspace" as const));
+
     const back = `${dashboardOrigin}/${view.workspace.slug}/platforms/${platform}`;
+
     if (query.get("error"))
       return `${back}?install=${encodeURIComponent(query.get("error") ?? "")}`;
+
     const scope = yield* platforms
       .forPlatform(platform)
       .pipe(Effect.mapError(() => "unregistered" as const));
@@ -76,10 +87,13 @@ export const complete = (
             `${platform} ${error.reason}${error.detail === undefined ? "" : ` (${error.detail})`}`,
         ),
       );
+
     yield* workspaces
       .install(intent, installed, now)
       .pipe(Effect.mapError((error) => `${platform} ${error.reason}`));
+
     yield* Effect.logInfo(`install.completed ${platform}`);
+
     return `${back}?installed=${platform}`;
   }).pipe(
     Effect.catch((reason) =>

@@ -16,6 +16,7 @@ export const getSessions = createServerFn({ method: "GET" }).handler(async () =>
   const cookie = getRequestHeader("cookie") ?? "";
   const api = Cloudflare.toRpcAsync<Api>(env.API);
   const result = await api.dashboardSessions(cookie);
+
   return result.ok ? result.value : [];
 });
 

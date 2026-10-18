@@ -20,11 +20,13 @@ const record = (value: Schema.Json | undefined): { readonly [key: string]: Schem
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as { readonly [key: string]: Schema.Json })
     : null;
+
 const text = (value: Schema.Json | undefined) => (typeof value === "string" ? value : "");
 
 const command = (row: CommandRow): CommandView => {
   const spec = row.spec;
   const result = row.result;
+
   const [subject, input] =
     spec.kind === "shell"
       ? [spec.cwd, spec.script]
@@ -40,6 +42,7 @@ const command = (row: CommandRow): CommandView => {
             : spec.kind === "update"
               ? ["origin conversation", spec.text]
               : [spec.title, spec.body];
+
   return {
     id: row.id,
     kind: spec.kind,
@@ -71,11 +74,14 @@ const command = (row: CommandRow): CommandView => {
 const step = (row: Step, commands: ReadonlyArray<CommandRow>): StepView => {
   const parts = Array.isArray(row.parts) ? row.parts.map(record) : [];
   const results = new Map<string, { readonly [key: string]: Schema.Json }>();
+
   for (const part of parts) if (part?.type === "tool-result") results.set(text(part.id), part);
   const items: Array<StepItem> = [];
   let tokens: number | null = null;
+
   for (const part of parts) {
     if (part === null) continue;
+
     if (part.type === "text" && text(part.text) !== "")
       items.push({ kind: "text", text: text(part.text) });
     else if (part.type === "reasoning" && text(part.text) !== "")
@@ -83,9 +89,11 @@ const step = (row: Step, commands: ReadonlyArray<CommandRow>): StepView => {
     else if (part.type === "tool-call") {
       const id = text(part.id);
       const settled = results.get(id);
+
       const found = commands.find(
         (candidate) => candidate.stepId === row.id && candidate.callId === id,
       );
+
       items.push({
         kind: "tool",
         id,
@@ -98,11 +106,13 @@ const step = (row: Step, commands: ReadonlyArray<CommandRow>): StepView => {
     } else if (part.type === "finish") {
       const total = record(record(part.usage)?.inputTokens)?.total;
       const output = record(record(part.usage)?.outputTokens)?.total;
+
       if (typeof total === "number" || typeof output === "number")
         tokens =
           (typeof total === "number" ? total : 0) + (typeof output === "number" ? output : 0);
     }
   }
+
   return {
     id: row.id,
     index: row.index,
@@ -118,6 +128,7 @@ const step = (row: Step, commands: ReadonlyArray<CommandRow>): StepView => {
 
 const describe = (item: Extract<StepItem, { kind: "tool" }>) => {
   const subject = item.command?.subject;
+
   switch (item.name) {
     case "create_devbox":
       return "Starting the devbox";
@@ -146,9 +157,12 @@ const statusOf = (
   delivering: boolean,
 ): { readonly status: TaskStatus; readonly activity: string | null } => {
   if (closed) return { status: "closed", activity: null };
+
   const last = latest?.steps.at(-1);
+
   if (last === undefined)
     return pending ? { status: "queued", activity: "Queued" } : { status: "idle", activity: null };
+
   switch (last.status) {
     case "pending":
       return {
@@ -162,6 +176,7 @@ const statusOf = (
         (item): item is Extract<StepItem, { kind: "tool" }> =>
           item.kind === "tool" && item.state === "waiting",
       );
+
       return { status: "waiting", activity: waiting ? describe(waiting) : "Waiting" };
     }
     case "failed":
@@ -183,6 +198,7 @@ export const read = Effect.fn("View.read")(function* () {
   const snapshot = yield* state.snapshot;
   const task = snapshot.task;
   if (task === null) return null;
+
   const execution = yield* attempts.snapshot;
   const stepRows = yield* steps.snapshot;
   const commandRows = yield* commands.snapshot;
@@ -194,10 +210,12 @@ export const read = Effect.fn("View.read")(function* () {
     snapshot.deliveries.flatMap((row) => (row.responseId ? [[row.responseId, row.status]] : [])),
   );
   const invocationOf = new Map(execution.invocations.map((row) => [row.inputId, row]));
+
   const timeline = [...snapshot.inputs]
     .sort((a, b) => a.createdAt - b.createdAt)
     .map((row): TurnView => {
       const invocation = invocationOf.get(row.id);
+
       return {
         inputId: row.id,
         platform: row.input.target.source.platform,
@@ -226,6 +244,7 @@ export const read = Effect.fn("View.read")(function* () {
   // Inputs that only add context to a turn still in flight get no invocation of their own.
   const latest = timeline.findLast((turn) => invocationOf.has(turn.inputId));
   const latestInvocation = latest ? invocationOf.get(latest.inputId) : undefined;
+
   const { status, activity } = statusOf(
     task.closedAt !== null,
     latest,
@@ -234,8 +253,10 @@ export const read = Effect.fn("View.read")(function* () {
       (row) => row.kind === "answer" && (row.status === "pending" || row.status === "sending"),
     ),
   );
+
   const pullRequest = commandRows.findLast((row) => row.result?.pullRequest)?.result?.pullRequest;
   const origin = snapshot.sources.find((source) => source.id === task.originSourceId);
+
   const times = [
     task.createdAt,
     ...snapshot.inputs.map((row) => row.createdAt),
@@ -243,6 +264,7 @@ export const read = Effect.fn("View.read")(function* () {
     ...stepRows.map((row) => row.updatedAt),
     ...commandRows.map((row) => row.updatedAt),
   ];
+
   const detail: TaskDetail = {
     id: task.id,
     workspaceId: task.reservation.workspaceId,
@@ -281,6 +303,7 @@ export const read = Effect.fn("View.read")(function* () {
     roles: instructions.roles.map((role) => ({ name: role.name, revision: role.revision })),
     timeline,
   };
+
   return detail;
 });
 

@@ -39,6 +39,7 @@ export const layerNoDeps = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     // snapshot performs a new native ping first. Neither operation executes agents.
     const observe = Effect.asVoid(client.snapshot);
+
     const report = Schema.encodeEffect(
       Schema.fromJsonString(
         Schema.Struct({
@@ -57,11 +58,14 @@ export const layerNoDeps = Layer.effect(
       Effect.flatMap((line) => Stream.make(line + "\n").pipe(Stream.run(stdio.stdout()))),
       Effect.orDie,
     );
+
     const check = Effect.gen(function* () {
       yield* assertPlatform;
       yield* validateDirectories(settings);
+
       // A local CLI probe cannot assert durable Control acknowledgment.
       if (callback.bound) return yield* new Failure({ reason: "binding" });
+
       yield* observe;
       yield* report;
     }).pipe(
@@ -77,6 +81,7 @@ export const layerNoDeps = Layer.effect(
         Effect.ignore,
         Effect.andThen(Effect.fail(new Failure({ reason: "child-exited" }))),
       );
+
       const ready = observe.pipe(
         Effect.retry({
           schedule: Schedule.spaced("100 millis"),
@@ -90,15 +95,19 @@ export const layerNoDeps = Layer.effect(
           orElse: () => Effect.fail(new Failure({ reason: "startup" })),
         }),
       );
+
       return yield* Effect.gen(function* () {
         yield* callback.ready(ready);
         yield* report;
+
         // Git is signed in as the initiator before the first command and kept signed in while
         // the box serves: a login is refreshed half an hour before it expires.
         const signIn = Effect.gen(function* () {
           const reply = yield* callback.login.pipe(Effect.orElseSucceed(() => ({ github: null })));
+
           yield* Git.configure(reply.github).pipe(Effect.ignore);
           const now = yield* Clock.currentTimeMillis;
+
           return reply.github === null
             ? 30 * 60_000
             : Math.min(
@@ -107,12 +116,14 @@ export const layerNoDeps = Layer.effect(
               );
         });
         let wait = yield* signIn;
+
         const keepSignedIn = Effect.gen(function* () {
           while (true) {
             yield* Effect.sleep(Duration.millis(wait));
             wait = yield* signIn;
           }
         });
+
         // Serve operator commands for as long as Control accepts this runtime.
         return yield* callback
           .commands(Commands.run)
@@ -122,6 +133,7 @@ export const layerNoDeps = Layer.effect(
       Effect.provideService(FileSystem.FileSystem, fs),
       Effect.withSpan("Devbox.Supervisor.start"),
     );
+
     return Service.of({ check, start });
   }),
 );

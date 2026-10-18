@@ -7,6 +7,7 @@ import { env } from "../env";
 // Every call forwards the request's cookie; the API resolves and authorizes the user itself.
 const api = () => Cloudflare.toRpcAsync<Api>(env.API);
 const cookie = () => getRequestHeader("cookie") ?? "";
+
 type Role = "admin" | "member";
 
 export const createWorkspace = createServerFn({ method: "POST" })

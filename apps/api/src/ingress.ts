@@ -28,6 +28,7 @@ export interface Dependencies {
 }
 
 const ok = () => HttpServerResponse.empty({ status: 200 });
+
 const ignored = (reason: string) =>
   Effect.logInfo(`ingress.ignored ${reason}`).pipe(Effect.as(ok()));
 
@@ -40,25 +41,34 @@ export const handler = (platform: Platform, dependencies: Dependencies) =>
   Effect.gen(function* () {
     const platforms = yield* Platforms.Service;
     const request = yield* HttpServerRequest.HttpServerRequest;
+
     if (request.method !== "POST") return HttpServerResponse.empty({ status: 404 });
+
     const scope = yield* platforms.forPlatform(platform);
     const body = new Uint8Array(yield* request.arrayBuffer);
+
     const normalized = yield* scope.ingress.receive({
       body,
       header: (name) => request.headers[name] ?? null,
     });
+
     if (normalized.type === "acknowledge") return yield* HttpServerResponse.json(normalized.body);
     if (normalized.type === "ignored") return yield* ignored(normalized.reason);
+
     const { received } = normalized;
     const source = received.target.source;
     const workspaceId = yield* dependencies.workspaceOf(source);
     if (workspaceId === null) return yield* ignored("foreign-installation");
     if (!(yield* dependencies.covers(workspaceId, source))) return yield* ignored("scope");
+
     const port = yield* platforms.forInstallation(source);
+
     if (!(yield* port.identity.mayParticipate(received.actor, source.scope)))
       return yield* ignored("actor");
+
     // A conversation is routed by the task that opened it or checked it out; nothing routes here.
     const conversationKey = conversationKeyOf(workspaceId, source);
+
     yield* dependencies.admit({
       workspaceId,
       // The inbox recomputes identity keys server-side; these placeholders are never trusted.
@@ -73,9 +83,11 @@ export const handler = (platform: Platform, dependencies: Dependencies) =>
       startIntent: received.startIntent,
       root: received.root,
     });
+
     // Durable admission already succeeded. A failed best-effort kick must not turn
     // acknowledgement into failure; the independent cron will recover it.
     yield* dependencies.kick.pipe(Effect.catchCause(() => Effect.logWarning("inbox.kick_failed")));
+
     return ok();
   }).pipe(
     Effect.catchTags({

@@ -45,6 +45,7 @@ import {
 const claimDuration = 30_000;
 const startupDuration = 10 * 60_000;
 const fail = (reason: ProvisioningFailure["reason"]) => new ProvisioningFailure({ reason });
+
 const decodeInput = Effect.fn("Provisioning.decodeInput")(
   function* <A, I>(schema: Schema.Codec<A, I>, input: unknown) {
     const inert = yield* Json.snapshot(input);
@@ -52,6 +53,7 @@ const decodeInput = Effect.fn("Provisioning.decodeInput")(
   },
   Effect.mapError(() => fail("invalid-input")),
 );
+
 const status = (s: ProvisioningState, active: boolean): ProvisioningStatus => ({
   attemptId: s.bootstrap.attemptId,
   taskId: s.bootstrap.taskId,
@@ -70,6 +72,7 @@ const status = (s: ProvisioningState, active: boolean): ProvisioningStatus => ({
   observedAt: s.updatedAt,
   taskAuthorized: false,
 });
+
 const blocked = (
   s: ProvisioningState,
   reason: ProvisioningState["blockedReason"],
@@ -93,6 +96,7 @@ const blocked = (
 const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   const save = Effect.fn("Provisioning.save")(function* (s: ProvisioningState) {
     yield* Schema.decodeEffect(ProvisioningState)(s);
+
     yield* db
       .update(provisioning)
       .set({ state: s })
@@ -103,20 +107,28 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     if (!row) return yield* fail("not-found");
     return yield* Schema.decodeEffect(ProvisioningState)(row.state);
   });
+
   const active = Effect.gen(function* () {
     const rows = yield* db.select().from(attempts).where(eq(attempts.active, true));
+
     if (rows.length > 1) return yield* fail("conflict");
+
     const row = rows[0];
+
     if (!row || (row.mode !== "readiness" && row.mode !== "operator")) return null;
+
     // An operator attempt owns provisioning only once the operator asked for a box.
     const [bound] = yield* db
       .select({ attemptId: provisioning.attemptId })
       .from(provisioning)
       .where(eq(provisioning.attemptId, row.id));
     if (!bound) return null;
+
     const s = yield* load(row.id);
+
     if (s.bootstrap.generation !== row.generation || s.bootstrap.taskId !== row.taskId)
       return yield* fail("stale-binding");
+
     return s;
   });
   const requireActive = Effect.gen(function* () {
@@ -124,6 +136,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     if (!s) return yield* fail("not-found");
     return s;
   });
+
   const checkTime = Effect.fn("Provisioning.checkTime")(function* (
     s: ProvisioningState,
     now: number,
@@ -133,10 +146,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   });
   const bind = Effect.fn("Provisioning.bind")(function* (binding: Bootstrap) {
     const s = yield* requireActive;
+
     if (!Equal.equals(s.bootstrap, binding) || s.blockedReason === "external-expired")
       return yield* fail("stale-binding");
+
     return s;
   });
+
   const current = active.pipe(Effect.map((s) => (s ? status(s, true) : null)));
   const box = active.pipe(
     Effect.map((s) =>
@@ -145,9 +161,11 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         : null,
     ),
   );
+
   const get = Effect.fn("Provisioning.get")(function* (attemptId: string) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(attemptId);
     const [row] = yield* db.select().from(attempts).where(eq(attempts.id, attemptId));
+
     if (!row || (row.mode !== "readiness" && row.mode !== "operator")) return null;
     return status(yield* load(attemptId), row.active);
   });
@@ -157,25 +175,35 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   ) {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
+
     if (existing) return yield* Schema.decodeEffect(Environment)(existing.environment);
     if (input === null) return null;
+
     const environment = yield* decodeInput(Environment, input);
+
     yield* db.insert(environments).values({ singleton: 1, environment, capturedAt: now });
+
     return environment;
   });
+
   const captured = Effect.gen(function* () {
     const [existing] = yield* db.select().from(environments).where(eq(environments.singleton, 1));
     return existing ? yield* Schema.decodeEffect(Environment)(existing.environment) : null;
   }).pipe(Effect.withSpan("Provisioning.captured"));
+
   const Candidates = Schema.Array(RepositoryRef);
+
   const captureRepositories = Effect.fn("Provisioning.captureRepositories")(function* (
     input: ReadonlyArray<RepositoryRef>,
     now: number,
   ) {
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
+
     if (existing) return yield* Schema.decodeEffect(Candidates)(existing.candidates);
+
     const candidates = yield* decodeInput(Candidates, input);
+
     // One candidate needs no choice.
     yield* db.insert(repositories).values({
       singleton: 1,
@@ -183,52 +211,69 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       repository: candidates.length === 1 ? candidates[0] : null,
       capturedAt: now,
     });
+
     return candidates;
   });
+
   const candidates = Effect.gen(function* () {
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
     return existing ? yield* Schema.decodeEffect(Candidates)(existing.candidates) : [];
   }).pipe(Effect.withSpan("Provisioning.candidates"));
   const repository = Effect.gen(function* () {
     const [existing] = yield* db.select().from(repositories).where(eq(repositories.singleton, 1));
+
     return existing?.repository
       ? yield* Schema.decodeEffect(RepositoryRef)(existing.repository)
       : null;
   }).pipe(Effect.withSpan("Provisioning.repository"));
+
   const captureInstructions = Effect.fn("Provisioning.captureInstructions")(function* (
     input: ResolvedInstructions,
     now: number,
   ) {
     yield* Schema.decodeEffect(Millis)(now);
+
     const [existing] = yield* db
       .select()
       .from(instructionRows)
       .where(eq(instructionRows.singleton, 1));
+
     if (existing) return yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions);
+
     const captured = yield* decodeInput(ResolvedInstructions, input);
+
     yield* db
       .insert(instructionRows)
       .values({ singleton: 1, instructions: captured, capturedAt: now });
+
     return captured;
   });
+
   const instructions = Effect.gen(function* () {
     const [existing] = yield* db
       .select()
       .from(instructionRows)
       .where(eq(instructionRows.singleton, 1));
+
     return existing
       ? yield* Schema.decodeEffect(ResolvedInstructions)(existing.instructions)
       : ResolvedInstructions.make({ roles: [] });
   }).pipe(Effect.withSpan("Provisioning.instructions"));
+
   /** Picks a candidate by "owner/name"; the choice is final, a second call returns the first. */
   const selectRepository = Effect.fn("Provisioning.selectRepository")(function* (fullName: string) {
     const chosen = yield* repository;
+
     if (chosen) return chosen;
+
     const found = (yield* candidates).find((c) => `${c.owner}/${c.name}` === fullName);
     if (!found) return null;
+
     yield* db.update(repositories).set({ repository: found }).where(eq(repositories.singleton, 1));
+
     return found;
   });
+
   const fresh = (params: Initialize, bootstrap: Bootstrap, now: number): ProvisioningState => ({
     bootstrap,
     environment: params.environment,
@@ -253,34 +298,46 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     ready: null,
     updatedAt: now,
   });
+
   const initialize = Effect.fn("Provisioning.initialize")(function* (
     input: Initialize,
     now: number,
   ) {
     const params = yield* decodeInput(Initialize, input);
+
     yield* Schema.decodeEffect(Millis)(now);
+
     if (params.environment && params.environment.workspaceId !== params.workspaceId)
       return yield* fail("invalid-input");
+
     const history = yield* db.select().from(attempts).orderBy(desc(attempts.generation));
+
     if (history.some((a) => a.taskId !== params.taskId)) return yield* fail("conflict");
+
     const existing = history.find((a) => a.active);
+
     if (existing) {
       if (existing.mode !== "readiness" && existing.mode !== "operator")
         return yield* fail("conflict");
+
       const [bound] = yield* db
         .select({ attemptId: provisioning.attemptId })
         .from(provisioning)
         .where(eq(provisioning.attemptId, existing.id));
+
       if (bound) {
         const s = yield* load(existing.id);
         if (s.bootstrap.workspaceId !== params.workspaceId) return yield* fail("conflict");
         // Configuration selection belongs to the first committed initialization, not its retries.
         return status(s, true);
       }
+
       if (existing.mode !== "operator") return yield* fail("conflict");
+
       // The operator asked for a box: bind provisioning to its already active attempt.
       const operationId = yield* crypto.randomUUIDv4();
       const capabilityId = yield* crypto.randomUUIDv4();
+
       const s = fresh(
         params,
         {
@@ -293,6 +350,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         },
         now,
       );
+
       yield* db.insert(provisioning).values({
         attemptId: existing.id,
         operationId,
@@ -300,13 +358,17 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         providerName: s.providerName,
         state: s,
       });
+
       return status(s, true);
     }
+
     // No replacement API: historical attempts require explicit external intervention.
     if (history.length > 0) return yield* fail("conflict");
+
     const id = yield* crypto.randomUUIDv4();
     const operationId = yield* crypto.randomUUIDv4();
     const capabilityId = yield* crypto.randomUUIDv4();
+
     const s = fresh(
       params,
       {
@@ -319,6 +381,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       },
       now,
     );
+
     yield* db.insert(attempts).values({
       id,
       taskId: params.taskId,
@@ -327,23 +390,29 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       active: true,
       createdAt: now,
     });
+
     yield* db
       .insert(provisioning)
       .values({ attemptId: id, operationId, capabilityId, providerName: s.providerName, state: s });
+
     return status(s, true);
   });
   const claim = Effect.fn("Provisioning.claim")(function* (now: number) {
     yield* Schema.decodeEffect(Millis)(now);
     let s = yield* active;
     if (!s) return null;
+
     yield* checkTime(s, now);
+
     if (s.startupDeadline !== null && now >= s.startupDeadline) {
       yield* save(blocked(s, "startup-timeout", now));
       return null;
     }
+
     if (s.claim) {
       if (now < s.claim.recoverAt) return null;
       const work = s.claim.work;
+
       s = {
         ...s,
         claim: null,
@@ -358,7 +427,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         dueAt: now,
       };
     }
+
     if (!s.nextWork || s.dueAt === null || s.dueAt > now || !s.environment) return null;
+
     const claimed: Claim = {
       bootstrap: s.bootstrap,
       claimGeneration: s.claimGeneration + 1,
@@ -369,6 +440,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       environment: s.environment,
       resource: s.resource,
     };
+
     s = {
       ...s,
       claim: claimed,
@@ -384,7 +456,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             : s.phase,
       enrollmentExpected: claimed.work === "activate" ? true : s.enrollmentExpected,
     };
+
     yield* save(s);
+
     return claimed;
   });
   const record = Effect.fn("Provisioning.record")(function* (
@@ -395,11 +469,16 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     const claimed = yield* decodeInput(Claim, input);
     const result = yield* decodeInput(ProvisioningResult, output);
     let s = yield* bind(claimed.bootstrap);
+
     yield* checkTime(s, now);
+
     if (!Equal.equals(s.claim, claimed) || now >= claimed.recoverAt)
       return yield* fail("stale-claim");
+
     const work = claimed.work;
+
     s = { ...s, claim: null, updatedAt: now };
+
     switch (result._tag) {
       case "Assigned": {
         if (
@@ -409,6 +488,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           result.resource.name !== s.providerName
         )
           return yield* fail("conflict");
+
         s = {
           ...s,
           resource: result.resource,
@@ -417,6 +497,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           nextWork: "activate",
           dueAt: now,
         };
+
         break;
       }
       case "Lost": {
@@ -432,16 +513,19 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           phase: work === "create" ? "ambiguous-create" : s.phase,
           dueAt: now + claimDuration,
         };
+
         break;
       }
       case "NotFound":
       case "Unproven": {
         if (work === "create" || work === "activate") return yield* fail("conflict");
+
         s = blocked(
           s,
           work === "reconcile-create" ? "create-unresolved" : "activation-unresolved",
           now,
         );
+
         break;
       }
       case "Activated":
@@ -453,6 +537,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           (result._tag === "Activated" && work === "probe-wake")
         )
           return yield* fail("conflict");
+
         // A callback may have committed a newer identity while this provider call was outside
         // the gate. Its result cannot move the resource back to the claim's old incarnation.
         if (
@@ -461,17 +546,21 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           result.instanceId !== s.resource.instanceId
         )
           return yield* fail("stale-claim");
+
         if (s.resource.instanceId !== result.instanceId) {
           const history = yield* db
             .select()
             .from(enrollments)
             .where(eq(enrollments.attemptId, s.bootstrap.attemptId));
+
           const previous = yield* Schema.decodeEffect(Schema.Array(Enrollment))(
             history.map((row) => row.request),
           );
+
           if (previous.some((old) => old.instanceId === result.instanceId))
             return yield* fail("stale-claim");
         }
+
         if (
           s.blockedReason === "recovery-unverified" &&
           result.instanceId === s.resource.instanceId
@@ -479,11 +568,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           s = blocked({ ...s, activationUncertain: false }, "recovery-unverified", now);
           break;
         }
+
         const sameIncarnation = s.enrollment?.instanceId === result.instanceId;
         const startupEpoch = sameIncarnation ? s.runtimeEpoch : s.runtimeEpoch + 1;
         // VM suspension may preserve the same incarnation and process memory. Its previous
         // receipt is historical readiness, not a new native health check.
         const ready = sameIncarnation && s.ready?.observation.epoch === startupEpoch;
+
         s = {
           ...s,
           resource: { ...s.resource, instanceId: result.instanceId },
@@ -495,6 +586,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           blockedReason: null,
           startupDeadline: ready ? null : (s.startupDeadline ?? now + startupDuration),
         };
+
         break;
       }
       case "Stopped": {
@@ -504,6 +596,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           (work !== "probe-wake" && work !== "reconcile-activation")
         )
           return yield* fail("conflict");
+
         if (work === "reconcile-activation" || s.activationUncertain) {
           // Unknown Activate is never repeated automatically, even if a later fetch says stopped.
           s = blocked(s, "activation-unresolved", now);
@@ -520,6 +613,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             enrollmentExpected: false,
           };
         }
+
         break;
       }
       case "Rejected":
@@ -528,6 +622,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           "provider-rejected",
           now,
         );
+
         break;
       case "ExternalExpire": {
         if (!s.resource || result.resourceId !== s.resource.id) return yield* fail("conflict");
@@ -536,7 +631,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         break;
       }
     }
+
     yield* save(s);
+
     return status(s, true);
   });
   const requestWake = Effect.fn("Provisioning.requestWake")(function* (
@@ -546,9 +643,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(inputId);
     yield* Schema.decodeEffect(Millis)(now);
     const [existing] = yield* db.select().from(wakes).where(eq(wakes.inputId, inputId));
+
     if (existing) return yield* Schema.decodeEffect(WakeReceipt)(existing.receipt);
+
     let s = yield* requireActive;
+
     yield* checkTime(s, now);
+
     // Coalesce new human wake events with work already in flight. No event can reopen Create.
     if (
       !s.claim &&
@@ -569,14 +670,19 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         startupDeadline: now + startupDuration,
         updatedAt: now,
       };
+
       yield* save(s);
     }
+
     const receipt: WakeReceipt = { inputId, requestedAt: now, status: status(s, true) };
+
     yield* db.insert(wakes).values({ inputId, attemptId: s.bootstrap.attemptId, receipt });
+
     return receipt;
   });
   const context = Effect.fn("Provisioning.context")(function* (input: Bootstrap) {
     const s = yield* bind(yield* decodeInput(Bootstrap, input));
+
     return EnrollmentContext.make({
       bootstrap: s.bootstrap,
       environment: s.environment,
@@ -593,7 +699,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   ) {
     const request = yield* decodeInput(EnrollmentIdentity, input);
     const s = yield* bind(request.bootstrap);
+
     if (!s.resource || s.resource.id !== request.resourceId) return yield* fail("stale-binding");
+
     const rows = yield* db
       .select()
       .from(enrollments)
@@ -607,26 +715,35 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         ),
       );
     const replay = rows[0];
+
     if (replay) {
       const original = yield* Schema.decodeEffect(EnrollmentIdentity)(replay.request);
       if (rows.length !== 1 || !Equal.equals(original, request)) return yield* fail("conflict");
       return yield* Schema.decodeEffect(EpochGrant)(replay.grant);
     }
+
     return null;
   });
   const enroll = Effect.fn("Provisioning.enroll")(function* (input: Enrollment, now: number) {
     const identity = yield* decodeInput(EnrollmentIdentity, input);
     const replay = yield* replayEnrollment(identity);
+
     if (replay) return Result.succeed(replay);
+
     const request = yield* decodeInput(Enrollment, input);
     let s = yield* bind(request.bootstrap);
+
     yield* Schema.decodeEffect(Millis)(now);
+
     if (!s.resource || s.resource.id !== request.resourceId) return yield* fail("stale-binding");
+
     // Before Activate returns, Control's independently fetched identity can establish the
     // current instance. Once activation is confirmed, only that exact instance may enroll.
     if (s.activationConfirmed && s.resource.instanceId !== request.instanceId)
       return yield* fail("stale-binding");
+
     yield* checkTime(s, now);
+
     if (
       !s.enrollmentExpected ||
       s.recoveryRevision !== request.expectedRecoveryRevision ||
@@ -635,13 +752,16 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       s.phase === "blocked"
     )
       return yield* fail("enrollment-not-expected");
+
     const history = yield* db
       .select()
       .from(enrollments)
       .where(eq(enrollments.attemptId, s.bootstrap.attemptId));
+
     const prior = yield* Schema.decodeEffect(Schema.Array(Enrollment))(
       history.map((row) => row.request),
     );
+
     if (
       s.enrollment
         ? request.bootEvidence !== "verified-new-boot" ||
@@ -656,11 +776,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       // Commit the operational block before exposing the typed rejection outside the transaction.
       return Result.fail(fail("recovery-unverified"));
     }
+
     const grant: EpochGrant = {
       epoch: s.runtimeEpoch + 1,
       challenge: yield* crypto.randomUUIDv4(),
       nextRecoveryRevision: s.recoveryRevision + 1,
     };
+
     yield* db.insert(enrollments).values({
       attemptId: s.bootstrap.attemptId,
       revision: request.expectedRecoveryRevision,
@@ -669,6 +791,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       grant,
       acceptedAt: now,
     });
+
     s = {
       ...s,
       resource: { ...s.resource, instanceId: request.instanceId },
@@ -680,7 +803,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       enrollmentExpected: false,
       updatedAt: now,
     };
+
     yield* save(s);
+
     return Result.succeed(grant);
   });
   const acceptReadiness = Effect.fn("Provisioning.acceptReadiness")(function* (
@@ -689,7 +814,9 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   ) {
     const observation = yield* decodeInput(Readiness, input);
     let s = yield* bind(observation.bootstrap);
+
     yield* Schema.decodeEffect(Millis)(now);
+
     const rows = yield* db
       .select()
       .from(readiness)
@@ -703,19 +830,25 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
         ),
       );
     const replay = rows[0];
+
     if (replay) {
       const receipt = yield* Schema.decodeEffect(ReadinessReceipt)(replay.receipt);
+
       if (rows.length !== 1 || !Equal.equals(receipt.observation, observation))
         return yield* fail("conflict");
+
       return receipt;
     }
+
     if (
       !s.resource ||
       observation.resourceId !== s.resource.id ||
       observation.instanceId !== s.resource.instanceId
     )
       return yield* fail("stale-binding");
+
     yield* checkTime(s, now);
+
     if (
       !s.grant ||
       !s.enrollment ||
@@ -728,13 +861,16 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       now >= s.startupDeadline
     )
       return yield* fail("stale-readiness");
+
     const receipt: ReadinessReceipt = { observation, acceptedAt: now };
+
     yield* db.insert(readiness).values({
       attemptId: s.bootstrap.attemptId,
       epoch: observation.epoch,
       observationId: observation.observationId,
       receipt,
     });
+
     // Native readiness and provider activation are joint conditions, in either arrival order.
     s = {
       ...s,
@@ -743,18 +879,24 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       startupDeadline: s.activationConfirmed ? null : s.startupDeadline,
       updatedAt: now,
     };
+
     yield* save(s);
+
     return receipt;
   });
+
   const nextWake = active.pipe(
     Effect.map((s) => {
       if (!s) return null;
+
       const deadlines = [s.claim?.recoverAt, s.dueAt, s.startupDeadline].filter(
         (n): n is number => n !== null && n !== undefined,
       );
+
       return deadlines.length ? Math.min(...deadlines) : null;
     }),
   );
+
   return {
     initialize,
     capture,
@@ -859,6 +1001,7 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const db = yield* Sqlite.Service;
     const crypto = yield* Crypto.Crypto;
+
     const atomic = <A, E>(run: (operations: ReturnType<typeof within>) => Effect.Effect<A, E>) =>
       db
         .transaction((tx) => run(within(tx, crypto)))
@@ -869,6 +1012,7 @@ export const layerNoDeps = Layer.effect(
               : fail(Schema.isSchemaError(error) ? "invalid-input" : "storage"),
           ),
         );
+
     return Service.of({
       initialize: Effect.fn("Provisioning.initializeAtomic")((params, now) =>
         atomic((q) => q.initialize(params, now)),

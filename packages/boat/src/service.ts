@@ -66,12 +66,14 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const settings = yield* Config.Service;
     const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+
     const fail = (
       operation: Operation,
       reason: BoatError["reason"],
       outcome: BoatError["outcome"],
       extra: { status?: number; code?: string } = {},
     ) => new BoatError({ operation, reason, outcome, ...extra });
+
     if (
       !Redacted.isRedacted(settings.credential) ||
       !/^[\x21-\x7e]{1,4096}$/.test(Redacted.value(settings.credential))
@@ -82,22 +84,29 @@ export const layerNoDeps = Layer.effect(
       Effect.gen(function* () {
         let size = 0;
         const chunks: Array<Uint8Array> = [];
+
         yield* stream.pipe(
           Stream.runForEach((chunk) => {
             size += chunk.byteLength;
+
             if (size > maxResponseBytes)
               return Effect.fail(fail(operation, "invalidResponse", "unknown"));
+
             chunks.push(chunk);
+
             return Effect.void;
           }),
           Effect.mapError(() => fail(operation, "invalidResponse", "unknown")),
         );
+
         const bytes = new Uint8Array(size);
         let offset = 0;
+
         for (const chunk of chunks) {
           bytes.set(chunk, offset);
           offset += chunk.byteLength;
         }
+
         return yield* Effect.try({
           try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes),
           catch: () => fail(operation, "invalidResponse", "unknown"),
@@ -119,21 +128,27 @@ export const layerNoDeps = Layer.effect(
           HttpClientRequest.bearerToken(settings.credential),
           HttpClientRequest.setHeaders(headers),
         );
+
         const request =
           body === undefined
             ? base
             : yield* HttpClientRequest.bodyJson(base, body).pipe(
                 Effect.mapError(() => fail(operation, "invalidInput", "notSent")),
               );
+
         const response = yield* http
           .execute(request)
           .pipe(Effect.mapError(() => fail(operation, "transport", "unknown")));
+
         const text = yield* read(operation, response.stream);
+
         if (response.status < 200 || response.status > 299) {
           const parsed = yield* Schema.decodeEffect(Schema.fromJsonString(ErrorBody))(text).pipe(
             Effect.orElseSucceed(() => ({ code: undefined })),
           );
+
           const code = Schema.is(Code)(parsed.code) ? parsed.code : undefined;
+
           return yield* fail(
             operation,
             "http",
@@ -145,6 +160,7 @@ export const layerNoDeps = Layer.effect(
             { status: response.status, ...(code === undefined ? {} : { code }) },
           );
         }
+
         return yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(text).pipe(
           Effect.mapError(() => fail(operation, "invalidResponse", "unknown")),
         );
@@ -162,19 +178,23 @@ export const layerNoDeps = Layer.effect(
           }),
         ),
     );
+
     const id = (operation: Operation, value: string) =>
       Schema.decodeEffect(SandboxId)(value).pipe(
         Effect.mapError(() => fail(operation, "invalidInput", "notSent")),
       );
+
     const sandbox = (operation: Operation) => (payload: unknown) =>
       Schema.decodeUnknownEffect(SandboxEnvelope)(payload).pipe(
         Effect.map((envelope) => envelope.sandbox),
         Effect.mapError(() => fail(operation, "invalidResponse", "unknown")),
       );
+
     const snapshotName = (value: string) =>
       Schema.decodeEffect(SnapshotName)(value).pipe(
         Effect.mapError(() => fail("snapshot", "invalidInput", "notSent")),
       );
+
     const snapshot = (payload: unknown) =>
       Schema.decodeUnknownEffect(SnapshotEnvelope)(payload).pipe(
         Effect.map((envelope) => envelope.snapshot),

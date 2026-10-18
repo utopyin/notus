@@ -28,6 +28,7 @@ export const assertPlatform = Effect.try({
 const validateDirectory = Effect.fn("Devbox.Host.validateDirectory")(function* (directory: string) {
   const fs = yield* FileSystem.FileSystem;
   const stat = yield* fs.stat(directory);
+
   // Canonical-path equality rejects symlinks, including symlinked ancestors.
   if (
     stat.type !== "Directory" ||
@@ -42,6 +43,7 @@ const validateDirectory = Effect.fn("Devbox.Host.validateDirectory")(function* (
 export const validateDirectories = Effect.fn("Devbox.Host.validateDirectories")(
   function* (settings: Settings.Service["Service"], create = false) {
     const fs = yield* FileSystem.FileSystem;
+
     for (const directory of [
       settings.stateRoot,
       `${settings.stateRoot}/boots`,
@@ -49,6 +51,7 @@ export const validateDirectories = Effect.fn("Devbox.Host.validateDirectories")(
     ]) {
       if (create) yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 });
       yield* validateDirectory(directory);
+
       if (directory === settings.stateRoot) {
         // Directory entries include dangling symlinks. No old-format ownership can
         // be established here, so refuse it without inspecting or removing it.
@@ -57,6 +60,7 @@ export const validateDirectories = Effect.fn("Devbox.Host.validateDirectories")(
         }
       }
     }
+
     if (!create) yield* validateDirectory(`${settings.directory}/owner`);
   },
   Effect.mapError(() => new Failure({ reason: "state" })),
@@ -67,7 +71,9 @@ export const acquireDirectory = Effect.fn("Devbox.Host.acquireDirectory")(functi
 ) {
   const fs = yield* FileSystem.FileSystem;
   const directory = settings.directory;
+
   yield* validateDirectories(settings, true);
+
   // Only atomic creation in this boot grants ownership. Never consult old PIDs,
   // probe a free flock, or adopt/remove an owner, even after a same-kernel crash.
   yield* Effect.acquireRelease(
@@ -94,6 +100,7 @@ export const signalGroup = Effect.fn("Devbox.Host.signalGroup")(
           cause.code === "ESRCH"
         )
           return false;
+
         throw cause;
       }
     }),
@@ -106,12 +113,14 @@ export const launch = Effect.fn("Devbox.Host.launch")(function* (
   const fs = yield* FileSystem.FileSystem;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const owner = `${directory}/owner`;
+
   yield* Effect.gen(function* () {
     yield* fs.makeDirectory(`${owner}/config`, { mode: 0o700 });
     yield* fs.makeDirectory(`${owner}/state`, { mode: 0o700 });
     yield* fs.makeDirectory(`${owner}/cache`, { mode: 0o700 });
     yield* fs.writeFileString(`${owner}/config.toml`, config, { mode: 0o600, flag: "wx" });
   }).pipe(Effect.mapError(() => new Failure({ reason: "state" })));
+
   return yield* Effect.uninterruptible(
     Effect.gen(function* () {
       const child = yield* spawner
@@ -142,9 +151,11 @@ export const launch = Effect.fn("Devbox.Host.launch")(function* (
           }),
         )
         .pipe(Effect.mapError(() => new Failure({ reason: "spawn" })));
+
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* signalGroup(child.pid, "SIGTERM");
+
           yield* signalGroup(child.pid, 0).pipe(
             Effect.repeat({ schedule: Schedule.spaced("50 millis"), while: (alive) => alive }),
             Effect.timeoutOrElse({
@@ -152,9 +163,11 @@ export const launch = Effect.fn("Devbox.Host.launch")(function* (
               orElse: () => signalGroup(child.pid, "SIGKILL"),
             }),
           );
+
           yield* child.exitCode.pipe(Effect.ignore);
         }),
       );
+
       return child;
     }),
   );

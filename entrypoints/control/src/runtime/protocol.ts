@@ -10,6 +10,7 @@ import * as Schema from "effect/Schema";
 import type { Failure } from "./errors";
 
 const Uuid = Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/));
+
 // Routing and authority come from verified capabilities, never these bodies.
 export const EnrollmentRequest = Schema.Struct({
   resourceId: Enrollment.fields.resourceId.check(Schema.isMaxLength(256)),
@@ -27,6 +28,7 @@ export const Assignment = Schema.Struct({
 export interface Assignment extends Schema.Schema.Type<typeof Assignment> {}
 
 const Credential = Schema.RedactedFromValue(Schema.NonEmptyString);
+
 export const EnrollmentReply = Schema.Struct({
   grant: EpochGrant,
   recoveryCredential: Credential,

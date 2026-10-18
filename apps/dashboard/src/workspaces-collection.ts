@@ -13,6 +13,7 @@ export type WorkspaceRow = Me["workspaces"][number];
  * rolls back. Created lazily so nothing runs during server rendering.
  */
 let collection: ReturnType<typeof make> | null = null;
+
 const make = () =>
   createCollection(
     queryCollectionOptions({
@@ -32,11 +33,13 @@ const make = () =>
               slug: mutation.changes.slug,
             },
           });
+
           if (!result.ok) throw new Error(result.reason);
         }
       },
     }),
   );
+
 export const workspacesCollection = () => {
   collection ??= make();
   return collection;
@@ -44,9 +47,12 @@ export const workspacesCollection = () => {
 
 /** The rows as of the last change, kept so a re-render without a change reads the same array. */
 let snapshot: ReadonlyArray<WorkspaceRow> | null = null;
+
 const subscribe = (onChange: () => void) => {
   const live = workspacesCollection();
+
   void live.preload();
+
   const subscription = live.subscribeChanges(
     () => {
       snapshot = live.toArray;
@@ -54,6 +60,7 @@ const subscribe = (onChange: () => void) => {
     },
     { includeInitialState: true },
   );
+
   return () => subscription.unsubscribe();
 };
 

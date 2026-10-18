@@ -11,32 +11,41 @@ export const layer = Layer.sync(Socket.Service, () => {
       let bytes = Buffer.alloc(0);
       let settled = false;
       let socket: ReturnType<typeof createConnection>;
+
       try {
         socket = createConnection({ path });
       } catch {
         resume(Effect.fail(new Failure({ reason: "connect" })));
         return;
       }
+
       const finish = (result: Effect.Effect<string, Failure>) => {
         if (settled) return;
+
         settled = true;
         socket.destroy();
         resume(result);
       };
+
       socket.once("connect", () => socket.write(request + "\n"));
+
       socket.on("data", (chunk: Buffer) => {
         // Hard cap includes coalesced frames, not only unterminated input.
         if (bytes.length + chunk.length > 1024 * 1024) {
           finish(Effect.fail(new Failure({ reason: "frame" })));
           return;
         }
+
         bytes = Buffer.concat([bytes, chunk]);
         const newline = bytes.indexOf(10);
+
         if (newline === -1) return;
+
         if (newline === 0 || newline !== bytes.length - 1) {
           finish(Effect.fail(new Failure({ reason: "frame" })));
           return;
         }
+
         try {
           finish(
             Effect.succeed(
@@ -47,9 +56,11 @@ export const layer = Layer.sync(Socket.Service, () => {
           finish(Effect.fail(new Failure({ reason: "frame" })));
         }
       });
+
       socket.once("error", () => finish(Effect.fail(new Failure({ reason: "connect" }))));
       socket.once("end", () => finish(Effect.fail(new Failure({ reason: "eof" }))));
       socket.once("close", () => finish(Effect.fail(new Failure({ reason: "eof" }))));
+
       return Effect.sync(() => {
         settled = true;
         socket.destroy();
@@ -61,6 +72,7 @@ export const layer = Layer.sync(Socket.Service, () => {
       }),
     ),
   );
+
   return Socket.Service.of({ exchange });
 });
 

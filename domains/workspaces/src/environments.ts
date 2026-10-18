@@ -57,7 +57,9 @@ const Input = Schema.Struct({
   provider: Environment.fields.provider,
   config: Environment.fields.config,
 });
+
 const ConfigText = Schema.fromJsonString(Environment.fields.config);
+
 const Row = createSelectSchema(environments, {
   ...Environment.fields,
   config: ConfigText,
@@ -67,7 +69,9 @@ const RevisionRow = createSelectSchema(environmentRevisions, {
   config: ConfigText,
 });
 const MemberRow = createSelectSchema(memberships);
+
 type Operation = EnvironmentError["operation"];
+
 const fail = (operation: Operation, reason: EnvironmentError["reason"]) =>
   new EnvironmentError({ operation, reason });
 
@@ -75,18 +79,22 @@ const fail = (operation: Operation, reason: EnvironmentError["reason"]) =>
 // Keep snapshots independent of subsequent edits; callers can persist one for an attempt later.
 const freeze = (config: Schema.Json) => {
   const pending: Array<Schema.Json> = [config];
+
   while (pending.length > 0) {
     const current = pending.pop();
+
     if (typeof current === "object" && current !== null) {
       for (const child of Object.values(current)) pending.push(child);
       Object.freeze(current);
     }
   }
 };
+
 const snapshot = (value: Environment): Environment => {
   freeze(value.config);
   return Object.freeze(value);
 };
+
 const snapshotRevision = (value: EnvironmentRevision): EnvironmentRevision => {
   freeze(value.config);
   return Object.freeze(value);
@@ -96,6 +104,7 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+
     const storage =
       (operation: Operation) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -106,6 +115,7 @@ export const layerNoDeps = Layer.effect(
               : fail(operation, Schema.isSchemaError(error) ? "invalid-record" : "storage"),
           ),
         );
+
     const roleOf = (operation: Operation, workspaceId: string, userId: string) =>
       store.db
         .select()
@@ -120,25 +130,30 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0].role),
           ),
         );
+
     const requireAdmin = (operation: Operation, workspaceId: string, actorId: string) =>
       roleOf(operation, workspaceId, actorId).pipe(
         Effect.flatMap((role) =>
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
+
     const read = (operation: Operation, workspaceId: string) =>
       Effect.gen(function* () {
         const id = yield* Schema.decodeEffect(Environment.fields.workspaceId)(workspaceId).pipe(
           Effect.mapError(() => fail(operation, "invalid-input")),
         );
+
         const rows = yield* store.db
           .select()
           .from(environments)
           .where(eq(environments.workspaceId, id))
           .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(Row))), storage(operation));
         const row = rows[0];
+
         return row === undefined ? Option.none() : Option.some(snapshot(row));
       });
+
     /** The one write: current row on, then the revision it became recorded from the same row. */
     const write = (
       operation: Operation,
@@ -152,14 +167,17 @@ export const layerNoDeps = Layer.effect(
         const independent = yield* snapshotJson(config).pipe(
           Effect.mapError(() => fail(operation, "invalid-input")),
         );
+
         const input = yield* Schema.decodeEffect(Input)({
           workspaceId,
           provider,
           config: independent,
         }).pipe(Effect.mapError(() => fail(operation, "invalid-input")));
+
         const text = yield* Schema.encodeEffect(ConfigText)(input.config).pipe(
           Effect.mapError(() => fail(operation, "invalid-input")),
         );
+
         // One batch: the revision number comes from the row this write produced, never from the
         // caller or a later concurrent write. The table constraint rejects revision overflow.
         yield* store
@@ -173,7 +191,9 @@ export const layerNoDeps = Layer.effect(
             FROM workspace_environments WHERE workspaceId = ${input.workspaceId}`,
           ])
           .pipe(storage(operation));
+
         const stored = yield* read(operation, input.workspaceId);
+
         if (Option.isNone(stored)) return yield* fail(operation, "storage");
         return stored.value;
       });
@@ -192,6 +212,7 @@ export const layerNoDeps = Layer.effect(
       userId: string,
     ) {
       yield* roleOf("history", workspaceId, userId);
+
       const rows = yield* store.db
         .select()
         .from(environmentRevisions)
@@ -201,6 +222,7 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(RevisionRow))),
           storage("history"),
         );
+
       return rows.map((row) =>
         snapshotRevision(
           EnvironmentRevision.make({
@@ -223,6 +245,7 @@ export const layerNoDeps = Layer.effect(
       yield* requireAdmin("save", workspaceId, actorId);
       return yield* write("save", workspaceId, provider, config, actorId, now);
     });
+
     return Service.of({ get, set, view, history, save });
   }),
 );

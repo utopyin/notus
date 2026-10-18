@@ -12,20 +12,26 @@ const clone = (value: unknown, active: Set<object>): Schema.Json => {
 
   const array = Array.isArray(value);
   const prototype = Object.getPrototypeOf(value);
+
   if (
     array ? prototype !== Array.prototype : prototype !== Object.prototype && prototype !== null
   ) {
     throw new InvalidJson({});
   }
+
   const keys = Reflect.ownKeys(value);
   const length = array ? Object.getOwnPropertyDescriptor(value, "length")?.value : undefined;
+
   if (array && keys.length !== length + 1) throw new InvalidJson({});
 
   active.add(value);
   const result: Array<Schema.Json> | { [key: string]: Schema.Json } = array ? [] : {};
+
   for (const key of keys) {
     if (array && key === "length") continue;
+
     const property = Object.getOwnPropertyDescriptor(value, key);
+
     if (
       typeof key !== "string" ||
       property === undefined ||
@@ -35,6 +41,7 @@ const clone = (value: unknown, active: Set<object>): Schema.Json => {
     ) {
       throw new InvalidJson({});
     }
+
     // defineProperty preserves __proto__ and constructor as ordinary JSON keys.
     Object.defineProperty(result, key, {
       value: clone(property.value, active),
@@ -43,7 +50,9 @@ const clone = (value: unknown, active: Set<object>): Schema.Json => {
       configurable: false,
     });
   }
+
   active.delete(value);
+
   return Object.freeze(result);
 };
 

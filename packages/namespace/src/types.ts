@@ -15,6 +15,7 @@ const destroyedAt = Schema.String.check(
     const day = Number(value.slice(8, 10));
     const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
     const days = month === 2 ? (leap ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+
     return day <= days;
   }),
 );

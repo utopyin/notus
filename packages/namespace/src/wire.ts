@@ -4,15 +4,19 @@ const optional = Schema.optionalKey;
 const text = Schema.NonEmptyString;
 const strings = Schema.Array(Schema.String);
 const int32 = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2147483647 }));
+
 const int64 = Schema.Union([
   Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]*)$/)),
   Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
 ]).check(Schema.makeFilter((value) => BigInt(value) <= 9223372036854775807n));
+
 const duration = Schema.String.check(Schema.isPattern(/^-?(0|[1-9][0-9]*)(\.[0-9]{1,9})?s$/));
+
 const unreserved = text.check(
   Schema.makeFilter((value) => !value.toUpperCase().startsWith("NOTUS_")),
 );
 const sessionName = unreserved.check(Schema.makeFilter((value) => value.toLowerCase() !== "notus"));
+
 const environment = Schema.Struct({
   name: unreserved,
   value: optional(Schema.String),
@@ -108,5 +112,6 @@ const Devbox = Schema.Struct({
   destroyedAt: optional(Schema.String),
   documentedPurpose: optional(Schema.String),
 });
+
 export const Response = Schema.Struct({ devbox: Devbox, instanceId: optional(Schema.String) });
 export const ExpireResponse = Schema.Struct({ devboxes: optional(Schema.Array(Devbox)) });

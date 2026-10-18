@@ -57,6 +57,7 @@ export class Service extends Context.Service<Service, Interface>()(
 const Row = createSelectSchema(roles);
 const RevisionRow = createSelectSchema(roleRevisions);
 const MemberRow = createSelectSchema(memberships);
+
 const fail = (operation: string, reason: WorkspaceError["reason"]) =>
   new WorkspaceError({ operation, reason });
 
@@ -64,6 +65,7 @@ const fail = (operation: string, reason: WorkspaceError["reason"]) =>
 export const defaultRoleStatements = (workspaceId: string, actorId: string, now: number) =>
   defaultRoles.flatMap((role) => {
     const roleKey = key(workspaceId, role.name);
+
     return [
       sql`INSERT INTO workspace_roles (key, workspaceId, name, summary, body, revision, authorId, createdAt, updatedAt)
       VALUES (${roleKey}, ${workspaceId}, ${role.name}, ${role.summary}, ${role.body}, 1, ${actorId}, ${now}, ${now})`,
@@ -76,6 +78,7 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const store = yield* D1.Service;
+
     const storage =
       (operation: string) =>
       <A, E>(effect: Effect.Effect<A, E>) =>
@@ -86,10 +89,12 @@ export const layerNoDeps = Layer.effect(
               : fail(operation, Schema.isSchemaError(error) ? "invalid-input" : "storage"),
           ),
         );
+
     const decodeInput = <A, I>(schema: Schema.Codec<A, I>, value: I, operation: string) =>
       Schema.decodeEffect(schema)(value).pipe(
         Effect.mapError(() => fail(operation, "invalid-input")),
       );
+
     const roleOf = (operation: string, workspaceId: string, userId: string) =>
       store.db
         .select()
@@ -104,12 +109,14 @@ export const layerNoDeps = Layer.effect(
               : Effect.succeed(rows[0].role),
           ),
         );
+
     const requireAdmin = (operation: string, workspaceId: string, actorId: string) =>
       roleOf(operation, workspaceId, actorId).pipe(
         Effect.flatMap((role) =>
           role === "admin" ? Effect.void : Effect.fail(fail(operation, "forbidden")),
         ),
       );
+
     const rowsOf = (operation: string, workspaceId: string) =>
       store.db
         .select()
@@ -133,6 +140,7 @@ export const layerNoDeps = Layer.effect(
       name: string,
     ) {
       yield* roleOf("history", workspaceId, userId);
+
       const rows = yield* store.db
         .select()
         .from(roleRevisions)
@@ -142,6 +150,7 @@ export const layerNoDeps = Layer.effect(
           Effect.flatMap(Schema.decodeUnknownEffect(Schema.Array(RevisionRow))),
           storage("history"),
         );
+
       return rows.map((row) =>
         RoleRevision.make({
           revision: row.revision,
@@ -164,8 +173,10 @@ export const layerNoDeps = Layer.effect(
       const name = yield* decodeInput(RoleName, nameValue.trim(), "save");
       const summary = yield* decodeInput(RoleSummary, summaryValue.trim(), "save");
       const body = yield* decodeInput(RoleBody, bodyValue, "save");
+
       yield* requireAdmin("save", workspaceId, actorId);
       const roleKey = key(workspaceId, name);
+
       // One batch: the current text moves on and the revision it became is recorded from the
       // same row, so the revision number is never guessed by the caller.
       yield* store
@@ -179,6 +190,7 @@ export const layerNoDeps = Layer.effect(
           FROM workspace_roles WHERE key = ${roleKey}`,
         ])
         .pipe(storage("save"));
+
       const rows = yield* store.db
         .select()
         .from(roles)
@@ -210,6 +222,7 @@ export const layerNoDeps = Layer.effect(
 
     const resolve = Effect.fn("Roles.resolve")(function* (workspaceId: string) {
       const rows = yield* rowsOf("resolve", workspaceId);
+
       return yield* Schema.decodeEffect(ResolvedInstructions)({
         roles: rows.map((row) => ({
           name: row.name,

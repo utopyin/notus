@@ -28,6 +28,7 @@ export type Credentials = typeof Credentials.Type;
 
 /** Same shape the Worker's fixture seed decodes. `expires` is epoch milliseconds. */
 const Stored = StoredLogin;
+
 export type Stored = typeof Stored.Type;
 
 const TokenResponse = Schema.Struct({
@@ -66,8 +67,10 @@ export const exchange = (
         Effect.flatMap(decodeToken),
         Effect.mapError((error) => new TokenError({ message: String(error) })),
       );
+
     const accountId = yield* accountIdFromJwt(response.access_token);
     const now = yield* Clock.currentTimeMillis;
+
     return {
       access: response.access_token,
       refresh: response.refresh_token,
@@ -83,14 +86,18 @@ export const save = (stored: Stored) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const text = yield* Schema.encodeEffect(StoredJson)(stored);
+
     yield* fs.makeDirectory(".auth", { recursive: true });
     yield* fs.writeFileString(FILE, text + "\n", { mode: 0o600 });
   });
 
 export const load = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
+
   if (!(yield* fs.exists(FILE))) return Option.none<Stored>();
+
   const text = yield* fs.readFileString(FILE);
+
   return Option.some(yield* Schema.decodeEffect(StoredJson)(text));
 });
 
@@ -99,12 +106,16 @@ const REFRESH_WINDOW_MS = 5 * 60 * 1000;
 /** Load the stored tokens, refreshing (and persisting the rotated pair) when near expiry. */
 export const fresh = Effect.gen(function* () {
   const stored = yield* load;
+
   if (Option.isNone(stored)) return Option.none<Credentials>();
+
   let current = stored.value;
   const now = yield* Clock.currentTimeMillis;
+
   if (current.expires - now < REFRESH_WINDOW_MS) {
     current = yield* exchange({ grant_type: "refresh_token", refresh_token: current.refresh });
     yield* save(current);
   }
+
   return Option.some<Credentials>({ access: current.access, accountId: current.accountId });
 });

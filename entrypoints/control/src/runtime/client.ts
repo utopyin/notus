@@ -46,6 +46,7 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/Runtime.Client",
 ) {}
+
 const failure = (reason: Failure["reason"], retryable = false) =>
   new Failure({ reason, retryable });
 
@@ -53,16 +54,21 @@ export const layerNoDeps = Layer.effect(
   Service,
   Effect.gen(function* () {
     const settings = yield* Configuration;
+
     const base = yield* Effect.try({
       try: () => {
         const url = new URL(settings.controlUrl);
+
         if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
           throw new Error();
+
         return url.href.replace(/\/$/, "");
       },
       catch: () => failure("configuration"),
     });
+
     const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+
     const call = Effect.fn("Runtime.Client.call")(
       function* <A>(
         operation: string,
@@ -73,48 +79,61 @@ export const layerNoDeps = Layer.effect(
       ) {
         if (!Redacted.isRedacted(credential) || Redacted.value(credential).length > 6200)
           return yield* failure("configuration");
+
         const request = yield* HttpClientRequest.post(`${base}/${operation}`).pipe(
           HttpClientRequest.bearerToken(credential),
           HttpClientRequest.acceptJson,
           HttpClientRequest.bodyJson(body),
           Effect.mapError(() => failure("configuration")),
         );
+
         const response = yield* http
           .execute(request)
           .pipe(Effect.mapError(() => failure("transport", true)));
+
         if (response.status !== 200)
           return yield* failure(
             "rejected",
             [425, 429, 500, 502, 503, 504].includes(response.status),
           );
+
         if (
           response.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !==
           "application/json"
         )
           return yield* failure("response");
+
         let length = 0;
         const chunks: Uint8Array[] = [];
+
         yield* response.stream.pipe(
           Stream.runForEach((chunk) => {
             length += chunk.byteLength;
+
             if (length > 16 * 1024) return Effect.fail(failure("response"));
+
             chunks.push(chunk);
+
             return Effect.void;
           }),
           Effect.mapError(() => failure("response", true)),
         );
+
         const text = yield* Effect.try({
           try: () => {
             const bytes = new Uint8Array(length);
             let offset = 0;
+
             for (const chunk of chunks) {
               bytes.set(chunk, offset);
               offset += chunk.byteLength;
             }
+
             return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
           },
           catch: () => failure("response"),
         });
+
         return yield* Schema.decodeEffect(Schema.fromJsonString(responseSchema))(text).pipe(
           Effect.mapError(() => failure("response")),
         );
@@ -132,6 +151,7 @@ export const layerNoDeps = Layer.effect(
           }),
         ),
     );
+
     return Service.of({
       assignment: Effect.fn("Runtime.Client.assignment")((credential) =>
         call("assignment", credential, {}, Protocol.Assignment),
@@ -140,24 +160,28 @@ export const layerNoDeps = Layer.effect(
         const body = yield* Schema.encodeEffect(Protocol.EnrollmentRequest)(request).pipe(
           Effect.mapError(() => failure("configuration")),
         );
+
         return yield* call("enroll", credential, body, Protocol.EnrollmentReply);
       }),
       ready: Effect.fn("Runtime.Client.ready")(function* (credential, request) {
         const body = yield* Schema.encodeEffect(Protocol.ReadinessRequest)(request).pipe(
           Effect.mapError(() => failure("configuration")),
         );
+
         return yield* call("ready", credential, body, Protocol.ReadinessReply);
       }),
       poll: Effect.fn("Runtime.Client.poll")(function* (credential, request) {
         const body = yield* Schema.encodeEffect(Protocol.PollRequest)(request).pipe(
           Effect.mapError(() => failure("configuration")),
         );
+
         return yield* call("poll", credential, body, Protocol.PollReply, request.waitMs + 10_000);
       }),
       observe: Effect.fn("Runtime.Client.observe")(function* (credential, request) {
         const body = yield* Schema.encodeEffect(Protocol.ObserveRequest)(request).pipe(
           Effect.mapError(() => failure("configuration")),
         );
+
         return yield* call("observe", credential, body, Protocol.ObserveReply);
       }),
       login: Effect.fn("Runtime.Client.login")((credential) =>

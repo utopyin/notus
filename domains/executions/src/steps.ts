@@ -90,20 +90,24 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   const ensure = Effect.fn("Steps.ensure")(function* (invocationId: string, now: number) {
     yield* Schema.decodeEffect(Schema.NonEmptyString)(invocationId);
     yield* Schema.decodeEffect(Millis)(now);
+
     const [invocation] = yield* db
       .select({ id: invocations.id })
       .from(invocations)
       .where(eq(invocations.id, invocationId));
     if (!invocation) return yield* new Conflict({ message: "Unknown invocation" });
+
     const [existing] = yield* db
       .select({ id: steps.id })
       .from(steps)
       .where(eq(steps.invocationId, invocationId))
       .limit(1);
+
     if (!existing) yield* insert(invocationId, 0, now, "pending", null);
   });
   const claim = Effect.fn("Steps.claim")(function* (now: number) {
     yield* Schema.decodeEffect(Millis)(now);
+
     const [row] = yield* db
       .select()
       .from(steps)
@@ -116,23 +120,29 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .orderBy(asc(steps.dueAt), asc(steps.createdAt))
       .limit(1);
     if (!row) return null;
+
     const step = yield* Schema.decodeEffect(Step)(row);
     const attempts = step.attempts + 1;
     const recoverAt = now + leaseMs;
+
     yield* db
       .update(steps)
       .set({ status: "running", attempts, recoverAt, updatedAt: now })
       .where(eq(steps.id, step.id));
+
     const prior = yield* db
       .select()
       .from(steps)
       .where(and(eq(steps.invocationId, step.invocationId), eq(steps.status, "done")))
       .orderBy(asc(steps.index));
+
     const priorParts: Array<Schema.Json> = [];
+
     for (const earlier of prior) {
       const decoded = yield* Schema.decodeEffect(Step)(earlier);
       if (decoded.index < step.index && decoded.parts !== null) priorParts.push(decoded.parts);
     }
+
     return StepClaim.make({
       id: step.id,
       invocationId: step.invocationId,
@@ -150,10 +160,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
   ) {
     const claimed = yield* Schema.decodeEffect(StepClaim)(input);
     const outcome = yield* Schema.decodeEffect(StepOutcome)(output);
+
     yield* Schema.decodeEffect(Millis)(now);
     const [row] = yield* db.select().from(steps).where(eq(steps.id, claimed.id));
     if (!row) return yield* new Conflict({ message: "Unknown step" });
+
     const step = yield* Schema.decodeEffect(Step)(row);
+
     // A lease that expired and was re-claimed belongs to the later claimant.
     if (
       step.status !== "running" ||
@@ -161,6 +174,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       step.recoverAt !== claimed.recoverAt
     )
       return yield* new Conflict({ message: "Stale step claim" });
+
     switch (outcome._tag) {
       case "Completed": {
         if (outcome.calls.length > 0) {
@@ -177,8 +191,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
               updatedAt: now,
             })
             .where(eq(steps.id, step.id));
+
           return;
         }
+
         yield* db
           .update(steps)
           .set({
@@ -190,11 +206,13 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             updatedAt: now,
           })
           .where(eq(steps.id, step.id));
+
         if (!outcome.final) {
           if (step.index + 1 >= maxSteps)
             yield* insert(step.invocationId, step.index + 1, now, "failed", "step-limit");
           else yield* insert(step.invocationId, step.index + 1, now, "pending", null);
         }
+
         return;
       }
       case "Retry": {
@@ -203,8 +221,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             .update(steps)
             .set({ status: "failed", failure: outcome.failure, recoverAt: null, updatedAt: now })
             .where(eq(steps.id, step.id));
+
           return;
         }
+
         yield* db
           .update(steps)
           .set({
@@ -215,6 +235,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             updatedAt: now,
           })
           .where(eq(steps.id, step.id));
+
         return;
       }
       case "Failed": {
@@ -222,6 +243,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
           .update(steps)
           .set({ status: "failed", failure: outcome.failure, recoverAt: null, updatedAt: now })
           .where(eq(steps.id, step.id));
+
         return;
       }
     }
@@ -233,12 +255,15 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(eq(steps.status, "waiting"))
       .orderBy(asc(steps.updatedAt), asc(steps.id))
       .limit(limit);
+
     const result: Array<Waiting> = [];
+
     for (const row of rows) {
       const step = yield* Schema.decodeEffect(Step)(row);
       const calls = yield* Schema.decodeUnknownEffect(Schema.Array(PendingCall))(step.calls ?? []);
       result.push({ id: step.id, invocationId: step.invocationId, calls });
     }
+
     return result;
   });
   /** Appends tool results to a waiting step and opens the next round. */
@@ -251,13 +276,17 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
     yield* Schema.decodeEffect(Millis)(now);
     const [row] = yield* db.select().from(steps).where(eq(steps.id, id));
     if (!row) return yield* new Conflict({ message: "Unknown step" });
+
     const step = yield* Schema.decodeEffect(Step)(row);
+
     if (step.status !== "waiting") return yield* new Conflict({ message: "Step is not waiting" });
+
     const prior = Array.isArray(step.parts) ? step.parts : [];
     yield* db
       .update(steps)
       .set({ status: "done", parts: [...prior, ...results], calls: null, updatedAt: now })
       .where(eq(steps.id, id));
+
     if (step.index + 1 >= maxSteps)
       yield* insert(step.invocationId, step.index + 1, now, "failed", "step-limit");
     else yield* insert(step.invocationId, step.index + 1, now, "pending", null);
@@ -270,13 +299,17 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(or(and(eq(steps.status, "done"), eq(steps.final, true)), eq(steps.status, "failed")))
       .orderBy(asc(steps.updatedAt), asc(steps.id))
       .limit(limit);
+
     const result: Array<Settled> = [];
+
     for (const row of rows) {
       const step = yield* Schema.decodeEffect(Step)(row);
+
       const siblings = yield* db
         .select({ id: steps.id })
         .from(steps)
         .where(eq(steps.invocationId, step.invocationId));
+
       result.push({
         invocationId: step.invocationId,
         stepIds: siblings.map((sibling) => sibling.id),
@@ -286,8 +319,10 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
             : { _tag: "Final", text: step.text ?? "" },
       });
     }
+
     return result;
   });
+
   const nextWake = Effect.gen(function* () {
     const [pending] = yield* db
       .select({ at: steps.dueAt })
@@ -301,9 +336,11 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       .where(eq(steps.status, "running"))
       .orderBy(asc(steps.recoverAt))
       .limit(1);
+
     const times = [pending?.at, running?.at].filter(
       (at): at is number => at !== null && at !== undefined,
     );
+
     return times.length ? Math.min(...times) : null;
   }).pipe(Effect.withSpan("Steps.nextWake"));
   const snapshot = Effect.gen(function* () {
@@ -311,6 +348,7 @@ const within = (db: Sqlite.Queries, crypto: Crypto.Crypto) => {
       yield* db.select().from(steps).orderBy(asc(steps.createdAt), asc(steps.index)),
     );
   }).pipe(Effect.withSpan("Steps.snapshot"));
+
   return { ensure, claim, record, waiting, resolve, settled, nextWake, snapshot };
 };
 
@@ -340,6 +378,7 @@ export const layerNoDeps = Layer.effect(
     const db = yield* Sqlite.Service;
     const crypto = yield* Crypto.Crypto;
     const queries = (tx: Sqlite.Queries) => within(tx, crypto);
+
     const wrap = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(
         Effect.mapError((cause): ExecutionError => {
@@ -347,6 +386,7 @@ export const layerNoDeps = Layer.effect(
           return new StorageFailure({ operation, cause });
         }),
       );
+
     return Service.of({
       ensure: Effect.fn("Steps.ensureAtomic")((invocationId, now) =>
         wrap(

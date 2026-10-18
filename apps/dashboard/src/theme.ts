@@ -28,6 +28,7 @@ const apply = (theme: Theme) => {
 export const setTheme = (theme: Theme) => {
   if (theme === "system") localStorage.removeItem(key);
   else localStorage.setItem(key, theme);
+
   apply(theme);
   for (const listener of listeners) listener();
 };
@@ -36,11 +37,14 @@ const subscribe = (onChange: () => void) => {
   listeners.add(onChange);
   // A system-following page has to react to the OS switching, not only to the menu.
   const media = prefersDark();
+
   const onMedia = () => {
     apply(read());
     onChange();
   };
+
   media.addEventListener("change", onMedia);
+
   return () => {
     listeners.delete(onChange);
     media.removeEventListener("change", onMedia);

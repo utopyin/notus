@@ -33,6 +33,7 @@ const Record = Schema.Struct({
   /** Consecutive failed steps; a step that moves on resets it. */
   failures: Schema.Int,
 });
+
 type Record = typeof Record.Type;
 
 /** What the dashboard sees of a build. */
@@ -75,6 +76,7 @@ export class Build extends Cloudflare.DurableObject<Build>()(
     const credentialKey = yield* credentialKeyConfig.pipe(Effect.orDie);
     const computeProviders = yield* computeConfig.pipe(Effect.orDie);
     const shared = yield* Cloudflare.D1.QueryDatabase(yield* SharedDatabase);
+
     return { host, credentialKey, computeProviders, shared };
   }).pipe(
     Effect.provide(Cloudflare.D1.QueryDatabaseBinding),
@@ -84,9 +86,11 @@ export class Build extends Cloudflare.DurableObject<Build>()(
         const workspace = Layer.merge(Templates.layer, Compute.credentials).pipe(
           Layer.provide([Layer.effect(D1.Binding, shared.raw), Sealed.layer(credentialKey)]),
         );
+
         const services = yield* Layer.build(
           Layer.merge(registry(computeProviders).pipe(Layer.provide(workspace)), workspace),
         ).pipe(Effect.orDie);
+
         const providers = yield* Providers.Service.pipe(Effect.provideContext(services));
         const templates = yield* Templates.Service.pipe(Effect.provideContext(services));
 
@@ -98,7 +102,9 @@ export class Build extends Cloudflare.DurableObject<Build>()(
           ),
           Effect.orDie,
         );
+
         const save = (record: Record) => host.storage.put(key, record);
+
         const finish = (record: Record, now: number, change: Partial<Record>) =>
           save({ ...record, ...change, progress: null, finishedAt: now });
 
@@ -113,30 +119,40 @@ export class Build extends Cloudflare.DurableObject<Build>()(
               label,
               now,
             );
+
             const set = yield* templates.approved(record.workspaceId, record.provider);
+
             if (set.default === null)
               yield* templates.setDefault(record.workspaceId, record.actorId, record.provider, ref);
           });
 
         const step = Effect.gen(function* () {
           const loaded = yield* load;
+
           if (Option.isNone(loaded) || loaded.value.status !== "building") return;
+
           const record = loaded.value;
           const now = yield* Clock.currentTimeMillis;
+
           // Wakes again should this step's isolate end before it stores anything.
           yield* host.storage.setAlarm(now + recoveryMs);
+
           const found = yield* providers
             .forWorkspace({ workspaceId: record.workspaceId, provider: record.provider })
             .pipe(Effect.option);
+
           if (Option.isNone(found)) {
             yield* host.storage.deleteAlarm();
+
             return yield* finish(record, now, {
               status: "failed",
               reason: "The provider account is no longer connected.",
             });
           }
+
           const port = found.value;
           const build = { operationId: record.operationId, progress: record.progress };
+
           const giveUp = (reason: string) =>
             port.discardBuild(build).pipe(
               Effect.tapError((error) => Effect.logWarning(`build.discard_failed ${error._tag}`)),
@@ -144,23 +160,34 @@ export class Build extends Cloudflare.DurableObject<Build>()(
               Effect.andThen(host.storage.deleteAlarm()),
               Effect.andThen(finish(record, now, { status: "failed", reason })),
             );
+
           if (now - record.startedAt > deadlineMs)
             return yield* giveUp("The build took too long and was stopped.");
+
           const result = yield* port.build(build).pipe(Effect.result);
+
           if (result._tag === "Failure") {
             const error = result.failure;
+
             yield* Effect.logWarning(
               `build.step_failed ${error._tag}${error._tag === "Compute.ComputeError" ? ` ${error.outcome}` : ""}`,
             );
+
             if (error._tag === "Compute.CapabilityNotSupported")
               return yield* giveUp(`${port.descriptor.name} cannot build the Notus template.`);
+
             const failures = record.failures + 1;
+
             if (failures >= maxFailures)
               return yield* giveUp(`${port.descriptor.name} kept refusing the build.`);
+
             yield* save({ ...record, failures });
+
             return yield* host.storage.setAlarm(now + retryMs * failures);
           }
+
           const next: BuildStep = result.success;
+
           switch (next._tag) {
             case "Continue": {
               yield* save({ ...record, progress: next.progress, failures: 0 });
@@ -172,22 +199,29 @@ export class Build extends Cloudflare.DurableObject<Build>()(
             }
             case "Ready": {
               const adopted = yield* adopt(record, next.ref, now).pipe(Effect.result);
+
               if (adopted._tag === "Failure") {
                 const reason = adopted.failure.reason;
+
                 yield* Effect.logWarning(`build.adopt_failed ${reason}`);
+
                 // Only a storage hiccup is worth another try; the template itself is ready.
                 if (reason === "storage" && record.failures + 1 < maxFailures) {
                   yield* save({ ...record, failures: record.failures + 1 });
                   return yield* host.storage.setAlarm(now + retryMs);
                 }
+
                 yield* host.storage.deleteAlarm();
+
                 return yield* finish(record, now, {
                   status: "failed",
                   ref: next.ref,
                   reason: `The template ${next.ref} is ready, but adding it to the workspace failed. An admin can add it by name.`,
                 });
               }
+
               yield* host.storage.deleteAlarm();
+
               return yield* finish(record, now, { status: "ready", ref: next.ref, reason: null });
             }
           }
@@ -209,9 +243,12 @@ export class Build extends Cloudflare.DurableObject<Build>()(
             host.blockConcurrencyWhile(() =>
               Effect.gen(function* () {
                 const current = yield* load;
+
                 if (Option.isSome(current) && current.value.status === "building")
                   return viewOf(current.value);
+
                 const now = yield* Clock.currentTimeMillis;
+
                 const decoded = yield* Schema.decodeUnknownEffect(Record)({
                   workspaceId,
                   provider,
@@ -225,10 +262,14 @@ export class Build extends Cloudflare.DurableObject<Build>()(
                   reason: null,
                   failures: 0,
                 }).pipe(Effect.option);
+
                 if (Option.isNone(decoded)) return null;
+
                 const record = decoded.value;
+
                 yield* save(record);
                 yield* host.storage.setAlarm(now + 1);
+
                 return viewOf(record);
               }),
             ),

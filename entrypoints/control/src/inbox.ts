@@ -77,8 +77,10 @@ const passSize = 25;
 const leaseMs = 60_000;
 const inputJson = Schema.fromJsonString(Input);
 const sourceJson = Schema.fromJsonString(Source);
+
 const storageError = (operation: string) =>
   Effect.mapError((cause: unknown) => new IntakeError({ operation, cause }));
+
 const precedes = (left: string, right: string) =>
   BigInt(left.replace(".", "")) < BigInt(right.replace(".", ""));
 
@@ -90,6 +92,7 @@ export const layerNoDeps = Layer.effect(
     const identities = yield* Identities.Service;
     const access = yield* Access.Service;
     const platforms = yield* Platforms.Service;
+
     const findRoute = Effect.fn("Inbox.findRoute")(function* (conversationKey: string) {
       const rows = yield* store.db.select().from(routes).where(eq(routes.key, conversationKey));
       return (yield* Schema.decodeUnknownEffect(Schema.Array(RouteRow))(rows))[0];
@@ -98,6 +101,7 @@ export const layerNoDeps = Layer.effect(
     const admit = Effect.fn("Inbox.admit")(function* (value: Input) {
       const decoded = yield* Schema.decodeEffect(Input)(value).pipe(storageError("decodeInput"));
       const source = decoded.target.source;
+
       if (
         decoded.actor.installationId !== source.installationId ||
         decoded.actor.platform !== source.platform
@@ -107,17 +111,21 @@ export const layerNoDeps = Layer.effect(
           cause: "Actor installation or platform mismatch",
         });
       }
+
       // Starting is a platform capability, not something a caller asserts.
       const { descriptor } = yield* platforms
         .forPlatform(source.platform)
         .pipe(storageError("resolvePlatform"));
+
       if (decoded.startIntent && !descriptor.capabilities.has("input:start"))
         return yield* new IntakeError({
           operation: "decodeInput",
           cause: "Inputs from this platform never start a task",
         });
+
       // Never trust caller-supplied dedupe keys to partition tenant data.
       const conversationKey = conversationKeyOf(decoded.workspaceId, source);
+
       const messageKey = key(
         decoded.workspaceId,
         source.platform,
@@ -126,18 +134,21 @@ export const layerNoDeps = Layer.effect(
         source.conversation,
         decoded.target.target,
       );
+
       const input: Input = {
         ...decoded,
         messageKey,
         conversationKey,
         inputId: key("input", messageKey),
       };
+
       const eventKey = key(
         input.workspaceId,
         source.platform,
         source.installationId,
         input.eventId,
       );
+
       yield* access.authorizeSource(input.workspaceId, source).pipe(
         Effect.catchTag("Workspaces.Denied", (error) =>
           Effect.fail(new Unauthorized({ workspaceId: input.workspaceId, reason: error.reason })),
@@ -148,19 +159,24 @@ export const layerNoDeps = Layer.effect(
             : new IntakeError({ operation: "authorizeSource", cause }),
         ),
       );
+
       let initiatorId: string | null = null;
+
       if (input.startIntent) {
         const existing = yield* findRoute(conversationKey);
+
         if (!existing) {
           initiatorId = yield* Effect.gen(function* () {
             const user = yield* identities
               .resolve(input.actor)
               .pipe(storageError("resolveIdentity"));
+
             if (Option.isNone(user))
               return yield* new Unauthorized({
                 workspaceId: input.workspaceId,
                 reason: "Starter has no administrator-provisioned identity",
               });
+
             const grant = yield* access.authorizeStart(input.workspaceId, user.value, source).pipe(
               Effect.catchTag("Workspaces.Denied", (error) =>
                 Effect.fail(
@@ -173,6 +189,7 @@ export const layerNoDeps = Layer.effect(
                   : new IntakeError({ operation: "authorizeStart", cause }),
               ),
             );
+
             return grant.initiatorId;
           }).pipe(
             Effect.catchTag("Control.Unauthorized", (error) => {
@@ -184,12 +201,14 @@ export const layerNoDeps = Layer.effect(
           );
         }
       }
+
       const envelopePayload = yield* Schema.encodeEffect(inputJson)(decoded).pipe(
         storageError("encodeEnvelope"),
       );
       const payload = yield* Schema.encodeEffect(inputJson)(input).pipe(
         storageError("encodeInput"),
       );
+
       // Envelope identity and start intent are deliberately absent from message identity.
       const fingerprint = key(
         input.workspaceId,
@@ -204,7 +223,9 @@ export const layerNoDeps = Layer.effect(
         input.text,
         input.occurredAt,
       );
+
       const now = yield* Clock.currentTimeMillis;
+
       yield* store
         .batch([
           // NULL violates NOT NULL and rolls back the whole batch on conflicting replay.
@@ -231,14 +252,18 @@ export const layerNoDeps = Layer.effect(
               const oldMessage = yield* store
                 .query(MessageRow, sql`SELECT * FROM inbox_messages WHERE key = ${messageKey}`)
                 .pipe(storageError("checkMessage"));
+
               if (oldEnvelope[0] && oldEnvelope[0].payload !== envelopePayload)
                 return yield* new Conflict({ key: eventKey });
+
               if (oldMessage[0] && oldMessage[0].fingerprint !== fingerprint)
                 return yield* new Conflict({ key: messageKey });
+
               return yield* new IntakeError({ operation: "commitIntake", cause });
             }),
           ),
         );
+
       return { eventKey, messageKey, inputId: input.inputId };
     });
 
@@ -246,6 +271,7 @@ export const layerNoDeps = Layer.effect(
       forward: (admission: Admission) => Effect.Effect<void, E>,
     ) {
       const now = yield* Clock.currentTimeMillis;
+
       // Unmatched events do not consume the pass budget. The join discovers them as soon as a route exists.
       const due = yield* store.query(
         MessageRow,
@@ -257,6 +283,7 @@ export const layerNoDeps = Layer.effect(
       ORDER BY CASE WHEN m.state = 'sending' THEN m.recoverAt ELSE m.dueAt END, m.receivedAt, m.key
       LIMIT ${passSize}`,
       );
+
       const result = {
         scanned: due.length,
         claimed: 0,
@@ -265,9 +292,11 @@ export const layerNoDeps = Layer.effect(
         context: 0,
         deferred: 0,
       };
+
       for (const candidate of due) {
         const token = yield* crypto.randomUUIDv4();
         const claimedAt = yield* Clock.currentTimeMillis;
+
         const claims = yield* store.query(
           MessageRow,
           sql`
@@ -278,12 +307,15 @@ export const layerNoDeps = Layer.effect(
         );
         const claim = claims[0];
         if (!claim) continue;
+
         result.claimed++;
         const fence = sql`key = ${claim.key} AND state = 'sending' AND token = ${token} AND generation = ${claim.generation}`;
+
         const process = Effect.gen(function* () {
           const original = yield* Schema.decodeEffect(inputJson)(claim.payload);
           const input: Input = { ...original, startIntent: claim.startIntent === 1 };
           let route = yield* findRoute(claim.conversationKey);
+
           if (!route && claim.initiatorId !== null) {
             const taskId = yield* crypto.randomUUIDv4();
             const source = yield* Schema.encodeEffect(sourceJson)(input.target.source);
@@ -294,24 +326,30 @@ export const layerNoDeps = Layer.effect(
             FROM inbox_messages WHERE ${fence} AND initiatorId IS NOT NULL
             ON CONFLICT(key) DO NOTHING`,
             ]);
+
             // Reload all canonical fields even when our insert appears to win.
             route = yield* findRoute(claim.conversationKey);
           }
+
           if (!route || (route.initialized === 0 && route.startMessageKey !== claim.key)) {
             yield* store.batch([
               sql`UPDATE inbox_messages SET state = 'pending', token = NULL, dueAt = ${claimedAt + 1000}
             WHERE ${fence}`,
             ]);
+
             result.deferred++;
             return;
           }
+
           if (precedes(input.occurredAt, route.startAt)) {
             yield* store.batch([
               sql`UPDATE inbox_messages SET state = 'context', token = NULL, lastError = NULL WHERE ${fence}`,
             ]);
+
             result.context++;
             return;
           }
+
           const reservation = yield* Schema.decodeEffect(Reservation)({
             taskId: route.taskId,
             workspaceId: route.workspaceId,
@@ -321,7 +359,9 @@ export const layerNoDeps = Layer.effect(
             startAt: route.startAt,
             source: yield* Schema.decodeEffect(sourceJson)(route.source),
           });
+
           yield* forward({ reservation, input });
+
           // Both writes repeat the fence. A no-op CAS must never initialize a route.
           // Initialize first, before the second statement consumes the successful claim.
           yield* store.batch([
@@ -329,8 +369,10 @@ export const layerNoDeps = Layer.effect(
             AND EXISTS (SELECT 1 FROM inbox_messages WHERE ${fence})`,
             sql`UPDATE inbox_messages SET state = 'done', token = NULL, lastError = NULL WHERE ${fence}`,
           ]);
+
           result.forwarded++;
         });
+
         yield* process.pipe(
           Effect.catch((error) =>
             Effect.gen(function* () {
@@ -341,11 +383,13 @@ export const layerNoDeps = Layer.effect(
                 sql`UPDATE inbox_messages SET state = 'pending', token = NULL,
           dueAt = ${failedAt + delay}, lastError = ${String(error).slice(0, 2000)} WHERE ${fence}`,
               ]);
+
               result.retried++;
             }),
           ),
         );
       }
+
       return result;
     }, storageError("drain"));
 
@@ -360,9 +404,11 @@ export const layerNoDeps = Layer.effect(
       const login = yield* identities.githubLogin(initiatorId).pipe(storageError("repositories"));
       // Without a GitHub login to attribute to, branches live under a neutral namespace.
       const branchPrefix = login?.toLowerCase() ?? "notus";
+
       return yield* Schema.decodeEffect(Schema.Array(RepositoryRef))(
         covered.flatMap((repository) => {
           const [owner, name] = repository.fullName.split("/");
+
           return owner && name
             ? [{ owner, name, installationId: repository.installationId, branchPrefix }]
             : [];
@@ -383,10 +429,13 @@ export const layerNoDeps = Layer.effect(
       const route = yield* Schema.decodeEffect(Reservation)(value).pipe(
         storageError("decodeRoute"),
       );
+
       const source = yield* Schema.encodeEffect(sourceJson)(route.source).pipe(
         storageError("encodeRoute"),
       );
+
       const now = yield* Clock.currentTimeMillis;
+
       yield* store
         .batch([
           sql`INSERT INTO inbox_routes (key, workspaceId, taskId, initiatorId, startMessageKey, startInputId, startAt, source, createdAt, initialized)
@@ -415,6 +464,7 @@ export const layerNoDeps = Layer.effect(
     }, storageError("snapshot"));
     const tasks = Effect.fn("Inbox.tasks")(function* (workspaceId: string, limit: number) {
       const createdAt = sql<number>`min(${routes.createdAt})`;
+
       const rows = yield* store.db
         .select({ taskId: routes.taskId, createdAt })
         .from(routes)
@@ -422,6 +472,7 @@ export const layerNoDeps = Layer.effect(
         .groupBy(routes.taskId)
         .orderBy(desc(createdAt))
         .limit(limit);
+
       return yield* Schema.decodeEffect(Schema.Array(TaskRef))(rows);
     }, storageError("tasks"));
     const owns = Effect.fn("Inbox.owns")(function* (workspaceId: string, taskId: string) {
@@ -430,8 +481,10 @@ export const layerNoDeps = Layer.effect(
         .from(routes)
         .where(and(eq(routes.workspaceId, workspaceId), eq(routes.taskId, taskId)))
         .limit(1);
+
       return rows.length > 0;
     }, storageError("owns"));
+
     return Service.of({
       workspaceOf,
       repositories,

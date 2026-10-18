@@ -50,6 +50,7 @@ export const authorizeUrl = (input: {
   url.searchParams.set("scope", scopes.join(","));
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("state", input.state);
+
   return url.toString();
 };
 
@@ -62,6 +63,7 @@ export const exchange = Effect.fn("Slack.OAuth.exchange")(
     readonly redirectUri: string;
   }) {
     const http = yield* HttpClient.HttpClient;
+
     // Form-encoded, as Slack requires; bodyUrlParams sets the content type with the body.
     const request = HttpClientRequest.post("https://slack.com/api/oauth.v2.access").pipe(
       HttpClientRequest.bodyUrlParams({
@@ -71,22 +73,27 @@ export const exchange = Effect.fn("Slack.OAuth.exchange")(
         redirect_uri: input.redirectUri,
       }),
     );
+
     const response = yield* http
       .execute(request)
       .pipe(Effect.mapError(() => new OAuthError({ reason: "transport" })));
     const json = yield* response.json.pipe(
       Effect.mapError(() => new OAuthError({ reason: "invalid-response" })),
     );
+
     const decoded = yield* Schema.decodeUnknownEffect(AccessResponse)(json).pipe(
       Effect.mapError(() => new OAuthError({ reason: "invalid-response" })),
     );
+
     if (!decoded.ok)
       return yield* new OAuthError({
         reason: "rejected",
         ...(decoded.error === undefined ? {} : { code: decoded.error }),
       });
+
     if (!decoded.access_token || !decoded.bot_user_id || !decoded.team)
       return yield* new OAuthError({ reason: "invalid-response" });
+
     return Grant.make({
       teamId: decoded.team.id,
       teamName: decoded.team.name ?? decoded.team.id,

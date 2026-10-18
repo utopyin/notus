@@ -13,6 +13,7 @@ export class InvalidEnvelope extends Schema.TaggedError<InvalidEnvelope>()(
 
 const User = Schema.Struct({ login: Schema.NonEmptyString, type: Schema.String });
 const ViaApp = Schema.optionalKey(Schema.NullOr(Schema.Struct({ id: Schema.Int })));
+
 const Repository = Schema.Struct({
   name: Schema.NonEmptyString,
   owner: Schema.Struct({ login: Schema.NonEmptyString }),
@@ -102,9 +103,12 @@ export const verify = Effect.fn("GitHub.verify")(function* (
 ): Effect.fn.Return<void, InvalidSignature> {
   if (signature === null || !/^sha256=[a-f0-9]{64}$/.test(signature))
     return yield* new InvalidSignature({});
+
   const digest = new Uint8Array(32);
+
   for (let index = 0; index < digest.length; index++)
     digest[index] = Number.parseInt(signature.slice(7 + index * 2, 9 + index * 2), 16);
+
   const key = yield* Effect.tryPromise({
     try: () =>
       crypto.subtle.importKey(
@@ -137,19 +141,25 @@ export const decode = Effect.fn("GitHub.decode")(function* (
 ): Effect.fn.Return<Decoded, InvalidEnvelope> {
   if (eventName === null || deliveryId === null || !/^[A-Za-z0-9-]{1,100}$/.test(deliveryId))
     return yield* new InvalidEnvelope({});
+
   if (eventName === "ping") return { type: "ping" };
+
   const value = yield* Effect.flatMap(text(rawBody), (body) =>
     Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(body).pipe(
       Effect.mapError(() => new InvalidEnvelope({})),
     ),
   );
+
   const decodeAs = <A, I>(schema: Schema.Codec<A, I>) =>
     Schema.decodeUnknownEffect(schema)(value).pipe(Effect.mapError(() => new InvalidEnvelope({})));
+
   switch (eventName) {
     case "issue_comment": {
       const event = yield* decodeAs(IssueComment);
+
       if (event.action !== "created") return { type: "ignored", reason: "action" };
       if (event.issue.pull_request === undefined) return { type: "ignored", reason: "not-a-pull" };
+
       return {
         type: "feedback",
         feedback: {
@@ -170,6 +180,7 @@ export const decode = Effect.fn("GitHub.decode")(function* (
     case "pull_request_review_comment": {
       const event = yield* decodeAs(ReviewComment);
       if (event.action !== "created") return { type: "ignored", reason: "action" };
+
       return {
         type: "feedback",
         feedback: {
@@ -192,11 +203,15 @@ export const decode = Effect.fn("GitHub.decode")(function* (
     }
     case "pull_request_review": {
       const event = yield* decodeAs(Review);
+
       if (event.action !== "submitted") return { type: "ignored", reason: "action" };
+
       const body = event.review.body ?? "";
+
       // An approval or request-changes without text carries nothing to answer.
       if (body.trim() === "" || event.review.submitted_at === null)
         return { type: "ignored", reason: "empty-review" };
+
       return {
         type: "feedback",
         feedback: {

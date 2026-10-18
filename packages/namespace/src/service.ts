@@ -42,6 +42,7 @@ export class Service extends Context.Service<Service, Interface>()("@notus/names
 
 type Operation = ControlError["operation"];
 const maxResponseBytes = 1024 * 1024;
+
 const Identity = Schema.NonEmptyString.check(
   Schema.isMaxLength(256),
   Schema.makeFilter(
@@ -57,9 +58,11 @@ export const layerNoDeps = Layer.effect(
   Effect.gen(function* () {
     const settings = yield* Config.Service;
     const http = HttpClient.withScope(yield* HttpClient.HttpClient);
+
     const endpoint = yield* Effect.try({
       try: () => {
         const url = new URL(settings.endpoint ?? Config.defaultEndpoint);
+
         if (
           url.protocol !== "https:" ||
           url.username ||
@@ -69,6 +72,7 @@ export const layerNoDeps = Layer.effect(
           url.pathname !== "/"
         )
           throw new Error();
+
         return url.origin;
       },
       catch: () =>
@@ -77,6 +81,7 @@ export const layerNoDeps = Layer.effect(
             "Namespace endpoint must be a trusted HTTPS origin without credentials, path, query or fragment",
         }),
     });
+
     if (
       !Number.isSafeInteger(settings.timeoutMs) ||
       settings.timeoutMs <= 0 ||
@@ -86,6 +91,7 @@ export const layerNoDeps = Layer.effect(
         message: "Namespace timeoutMs must be a positive bounded integer",
       });
     }
+
     if (
       !Redacted.isRedacted(settings.credential) ||
       !/^[\x21-\x7e]+$/.test(Redacted.value(settings.credential))
@@ -108,6 +114,7 @@ export const layerNoDeps = Layer.effect(
             () => new ControlError({ operation, reason: "invalidInput", outcome: "notSent" }),
           ),
         );
+
         const response = yield* http
           .execute(request)
           .pipe(
@@ -115,6 +122,7 @@ export const layerNoDeps = Layer.effect(
               () => new ControlError({ operation, reason: "transport", outcome: "unknown" }),
             ),
           );
+
         if (response.status !== 200) {
           // Never retain provider messages, headers, request bodies or auth-bearing transport causes.
           return yield* new ControlError({
@@ -126,6 +134,7 @@ export const layerNoDeps = Layer.effect(
               : "unknown",
           });
         }
+
         if (
           response.headers["content-type"]?.split(";")[0]?.trim().toLowerCase() !==
           "application/json"
@@ -136,30 +145,38 @@ export const layerNoDeps = Layer.effect(
             outcome: "unknown",
           });
         }
+
         let size = 0;
         const chunks: Uint8Array[] = [];
+
         yield* response.stream.pipe(
           Stream.runForEach((chunk) => {
             size += chunk.byteLength;
+
             if (size > maxResponseBytes)
               return Effect.fail(
                 new ControlError({ operation, reason: "invalidResponse", outcome: "unknown" }),
               );
+
             chunks.push(chunk);
+
             return Effect.void;
           }),
           Effect.mapError(
             () => new ControlError({ operation, reason: "invalidResponse", outcome: "unknown" }),
           ),
         );
+
         return yield* Effect.try({
           try: () => {
             const bytes = new Uint8Array(size);
             let offset = 0;
+
             for (const chunk of chunks) {
               bytes.set(chunk, offset);
               offset += chunk.byteLength;
             }
+
             return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
           },
           catch: () =>
@@ -192,6 +209,7 @@ export const layerNoDeps = Layer.effect(
           () => new ControlError({ operation, reason: "invalidInput", outcome: "notSent" }),
         ),
       );
+
     const resource = Effect.fn("Namespace.resource")(function* (
       operation: Operation,
       payload: unknown,
@@ -203,10 +221,12 @@ export const layerNoDeps = Layer.effect(
       );
       const box = response.devbox;
       let state: Resource["state"] = "unknown";
+
       if (box.destroyedAt) state = "expired";
       else if (operation === "Create" || operation === "Stop") state = "stopped";
       else if (response.instanceId) state = "running";
       else if (operation === "Fetch") state = "stopped";
+
       return Resource.make({
         id: box.id,
         name: box.name,
@@ -225,16 +245,19 @@ export const layerNoDeps = Layer.effect(
     });
     const fetch = Effect.fn("Namespace.fetch")(function* ({ id }: { readonly id: string }) {
       yield* identity("Fetch", id);
+
       const result = yield* resource(
         "Fetch",
         yield* rpc("Fetch", { id, returnActivatedInstance: true, includeSshCredentials: false }),
       );
+
       if (result.id !== id)
         return yield* new ControlError({
           operation: "Fetch",
           reason: "identityMismatch",
           outcome: "unknown",
         });
+
       return result;
     });
     const verify = Effect.fn("Namespace.verify")(function* (
@@ -244,6 +267,7 @@ export const layerNoDeps = Layer.effect(
       yield* identity(operation, stored.id);
       yield* identity(operation, stored.name);
       const current = yield* fetch({ id: stored.id });
+
       if (current.id !== stored.id || current.name !== stored.name) {
         return yield* new ControlError({
           operation,
@@ -251,8 +275,10 @@ export const layerNoDeps = Layer.effect(
           outcome: "notSent",
         });
       }
+
       return current;
     });
+
     const checkResult = (operation: Operation, stored: Resource, result: Resource) =>
       result.id === stored.id && result.name === stored.name
         ? Effect.succeed(result)
@@ -267,9 +293,11 @@ export const layerNoDeps = Layer.effect(
         yield* identity("Create", input.name);
         yield* identity("Create", input.operationId);
         const { raw } = yield* validateRestricted(input);
+
         yield* Effect.try({
           try: () => {
             const url = new URL(input.bootstrap.controlUrl);
+
             if (
               url.protocol !== "https:" ||
               url.username ||
@@ -291,6 +319,7 @@ export const layerNoDeps = Layer.effect(
                 "Bootstrap requires a trusted HTTPS URL without userinfo, query or fragment and a Redacted credential",
             }),
         });
+
         // Only this boundary builds credential-bearing JSON. Never return or snapshot it.
         const body: RawJson = {
           ...raw,
@@ -311,12 +340,14 @@ export const layerNoDeps = Layer.effect(
             { name: "NOTUS_BOOTSTRAP_TOKEN", value: Redacted.value(input.bootstrap.credential) },
           ],
         };
+
         const encoded = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.Json))(body).pipe(
           Effect.mapError(
             () =>
               new ControlError({ operation: "Create", reason: "invalidInput", outcome: "notSent" }),
           ),
         );
+
         if (new TextEncoder().encode(encoded).byteLength > maxResponseBytes) {
           return yield* new ControlError({
             operation: "Create",
@@ -324,27 +355,35 @@ export const layerNoDeps = Layer.effect(
             outcome: "notSent",
           });
         }
+
         const result = yield* resource("Create", yield* rpc("Create", body));
+
         if (result.name !== input.name || result.image?.ref !== raw.imageRef)
           return yield* new ControlError({
             operation: "Create",
             reason: "identityMismatch",
             outcome: "unknown",
           });
+
         return result;
       }),
       recoverByName: Effect.fn("Namespace.recoverByName")(function* (input) {
         const { name, expectedId, operationId } =
           typeof input === "string" ? { name: input } : input;
+
         yield* identity("Fetch", name);
+
         if (expectedId !== undefined) yield* identity("Fetch", expectedId);
         if (operationId !== undefined) yield* identity("Fetch", operationId);
+
         const payload = yield* rpc("Fetch", {
           name,
           returnActivatedInstance: true,
           includeSshCredentials: false,
         });
+
         const result = yield* resource("Fetch", payload);
+
         if (result.name !== name || (expectedId !== undefined && result.id !== expectedId)) {
           return yield* new ControlError({
             operation: "Fetch",
@@ -352,6 +391,7 @@ export const layerNoDeps = Layer.effect(
             outcome: "unknown",
           });
         }
+
         const response = yield* Schema.decodeUnknownEffect(Wire.Response)(payload).pipe(
           Effect.mapError(
             () =>
@@ -363,6 +403,7 @@ export const layerNoDeps = Layer.effect(
           ),
         );
         const marker = response.devbox.documentedPurpose;
+
         return {
           resource: result,
           evidence:
@@ -376,6 +417,7 @@ export const layerNoDeps = Layer.effect(
       create: Effect.fn("Namespace.create")(function* ({ name, config }) {
         yield* identity("Create", name);
         const { raw } = yield* Config.decode(config);
+
         // Retain future settings in storage without silently executing an unsupported contract.
         if (Object.keys(raw).some((key) => !Object.hasOwn(Wire.CreateSettings.fields, key))) {
           return yield* new ConfigError({
@@ -383,20 +425,24 @@ export const layerNoDeps = Layer.effect(
               "Unsupported top-level CreateRequest setting; execution requires the maintained camelCase contract",
           });
         }
+
         const result = yield* resource(
           "Create",
           yield* rpc("Create", { ...raw, name, activate: false }),
         );
+
         if (result.name !== name)
           return yield* new ControlError({
             operation: "Create",
             reason: "identityMismatch",
             outcome: "unknown",
           });
+
         return result;
       }),
       activate: Effect.fn("Namespace.activate")(function* (stored) {
         yield* verify("Activate", stored);
+
         const result = yield* resource(
           "Activate",
           yield* rpc("Activate", {
@@ -406,10 +452,12 @@ export const layerNoDeps = Layer.effect(
             includeSshCredentials: false,
           }),
         );
+
         return yield* checkResult("Activate", stored, result);
       }),
       stop: Effect.fn("Namespace.stop")(function* (stored) {
         yield* verify("Stop", stored);
+
         return yield* checkResult(
           "Stop",
           stored,
@@ -418,6 +466,7 @@ export const layerNoDeps = Layer.effect(
       }),
       expire: Effect.fn("Namespace.expire")(function* (stored) {
         yield* verify("Expire", stored);
+
         const response = yield* Schema.decodeUnknownEffect(Wire.ExpireResponse)(
           yield* rpc("Expire", { name: stored.name }),
         ).pipe(
@@ -430,6 +479,7 @@ export const layerNoDeps = Layer.effect(
               }),
           ),
         );
+
         if (
           !response.devboxes?.some((box) => box.id === stored.id && box.name === stored.name) ||
           response.devboxes.some((box) => box.id !== stored.id || box.name !== stored.name)

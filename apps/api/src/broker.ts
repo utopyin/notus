@@ -44,15 +44,20 @@ export const client = (
         new HttpClientError.HttpClientError({
           reason: new HttpClientError.TransportError({ request, description }),
         });
+
       const operation = yield* Operation;
       if (operation === null) return yield* transport("model request outside an operation");
+
       const body = request.body;
+
       if (request.method !== "POST" || body._tag !== "Uint8Array")
         return yield* transport("unsupported model request");
+
       const text = yield* Effect.try({
         try: () => new TextDecoder("utf-8", { fatal: true }).decode(body.body),
         catch: () => transport("unreadable model request"),
       });
+
       const result = yield* connections
         .getByName(operation.userId)
         .forward(operation.userId, operation.operationId, {
@@ -83,6 +88,7 @@ export const client = (
             },
             { status: statuses[result.reason] },
           );
+
       return HttpClientResponse.fromWeb(request, response);
     }),
   );

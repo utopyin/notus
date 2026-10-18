@@ -50,6 +50,7 @@
   "devDependencies": {
     "@effect/tsgo": "0.53.4",
     "@notus/shared": "workspace:*",
+    "@stylistic/eslint-plugin": "5.10.0",
     "drizzle-kit": "catalog:",
     "mime": "4.1.1",
     "oxfmt": "^0.73.0",
