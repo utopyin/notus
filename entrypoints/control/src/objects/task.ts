@@ -178,6 +178,7 @@ const methods = (settings: DeploymentConfig) =>
 // A type, not an interface: object RPC shapes need its implicit index signature.
 export type Interface = Effect.Success<ReturnType<typeof methods>>;
 
+/** @effect-expect-leaking RuntimeContext */
 // oxlint-disable-next-line effecttsgo/lazy-effect -- object RPC members are calls on the stub.
 export class Service extends Context.Service<Service, Interface>()("@notus/control/objects/Task") {}
 

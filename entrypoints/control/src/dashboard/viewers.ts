@@ -1,11 +1,13 @@
 import { Identities } from "@notus/accounts/identities";
 import { InstallationId, PlatformId } from "@notus/platform/ids";
 import type { Actor } from "@notus/platform/source";
+import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Authentication, DashboardError, Viewer } from "./rpcs";
+import * as Option from "effect/Option";
+import { Authentication, DashboardError, Execution, Viewer } from "./rpcs";
 import { Sessions } from "./sessions";
 
 /**
@@ -67,6 +69,24 @@ export const layer = Layer.effect(Service, Service.make);
 
 const unauthorized = new DashboardError({ reason: "unauthorized" });
 
+/**
+ * The runtime context of the request a call arrived on. The RPC server runs each call in the
+ * fiber of its HTTP request and merges that fiber's services into the handler's, so the context
+ * is there; the middlewares below are where the types learn it. A call without one is a defect.
+ */
+const requestRuntime = Effect.flatMap(Effect.serviceOption(RuntimeContext), (runtime) =>
+  Option.isSome(runtime)
+    ? Effect.succeed(runtime.value)
+    : Effect.die(new Error("A dashboard call ran outside a request")),
+);
+
+/** Hands the request's runtime context to a call that needs no session. */
+export const execution = Layer.succeed(Execution, (effect) =>
+  Effect.flatMap(requestRuntime, (runtime) =>
+    Effect.provideService(effect, RuntimeContext, runtime),
+  ),
+);
+
 /** The session middleware: every authenticated call acts for the user its cookie resolves to. */
 export const authentication = Layer.effect(
   Authentication,
@@ -76,8 +96,10 @@ export const authentication = Layer.effect(
     const middleware: Authentication["Service"] = (effect, { headers }) =>
       Effect.gen(function* () {
         const cookie = headers.cookie ?? "";
+        const runtime = yield* requestRuntime;
 
         const me = yield* viewers.resolve(cookie).pipe(
+          Effect.provideService(RuntimeContext, runtime),
           Effect.tapError((error) => Effect.logWarning(`dashboard.session_failed ${error._tag}`)),
           Effect.mapError(() => unauthorized),
         );
@@ -91,6 +113,7 @@ export const authentication = Layer.effect(
             cookie,
             now: me.now,
           }),
+          Effect.provideService(RuntimeContext, runtime),
         );
       });
 

@@ -46,9 +46,11 @@ export const me = MeRpcs.toLayer(
 );
 
 /** One call on the user's own Connection object, its refusal turned into the dashboard's. */
-const own = <A>(
+const own = <A, R>(
   result: Effect.Effect<
-    { readonly ok: true; readonly value: A } | { readonly ok: false; readonly reason: string }
+    { readonly ok: true; readonly value: A } | { readonly ok: false; readonly reason: string },
+    never,
+    R
   >,
 ) =>
   Effect.flatMap(result, (outcome) =>

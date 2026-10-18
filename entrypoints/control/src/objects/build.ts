@@ -3,6 +3,7 @@ import { Provider } from "@notus/compute/provider";
 import { Providers } from "@notus/executions/providers";
 import { Compute } from "@notus/workspaces/compute";
 import { Templates } from "@notus/workspaces/templates";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -64,7 +65,7 @@ const viewOf = (record: Record): BuildView => ({
 // A type, not an interface: object RPC shapes need its implicit index signature.
 export type Interface = {
   /** The last build, or null when this workspace never built one with this provider. */
-  readonly status: () => Effect.Effect<BuildView | null>;
+  readonly status: () => Effect.Effect<BuildView | null, never, RuntimeContext>;
   /**
    * Starts a build unless one is running, which it reports instead; null for input no build can
    * have. The caller checked that `actorId` is an admin of a workspace connected to `provider`.
@@ -73,10 +74,11 @@ export type Interface = {
     workspaceId: string,
     provider: string,
     actorId: string,
-  ) => Effect.Effect<BuildView | null>;
-  readonly alarm: () => Effect.Effect<void>;
+  ) => Effect.Effect<BuildView | null, never, RuntimeContext>;
+  readonly alarm: () => Effect.Effect<void, never, RuntimeContext>;
 };
 
+/** @effect-expect-leaking RuntimeContext */
 // oxlint-disable-next-line effecttsgo/lazy-effect -- object RPC members are calls on the stub.
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/objects/Build",

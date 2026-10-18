@@ -8,7 +8,6 @@ import {
 } from "better-auth/plugins/generic-oauth";
 import { dashboardConfig } from "@notus/control/config";
 import { Sessions } from "@notus/control/dashboard/sessions";
-import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -148,7 +147,7 @@ const make = Effect.flatMap(dashboardConfig, (dashboard) =>
 
 /**
  * The sign-in instance this Worker hosts, built once from the dashboard's configuration. Its calls
- * carry Alchemy's `RuntimeContext` marker, which the adapters below erase with its phantom layer.
+ * need Alchemy's `RuntimeContext`, as the `Sessions` port declares.
  *
  * @effect-expect-leaking RuntimeContext
  */
@@ -196,10 +195,9 @@ export const sessions = Layer.effect(
               createdAt: account.createdAt,
             })),
           };
-        }).pipe(Effect.provide(RuntimeContext.phantom), Effect.mapError(failure("signIn"))),
+        }).pipe(Effect.mapError(failure("signIn"))),
       list: (cookie) =>
         auth.api.listSessions({ headers: new Headers({ cookie }) }).pipe(
-          Effect.provide(RuntimeContext.phantom),
           Effect.map((listed) =>
             listed.map((session) => ({
               id: session.id,
@@ -221,7 +219,7 @@ export const sessions = Layer.effect(
           yield* auth.api.revokeSession({ headers, body: { token: session.token } });
 
           return true;
-        }).pipe(Effect.provide(RuntimeContext.phantom), Effect.mapError(failure("revoke"))),
+        }).pipe(Effect.mapError(failure("revoke"))),
     });
   }),
 );

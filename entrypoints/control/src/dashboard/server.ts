@@ -7,7 +7,7 @@ import * as Account from "./account";
 import * as Devbox from "./devbox";
 import { DashboardRpcs } from "./rpcs";
 import * as Tasks from "./tasks";
-import { authentication } from "./viewers";
+import { authentication, execution } from "./viewers";
 import * as Workspaces from "./workspaces";
 
 const handlers = Layer.mergeAll(
@@ -16,6 +16,7 @@ const handlers = Layer.mergeAll(
   Tasks.layer,
   Devbox.layer,
   authentication,
+  execution,
   RpcSerialization.layerJson,
 );
 

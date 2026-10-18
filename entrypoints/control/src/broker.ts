@@ -1,5 +1,6 @@
 import type { ConnectionError } from "@notus/accounts/errors";
 import { Model } from "@notus/openai/model";
+import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -31,9 +32,13 @@ const statuses: Record<ConnectionError["reason"], number> = {
 /**
  * HttpClient whose only transport is the initiator's Connection object. Requests carry no
  * credentials; the object adds them and replays an identical operation without a second charge.
+ * Built inside an object instance, whose runtime context every model request runs in.
  */
-export const client = (remote: (userId: string) => ConnectionObject.Interface) =>
-  HttpClient.make((request, url) =>
+export const client = Effect.gen(function* () {
+  const remote = yield* ConnectionObject.Remote;
+  const runtime = yield* RuntimeContext;
+
+  return HttpClient.make((request, url) =>
     Effect.gen(function* () {
       const transport = (description: string) =>
         new HttpClientError.HttpClientError({
@@ -81,11 +86,10 @@ export const client = (remote: (userId: string) => ConnectionObject.Interface) =
           );
 
       return HttpClientResponse.fromWeb(request, response);
-    }),
+    }).pipe(Effect.provideService(RuntimeContext, runtime)),
   );
+});
 
 /** The operator's model, whose only transport is the initiator's Connection object. */
 export const languageModel = (options: OperatorConfig) =>
-  Model.languageModel(options).pipe(
-    Layer.provide(Layer.effect(HttpClient.HttpClient, Effect.map(ConnectionObject.Remote, client))),
-  );
+  Model.languageModel(options).pipe(Layer.provide(Layer.effect(HttpClient.HttpClient, client)));

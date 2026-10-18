@@ -6,6 +6,7 @@ import { Sealed } from "@notus/cloudflare/sealed";
 import { SharedDb } from "@notus/db/shared";
 import { OAuth } from "@notus/github/oauth";
 import type { ForwardRequest, ForwardResponse, Provider } from "@notus/openai/types";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -22,7 +23,7 @@ export type Result<A> =
   | { readonly ok: true; readonly value: A }
   | { readonly ok: false; readonly reason: ConnectionError["reason"] };
 
-type Call<A> = Effect.Effect<Result<A>>;
+type Call<A> = Effect.Effect<Result<A>, never, RuntimeContext>;
 
 /**
  * One user's saved model logins, addressed by user ID. Only this object opens provider material.
@@ -50,6 +51,7 @@ export type Interface = {
   readonly githubLogin: (userId: string, minimumLifetimeMs: number) => Call<GithubLogin | null>;
 };
 
+/** @effect-expect-leaking RuntimeContext */
 // oxlint-disable-next-line effecttsgo/lazy-effect -- object RPC members are calls on the stub.
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/objects/Connection",
@@ -105,7 +107,7 @@ export const layerNoDeps = Layer.effect(
       agentLogin: (userId, minimumLifetimeMs) =>
         result(gate(connections.agentLogin(userId, minimumLifetimeMs))),
       forward: (userId, operationId, request) =>
-        result(connections.forward<never>(userId, operationId, request, gate)),
+        result(connections.forward<RuntimeContext>(userId, operationId, request, gate)),
       githubLogin: (userId, minimumLifetimeMs) =>
         result(
           gate(

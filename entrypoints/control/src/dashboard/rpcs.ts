@@ -12,6 +12,7 @@ import {
   Workspace,
   WorkspaceTemplate,
 } from "@notus/workspaces/types";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
@@ -50,9 +51,18 @@ export class Viewer extends Context.Service<Viewer, SignedIn>()(
 ) {}
 
 /** Resolves the session for every call that needs one; an anonymous call fails as unauthorized. */
-export class Authentication extends RpcMiddleware.Service<Authentication, { provides: Viewer }>()(
-  "@notus/control/dashboard/Authentication",
-  { error: DashboardError },
+export class Authentication extends RpcMiddleware.Service<
+  Authentication,
+  { provides: Viewer | RuntimeContext }
+>()("@notus/control/dashboard/Authentication", { error: DashboardError }) {}
+
+/**
+ * Every call runs in the runtime context of the request that carried it. Handlers are built once
+ * with the host, before any request exists, so the middleware hands it to each call; an
+ * authenticated call receives it from `Authentication`.
+ */
+export class Execution extends RpcMiddleware.Service<Execution, { provides: RuntimeContext }>()(
+  "@notus/control/dashboard/Execution",
 ) {}
 
 const call = <const Tag extends string, P extends Schema.Struct.Fields, S extends Schema.Top>(
@@ -73,7 +83,7 @@ const ScopeInput = Schema.Struct({
 /** Anonymous requests get null; nothing here is a secret. */
 export class MeRpcs extends RpcGroup.make(
   Rpc.make("me", { success: Schema.NullOr(Me), error: DashboardError }),
-) {}
+).middleware(Execution) {}
 
 export class AccountRpcs extends RpcGroup.make(
   call("sessions", {}, Schema.Array(Session)),

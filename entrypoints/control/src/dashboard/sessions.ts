@@ -1,3 +1,4 @@
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -35,16 +36,23 @@ export interface Session {
 
 /**
  * The dashboard's sign-in. Sessions are validated by the API, never trusted from the dashboard;
- * the app implements it over its auth provider and serves that provider's own routes.
+ * the app implements it over its auth provider and serves that provider's own routes. Calls
+ * need `RuntimeContext`: they run inside a request.
  */
 export interface Interface {
   /** Null for an anonymous request. */
-  readonly signIn: (cookie: string) => Effect.Effect<SignIn | null, SessionError>;
-  readonly list: (cookie: string) => Effect.Effect<ReadonlyArray<Session>, SessionError>;
+  readonly signIn: (cookie: string) => Effect.Effect<SignIn | null, SessionError, RuntimeContext>;
+  readonly list: (
+    cookie: string,
+  ) => Effect.Effect<ReadonlyArray<Session>, SessionError, RuntimeContext>;
   /** Revokes one of the caller's own sessions by ID; false when they hold none by that ID. */
-  readonly revoke: (cookie: string, sessionId: string) => Effect.Effect<boolean, SessionError>;
+  readonly revoke: (
+    cookie: string,
+    sessionId: string,
+  ) => Effect.Effect<boolean, SessionError, RuntimeContext>;
 }
 
+/** @effect-expect-leaking RuntimeContext */
 export class Service extends Context.Service<Service, Interface>()(
   "@notus/control/dashboard/Sessions",
 ) {}

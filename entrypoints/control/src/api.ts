@@ -7,6 +7,7 @@ import { Environments } from "@notus/workspaces/environments";
 import { Roles } from "@notus/workspaces/roles";
 import { Templates } from "@notus/workspaces/templates";
 import { Workspaces } from "@notus/workspaces/workspaces";
+import { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -34,10 +35,12 @@ import * as Callback from "./runtime/callback";
 
 /**
  * An install's proof of GitHub ownership is the installer's own sign-in, refreshed under their
- * Connection object's gate like every other use of it.
+ * Connection object's gate like every other use of it. It runs only inside the install request,
+ * but the platform contract it is configured into has no runtime, so the marker stops here.
  */
-const githubInstaller =
-  (connections: (userId: string) => ConnectionObject.Interface) => (userId: string) =>
+const githubInstaller = Effect.map(
+  ConnectionObject.Remote,
+  (connections) => (userId: string) =>
     connections(userId)
       .githubLogin(userId, 60_000)
       .pipe(
@@ -54,7 +57,9 @@ const githubInstaller =
                   }),
                 ),
         ),
-      );
+        Effect.provide(RuntimeContext.phantom),
+      ),
+);
 
 /**
  * The API's services over this deployment's domains, from its configuration. Leaves the shared
@@ -68,14 +73,13 @@ export const layer = Layer.unwrap(
     const webhookSecret = yield* webhookConfig;
     const dashboard = yield* dashboardConfig;
     const key = yield* credentialKeyConfig;
-    const connections = yield* ConnectionObject.Remote;
 
     // Every source goes through the registry: ingress, delivery, installs and the dashboard's scope lists.
     const platforms = platformsLayer(deployment, github, {
       webhookSecret,
       slack: dashboard.slack,
       githubAppSlug: dashboard.githubAppSlug,
-      githubInstaller: dashboard.github === null ? null : githubInstaller(connections),
+      githubInstaller: dashboard.github === null ? null : yield* githubInstaller,
     }).pipe(Layer.provide(Credentials.layer));
 
     const inbox = Inbox.layer.pipe(Layer.provide(platforms));

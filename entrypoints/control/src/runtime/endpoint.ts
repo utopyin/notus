@@ -1,4 +1,5 @@
 import { Commands } from "@notus/executions/commands";
+import type { RuntimeContext } from "alchemy/RuntimeContext";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -194,7 +195,7 @@ const make = Effect.gen(function* () {
   const dispatch = (
     capability: Auth.Capability,
     request: Protocol.Request,
-  ): Effect.Effect<unknown, { readonly _tag: string }> => {
+  ): Effect.Effect<unknown, { readonly _tag: string }, RuntimeContext> => {
     if (capability._tag === "Enrollment") {
       if (request._tag === "Assignment") return assignment(capability);
       if (request._tag === "Enroll") return enroll(capability, request.request);
@@ -212,7 +213,7 @@ const make = Effect.gen(function* () {
   const call = (
     capability: Auth.Capability,
     request: Protocol.Request,
-  ): Effect.Effect<Protocol.RpcReply> =>
+  ): Effect.Effect<Protocol.RpcReply, never, RuntimeContext> =>
     dispatch(capability, request).pipe(
       Effect.map((value): Protocol.RpcReply => ({ ok: true, value })),
       Effect.catch((error) =>
