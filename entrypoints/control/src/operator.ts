@@ -3,7 +3,7 @@ import { conversationKeyOf, key, type Admission, type Source } from "@notus/plat
 import { Attempts } from "@notus/executions/attempts";
 import { Commands } from "@notus/executions/commands";
 import { Provisioning } from "@notus/executions/provisioning";
-import { Steps, type StepClaim, type StepOutcome } from "@notus/executions/steps";
+import { Steps, type StepClaim, type StepOutcome, type Waiting } from "@notus/executions/steps";
 import {
   digest,
   WorkspacePath,
@@ -279,21 +279,32 @@ const commandFailure = (error: string): CommandOutcome => ({
   error,
 });
 
+/**
+ * A blocked box is replaced by a create_devbox call from a step that began once it was blocked,
+ * that is, after the operator was told so. Calls already waiting when it blocked get that answer.
+ */
+const replaces = (step: Pick<Waiting, "createdAt">, status: ProvisioningStatus) =>
+  status.phase === "blocked" && status.pendingWork === null && step.createdAt >= status.observedAt;
+
 type Evaluation =
   | { readonly _tag: "Resolved"; readonly result: Schema.Json; readonly isFailure: boolean }
   | { readonly _tag: "Pending"; readonly deadline: number | null };
 
 /** Read-only view of one unresolved call. resolveWaits applies the mutations it implies. */
 const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
-  stepId: string,
+  step: Pick<Waiting, "id" | "createdAt">,
   call: { readonly id: string; readonly name: string; readonly params: Schema.Json },
   now: number,
 ): Effect.fn.Return<Evaluation, never, Provisioning.Service | Commands.Service> {
   const provisioning = yield* Provisioning.Service;
   const commands = yield* Commands.Service;
   const status = yield* provisioning.current.pipe(Effect.orDie);
+  const stepId = step.id;
 
   if (call.name === "create_devbox") {
+    // Dispatch replaces the blocked box first; until it has, the call waits for the new one.
+    if (status !== null && replaces(step, status)) return { _tag: "Pending", deadline: now };
+
     if (
       status !== null &&
       status.pendingWork === null &&
@@ -459,9 +470,10 @@ const evaluate = Effect.fn("OperatorControl.evaluate")(function* (
   return { _tag: "Pending", deadline };
 });
 
-/** Start durable work for unresolved tool calls. Idempotent: provisioning binds once per attempt. */
+/** Start durable work for unresolved tool calls. Idempotent: provisioning binds once per attempt, and a replacement is one more attempt. */
 const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
   const steps = yield* Steps.Service;
+  const attempts = yield* Attempts.Service;
   const provisioning = yield* Provisioning.Service;
   const state = yield* State.Service;
   const waiting = yield* steps.waiting(batchSize);
@@ -473,10 +485,22 @@ const dispatch = Effect.fn("OperatorControl.dispatch")(function* (now: number) {
 
   const commands = yield* Commands.Service;
 
+  // Commands left on a replaced attempt fail or move before anything new is started.
+  yield* commands.reassign(now);
+
   for (const step of waiting)
     for (const call of step.calls) {
       if (call.name === "create_devbox") {
-        if ((yield* provisioning.current) !== null) continue;
+        const current = yield* provisioning.current;
+
+        if (current !== null) {
+          if (!replaces(step, current)) continue;
+
+          // The operator asked again after seeing the box blocked: a new attempt takes the
+          // task's turns over, and its box is provisioned from scratch. The old box is ended.
+          yield* attempts.replace(task.id, now);
+          yield* commands.reassign(now);
+        }
 
         const environment = yield* provisioning.captured;
 
@@ -715,7 +739,7 @@ const resolveWaits = Effect.fn("OperatorControl.resolveWaits")(function* (now: n
     let pending = false;
 
     for (const call of step.calls) {
-      const evaluation = yield* evaluate(step.id, call, now);
+      const evaluation = yield* evaluate(step, call, now);
 
       if (evaluation._tag === "Pending") {
         pending = true;
@@ -899,7 +923,7 @@ export const nextWake = Effect.fn("OperatorControl.nextWake")(function* (now: nu
 
   for (const step of waiting)
     for (const call of step.calls) {
-      const evaluation = yield* evaluate(step.id, call, now);
+      const evaluation = yield* evaluate(step, call, now);
       if (evaluation._tag === "Resolved") return now;
       if (evaluation.deadline !== null) deadlines.push(evaluation.deadline);
     }

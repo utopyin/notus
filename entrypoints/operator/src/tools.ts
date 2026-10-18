@@ -20,7 +20,7 @@ export interface DevboxResult extends Schema.Schema.Type<typeof DevboxResult> {}
 
 export const CreateDevbox = Tool.make("create_devbox", {
   description:
-    "Provision the dev box for this task and wait until it is ready. Use it only when the task needs a machine and none exists yet. Readiness alone is the result; use run_command afterwards to do work on it.",
+    "Provision the dev box for this task and wait until it is ready. Use it only when the task needs a machine and none exists yet, or the existing one is blocked: then it replaces that box with a new one, and nothing on the old box carries over. Readiness alone is the result; use run_command afterwards to do work on it.",
   parameters: Schema.Struct({
     purpose: Schema.String.annotate({ description: "Why the task needs a dev box now." }),
   }),
