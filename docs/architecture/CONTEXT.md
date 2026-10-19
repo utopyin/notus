@@ -1,6 +1,6 @@
 # Architecture rules
 
-Agreed code conventions. [Product context](../../CONTEXT.md) defines behavior; the [codebase proposal](../plans/codebase.md) assigns concrete package ownership.
+Agreed code conventions. [Product context](../../CONTEXT.md) defines behavior; the [system design](system.md) shows the packages and hosts as built.
 
 ## Tiers and dependencies
 
@@ -91,4 +91,4 @@ A provider-neutral API is not necessarily an SDK-free import: the public module 
 
 When separate implementations need the tag, define it once in an internal `contract.ts`. Implementations import that contract, never the public module that re-exports them. Expose a contract-only subpath only when a cross-runtime consumer needs isolation; it is not the happy path.
 
-Check the full import closure for the target host. Tree-shaking or dynamic imports do not guarantee Worker compatibility. Use compatible host defaults or isolated contracts where necessary. Defaults must preserve the [runtime authority boundaries](../plans/codebase.md#runtime-and-data-ownership), not bundle control-only services into a dev box.
+Check the full import closure for the target host. Tree-shaking or dynamic imports do not guarantee Worker compatibility. Use compatible host defaults or isolated contracts where necessary. Defaults must preserve the [host authority boundaries](system.md#hosts-responsibilities-and-secrets), not bundle control-only services into a dev box.

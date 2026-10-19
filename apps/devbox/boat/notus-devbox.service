@@ -1,5 +1,5 @@
 # The Notus supervisor on a Boat template. It starts once the launch's setup script has written
-# the bootstrap file, and again by itself after every resume. See docs/plans/compute.md.
+# the bootstrap file, and again by itself after every resume.
 [Unit]
 Description=Notus devbox supervisor
 After=network-online.target

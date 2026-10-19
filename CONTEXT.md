@@ -2,7 +2,7 @@
 
 Notus replaces manual coordination between coding agents. The AI operator decides what to run, interprets results, requests fixes, asks humans, and decides when work is ready for review. Typed tools enforce authorization and record work; they do not implement a fixed planning-to-implementation state machine.
 
-Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT.md) defines code conventions; the [codebase proposal](docs/plans/codebase.md) assigns ownership.
+[Architecture](docs/architecture/CONTEXT.md) defines code conventions; the [system design](docs/architecture/system.md) shows the built system.
 
 ## Vocabulary
 
@@ -83,10 +83,10 @@ Build status is in [README](README.md). [Architecture](docs/architecture/CONTEXT
 
 ## Selected technology
 
-Effect v4, Bun workspaces/Turborepo, and Alchemy v2 with `alchemy.run.ts`; Cloudflare Workers, shared D1 for workspace/control data, and task Durable Objects; Drizzle with first-party Effect drivers/schema integration; dev boxes behind a provider contract, with Namespace first and Boat next; Herdr sessions; Plannotator review; `@distilled.cloud/slack` for Slack Web API calls. Workspaces use ordinary SQL-backed services, not workspace Durable Objects. These choices are not proof of interoperability. See [research](docs/research/README.md).
+Effect v4, Bun workspaces/Turborepo, and Alchemy v2 with `alchemy.run.ts`; Cloudflare Workers, shared D1 for workspace/control data, and task Durable Objects; Drizzle with first-party Effect drivers/schema integration; dev boxes behind a provider contract, with Namespace first and Boat next; Herdr sessions; Plannotator review; `@distilled.cloud/slack` for Slack Web API calls. Workspaces use ordinary SQL-backed services, not workspace Durable Objects.
 
 ## Retention
 
 Only the initiator and workspace admins may explicitly close or reopen a task. Comments do not automatically reopen closed tasks. Retain task records and artifacts while open and for 90 days after explicit closure; reopening within that window cancels cleanup, and a later closure starts a new window. Handoff for human review does not start the clock. Saved model connections have a separate lifecycle; sleeping devboxes remain subject to their provider's retention policy.
 
-Do not add a workflow editor, full tenant administration, every input adapter, or comprehensive autonomous recovery to the first prototype. Technical unknowns belong in the [validation plan](docs/research/validation-plan.md).
+Do not add a workflow editor, full tenant administration, every input adapter, or comprehensive autonomous recovery to the first prototype.

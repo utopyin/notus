@@ -2,7 +2,7 @@
 
 ## Before changing code
 
-- Read [product context](CONTEXT.md). Read [architecture](docs/architecture/CONTEXT.md) before adding packages, imports, services, or Layers. Proposals live in `docs/plans/`.
+- Read [product context](CONTEXT.md). Read [architecture](docs/architecture/CONTEXT.md) before adding packages, imports, services, or Layers.
 - State assumptions and tradeoffs. Ask when the intended behavior is unclear.
 - Fix the underlying ownership/source-of-truth problem when relevant, not just the local symptom.
 - Do not add test files by default unless requested. Preserve unrelated user changes.
@@ -10,7 +10,7 @@
 ## References
 
 - Prefer inspected source over guesses. `repos/` is read-only reference material: never edit it or import it into application code.
-- [Source inventory](docs/research/sources.md) owns revisions and update instructions; [package.json](package.json) owns dependency versions.
+- [Reference sources](docs/sources.md) owns `repos/` revisions and update instructions; [package.json](package.json) owns dependency versions.
 - Before Effect work, read the [Effect skill](.agents/skills/effect/SKILL.md), [vendored guide](repos/effect/LLMS.md), and relevant [migration guide](repos/effect/migration/). Follow the pinned v4 APIs, not v3 examples.
 - For Alchemy, use the vendored [examples](repos/alchemy/examples/) and [documentation](repos/alchemy/website/src/content/docs/).
 
@@ -26,4 +26,4 @@
 
 ## Documentation
 
-Use the [documentation map](README.md#documentation). Keep each fact in its owning document and link to it elsewhere. Separate agreed requirements, proposals, and inspected-but-unvalidated behavior. Do not copy SDK tutorials or version tables into project rules.
+Use the [documentation map](README.md#documentation). Keep each fact in its owning document and link to it elsewhere. Keep documentation high level and current: no project history, abandoned plans, validation logs, or SDK tutorials. Do not copy version tables into project rules.

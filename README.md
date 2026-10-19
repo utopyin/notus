@@ -2,39 +2,21 @@
 
 A shared-team coding-agent orchestrator. An AI operator coordinates planning, implementation, reviews, and QA; humans approve plans and review and merge the finished code.
 
-Status: the dedicated Slack readiness slice is deployed and confirmed, including warm/cold wake on the retained devbox. The operator round trip is live on the test stage: a Slack input becomes a persisted operator turn in the Task object, the initiator's Connection object forwards one bounded model request per step, the operator can create the task's dev box, check out the task's repository, run bounded commands on the box, push a `notus/` branch and open a pull request with per-operation GitHub App tokens, all as durable tool calls, and the model's answer returns to the thread. Nothing Notus holds can merge. The first live run opened [<owner>/<repo>#1](https://github.com/<owner>/<repo>/pull/1) from a Slack mention. Comments on a task's pull request from collaborators with write access now continue that task and are answered on GitHub. The subscription login is implemented but blocked from Workers egress, so the test stage explicitly uses a Platform API key. Repository checkout and production deployment remain disabled. See [devbox results](docs/research/devbox-results.md) and [intake results](docs/research/intake-results.md). Dependency versions and commands live in [package.json](package.json).
+A Slack mention starts a task. The operator runs in the task's Durable Object, works on a dev box through durable tool calls, opens a pull request with a GitHub App, and answers in the thread; pull request comments continue the task. Nothing Notus holds can merge.
 
 ## Documentation
 
-Each topic has one canonical home:
-
-| Document                                            | Owns                                                                              |
-| --------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [Product context](CONTEXT.md)                       | Requirements, vocabulary, scope, and open product decisions                       |
-| [Agent instructions](AGENTS.md)                     | Working practices and code style                                                  |
-| [Architecture](docs/architecture/CONTEXT.md)        | Tier boundaries, provider separation, and service/Layer conventions               |
-| [System design](docs/architecture/system.md)        | Diagrams of the built system: hosts, platforms, flows, dev box wire, claims       |
-| [Codebase proposal](docs/plans/codebase.md)         | Package responsibilities and reviewed runtime/data recommendations                |
-| [First tracer](docs/plans/tracer.md)                | End-to-end scenario, runnable increments, and blocking experiments                |
-| [Source round trip](docs/plans/intake.md)           | First slice's interfaces, infrastructure, persistence, and implementation order   |
-| [Devbox slice](docs/plans/devbox.md)                | Opaque provider configuration, base image, and authorized startup validation      |
-| [Operator slice](docs/plans/operator.md)            | Control-plane operator loop, saved connections, broker transport, and its gates   |
-| [Repository access](docs/plans/repository.md)       | GitHub App authority, read-only checkout on the dev box, and its limits           |
-| [Dashboard](docs/plans/dashboard.md)                | Sign-in, workspaces and invites, model connections, repositories, instructions    |
-| [Platforms](docs/plans/platforms.md)                | The platform contract, registered adapters per platform, installations and scopes |
-| [Compute](docs/plans/compute.md)                    | Devbox provider contract, capabilities, per-workspace connections and templates   |
-| [Composition](docs/plans/composition.md)            | Central database package and one composed Layer per host                          |
-| [Research](docs/research/README.md)                 | Provider evidence and constraints                                                 |
-| [Source inventory](docs/research/sources.md)        | Inspected revisions and reference maintenance                                     |
-| [Validation plan](docs/research/validation-plan.md) | Unproven integrations and acceptance criteria                                     |
-| [Intake results](docs/research/intake-results.md)   | First-slice verification evidence, limitations, and simulation setup              |
-| [Devbox results](docs/research/devbox-results.md)   | Image artifacts, startup validation, and remaining execution gates                |
-
-The readiness slice follows the [readiness plan](docs/plans/provisioning.md); the model round trip follows the [operator plan](docs/plans/operator.md). Repository access follows the [repository plan](docs/plans/repository.md). Specialist rounds run Codex on the dev box under the initiator's subscription; the [operator plan](docs/plans/operator.md#specialist-rounds) records how a round is kept alive and signed in. Each requires separate authorization and validation.
+| Document                                     | Owns                                                        |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| [Product context](CONTEXT.md)                | Requirements, vocabulary, and scope                         |
+| [Agent instructions](AGENTS.md)              | Working practices and code style                            |
+| [Architecture](docs/architecture/CONTEXT.md) | Tiers, provider boundaries, service/Layer and runtime rules |
+| [System design](docs/architecture/system.md) | Primitives, system context, code tiers, hosts and secrets   |
+| [Reference sources](docs/sources.md)         | Vendored `repos/` revisions and how to update them          |
 
 ## Stages
 
-A stage is either a developer's own, named after `$USER`, or `production`. `bun run deploy` deploys your stage from the ignored `.env.dev` (start from [.env.example](.env.example)); `bun run deploy:production` deploys production from `.env.production`. Each stage owns its Workers, D1 databases, Durable Objects and hostnames: production serves `notus.run` and `api.notus.run`, a developer stage `<stage>.notus.run` and `api.<stage>.notus.run`, with DNS and certificates managed by Cloudflare as part of the deploy. The rule lives in `@notus/shared/hosts`. Credentials come from the `notus` Alchemy profile, an API token, selected by `ALCHEMY_PROFILE` in the env file; see the [intake results](docs/research/intake-results.md) for the setup notes.
+A stage is either a developer's own, named after `$USER`, or `production`. `bun run deploy` deploys your stage from the ignored `.env.dev` (start from [.env.example](.env.example)); `bun run deploy:production` deploys production from `.env.production`. Each stage owns its Workers, D1 databases, Durable Objects and hostnames: production serves `notus.run` and `api.notus.run`, a developer stage `<stage>.notus.run` and `api.<stage>.notus.run`. The rule lives in `@notus/shared/hosts`. Credentials come from the Alchemy profile selected by `ALCHEMY_PROFILE` in the env file.
 
 ## License
 
